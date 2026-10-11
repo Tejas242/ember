@@ -1,0 +1,28 @@
+id           = "screenager/ember"
+name         = "Ember"
+version      = "0.1.0"
+plugin_api   = 31
+author       = "screenager"
+license      = "MIT"
+icon         = "flame"
+description  = "A live, morphing Claude Code island in your bar: what each session is doing, Allow/Deny and answers right from the bar, and a little flame that feels it all."
+tags         = ["claude", "ai", "bar", "productivity"]
+dependencies = ["claude"]
+
+[[service]]
+id    = "core"
+entry = "core.luau"
+
+[[widget]]
+id    = "island"
+entry = "island.luau"
+
+  [widget.actions]
+  middle = "none"
+
+[[panel]]
+id        = "card"
+entry     = "card.luau"
+width     = 420
+height    = 260
+placement = "attached"

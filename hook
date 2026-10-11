@@ -1,0 +1,92 @@
+#!/bin/sh
+# Ember's Claude Code hook. POSIX sh, no dependencies beyond Noctalia's CLI.
+#
+#   sh hook <EventName>     run by Claude Code (see `sh hook install`)
+#   sh hook install         add the hooks to ~/.claude/settings.json (needs python3)
+#
+# Reporting events are fire-and-forget. A permission request or an
+# AskUserQuestion waits for the bar (up to 90 s), then falls back to Claude's
+# own prompt. If Noctalia or the plugin isn't running it falls back at once.
+
+PLUGIN="screenager/ember:core"
+WAIT_TICKS=450 # x 0.2 s = 90 s
+
+if [ "$1" = "install" ]; then
+	exec python3 - "$(cd "$(dirname "$0")" && pwd)/hook" <<'EOF'
+import json, os, shutil, sys
+hook = sys.argv[1]
+path = os.path.expanduser("~/.claude/settings.json")
+cfg = json.load(open(path)) if os.path.exists(path) else {}
+if os.path.exists(path) and not os.path.exists(path + ".pre-ember"):
+    shutil.copy(path, path + ".pre-ember")
+hooks = cfg.setdefault("hooks", {})
+for event in list(hooks):  # drop older ember entries, keep everything else
+    kept = [e for e in hooks[event] if not any("ember" in h.get("command", "") and "/hook" in h.get("command", "") for h in e.get("hooks", []))]
+    if kept: hooks[event] = kept
+    else: del hooks[event]
+def add(event, wait, matcher=None):
+    h = {"type": "command", "command": "sh '%s' %s" % (hook, event), "timeout": 100 if wait else 5}
+    if not wait: h["async"] = True
+    entry = {"hooks": [h]}
+    if matcher: entry["matcher"] = matcher
+    hooks.setdefault(event, []).append(entry)
+add("PermissionRequest", True, "*")
+hooks.setdefault("PreToolUse", []).append({"matcher": "AskUserQuestion", "hooks": [
+    {"type": "command", "command": "sh '%s' AskUserQuestion" % hook, "timeout": 100}]})
+for ev in ("SessionStart", "UserPromptSubmit", "Notification", "Stop", "SessionEnd"):
+    add(ev, False)
+add("PreToolUse", False, "*")
+add("PostToolUse", False, "*")
+tmp = path + ".tmp"
+json.dump(cfg, open(tmp, "w"), indent=2)
+os.replace(tmp, path)
+print("ember: hooks added to", path, "(backup: settings.json.pre-ember). Restart running Claude sessions.")
+EOF
+fi
+
+event="$1"
+[ -n "$event" ] || exit 0
+command -v noctalia >/dev/null 2>&1 || exit 0
+
+dir="${XDG_RUNTIME_DIR:-/tmp}/ember"
+mkdir -p "$dir" 2>/dev/null && chmod 700 "$dir" 2>/dev/null
+f="$dir/$(date +%s)-$$.json"
+cat >"$f" || exit 0
+
+# Claude's pid (our parent, or the shell between us) lets the bar find the terminal.
+gp=""
+if [ -r "/proc/$PPID/stat" ]; then
+	read -r stat <"/proc/$PPID/stat"
+	set -- ${stat##*) }
+	gp="$2"
+fi
+pids="$PPID${gp:+,$gp}"
+
+wait=0
+case "$event" in
+PermissionRequest | AskUserQuestion) wait=1 ;; # AskUserQuestion = PreToolUse matched on that tool
+esac
+
+if [ "$wait" = 0 ]; then
+	# don't make Claude wait for delivery; keep stdout closed so it doesn't either
+	(noctalia msg plugin "$PLUGIN" all hook "$event $f $$ $pids" >/dev/null 2>&1 || rm -f "$f") </dev/null >/dev/null 2>&1 &
+	exit 0
+fi
+
+if ! noctalia msg plugin "$PLUGIN" all ask "$event $f $$ $pids" >/dev/null 2>&1; then
+	rm -f "$f"
+	exit 0 # plugin not running: Claude asks in the terminal
+fi
+trap 'rm -f "$f" "$f.answer"; exit 0' INT TERM HUP
+i=0
+while [ "$i" -lt "$WAIT_TICKS" ]; do
+	if [ -f "$f.answer" ]; then
+		cat "$f.answer"
+		rm -f "$f" "$f.answer"
+		exit 0
+	fi
+	sleep 0.2
+	i=$((i + 1))
+done
+rm -f "$f"
+exit 0
