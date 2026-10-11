@@ -56,6 +56,7 @@ func Run() error {
 	}
 	a := &app{ui: NewUI(surfW, surfH, barHeight()), win: win, posts: posts}
 	a.ui.onKey = a.key
+	a.loadSessions()
 	a.music = startMusic(posts)
 	frameDue := false
 	win.onPointer = func(e pointerEvent) {
@@ -93,10 +94,11 @@ func Run() error {
 		}
 	}
 	draw()
-	housekeep := time.NewTicker(20 * time.Second)
+	housekeep := time.NewTicker(10 * time.Second)
 	defer housekeep.Stop()
 	timer := time.NewTimer(time.Hour)
 	lastPos := time.Time{}
+	saveDue := false
 	for {
 		select {
 		case m := <-win.c.msgs:
@@ -107,9 +109,14 @@ func Run() error {
 			f(a)
 			a.ui.Invalidate()
 			nPost++
+			saveDue = true
 		case <-housekeep.C:
 			if a.sweep() {
 				a.ui.Invalidate()
+			}
+			if saveDue {
+				a.saveSessions()
+				saveDue = false
 			}
 			if p := loadPalette(); p != a.ui.pal { // the wallpaper palette changed
 				a.ui.pal = p
@@ -582,4 +589,31 @@ func (a *app) ask(s *Session, in hookInput, tin map[string]any, answer chan<- js
 	}
 	show(0)
 	return id
+}
+
+// ---- sessions survive a restart of the island ----
+
+func sessionsPath() string { return filepath.Join(filepath.Dir(SockPath()), "ember-sessions.json") }
+
+func (a *app) saveSessions() {
+	b, err := json.Marshal(a.ui.sessions)
+	if err == nil {
+		os.WriteFile(sessionsPath(), b, 0o600)
+	}
+}
+
+func (a *app) loadSessions() {
+	b, err := os.ReadFile(sessionsPath())
+	if err != nil {
+		return
+	}
+	var ss map[string]*Session
+	if json.Unmarshal(b, &ss) != nil {
+		return
+	}
+	for id, s := range ss {
+		if slices.ContainsFunc(s.Pids, alive) {
+			a.ui.sessions[id] = s
+		}
+	}
 }
