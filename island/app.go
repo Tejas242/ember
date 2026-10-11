@@ -146,13 +146,10 @@ func (a *app) nextWake(animating bool) time.Duration {
 	next := u.nextBlink()
 	if u.continuous() {
 		next = now.Add(flickerEvery)
-	} else if u.lively() {
-		next = minTime(next, now.Add(idleEvery))
+	} else {
+		next = minTime(next, now.Add(idleEvery)) // Ember breathes even when nothing happens
 	}
-	if u.lastView == vExpanded && a.track != nil && a.track.Playing {
-		next = minTime(next, now.Add(time.Second)) // the progress bar moves
-		u.dirty = true
-	}
+
 	next = minTime(next, now.Truncate(time.Minute).Add(time.Minute))
 	for _, c := range u.cards {
 		if !c.Expires.IsZero() {
@@ -190,6 +187,10 @@ func (a *app) sweep() bool {
 func (a *app) setTrack(t *Track) {
 	prev := a.track
 	a.track, a.ui.track = t, t
+	if t != nil && t.Playing && (prev == nil || prev.Title != t.Title) && a.ui.primary() != "music" && a.ui.primary() != "moment" {
+		a.ui.Moment(moment{key: "track:" + t.Title, act: "music", mood: moodIdle, text: t.Title, sub: t.Artist,
+			until: a.ui.now().Add(4 * time.Second)})
+	}
 	if t == nil {
 		a.ui.art = nil
 		return
@@ -214,9 +215,20 @@ func (a *app) key(k string) {
 		if s := a.ui.sessions[strings.TrimPrefix(k, "focus:")]; s != nil {
 			go focusTerminal(s.Pids)
 		}
+	case strings.HasPrefix(k, "music:seek:") && a.track != nil:
+		d, _ := strconv.ParseInt(strings.TrimPrefix(k, "music:seek:"), 10, 64)
+		a.music.seek(a.track.Player, time.Duration(d))
+	case strings.HasPrefix(k, "music:volume:") && a.track != nil:
+		d, _ := strconv.Atoi(strings.TrimPrefix(k, "music:volume:"))
+		a.music.nudgeVolume(a.track.Player, float64(d)*0.05)
 	case strings.HasPrefix(k, "music:") && a.track != nil:
-		method := map[string]string{"music:prev": "Previous", "music:toggle": "PlayPause", "music:next": "Next"}[k]
-		a.music.control(a.track.Player, method)
+		if method := map[string]string{"music:prev": "Previous", "music:toggle": "PlayPause", "music:next": "Next"}[k]; method != "" {
+			a.music.control(a.track.Player, method)
+			if method == "PlayPause" { // feel instant; the player confirms a moment later
+				a.track.Playing = !a.track.Playing
+				a.track.PosAt = a.ui.now()
+			}
+		}
 	case strings.HasPrefix(k, "btn:edge:"):
 		edgeAction(strings.TrimPrefix(k, "btn:edge:"))
 	}
@@ -231,8 +243,19 @@ func edgeAction(key string) {
 
 // command handles keyboard commands: answer the oldest request.
 func (a *app) command(cmd, arg string) {
-	if cmd == "toggle" {
-		a.ui.pinned = !a.ui.pinned
+	switch cmd {
+	case "toggle":
+		a.ui.pinned, a.ui.suppress = !a.ui.pinned, false
+		return
+	case "next", "prev":
+		dir := 1
+		if cmd == "prev" {
+			dir = -1
+		}
+		a.ui.cycle(dir)
+		return
+	case "play":
+		a.key("music:toggle")
 		return
 	}
 	for _, c := range a.ui.cards {
@@ -407,16 +430,8 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		if i := strings.IndexByte(body, '\n'); i > 0 {
 			body = body[:i]
 		}
-		id := "done:" + s.ID
-		a.ui.AddCard(&Card{ID: id, Kind: "done", Mood: moodHappy, Title: "Done", Meta: s.Project,
-			Body: strings.TrimLeft(body, "#*- "), Expires: now.Add(9 * time.Second), Priority: 1,
-			Buttons: []Button{{Key: "open", Label: "Open terminal"}},
-			OnPick: func(k string, _ []int) {
-				if k == "open" {
-					go focusTerminal(s.Pids)
-				}
-			}})
-		a.ui.Bounce()
+		a.ui.Moment(moment{key: "done:" + s.ID, act: "claude", mood: moodHappy, text: "Done · " + s.Project,
+			sub: strings.TrimLeft(body, "#*- "), until: now.Add(6 * time.Second), focus: s.ID})
 	}
 	return ""
 }

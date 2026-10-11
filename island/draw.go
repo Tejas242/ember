@@ -406,9 +406,11 @@ func (p palette) moodColor(m mood) color.NRGBA {
 }
 
 // ember draws the flame centred on (cx, cy) with height s. t is seconds since
-// start, blink 0..1 (1 = eyes shut), bounce lifts it.
-func (c *canvas) ember(p palette, cx, cy, s float32, m mood, t float64, blink, bounce float32) {
-	col := p.moodColor(m)
+// start, blink 0..1 (1 = eyes shut), bounce lifts it, look shifts the eyes
+// (-1 left … 1 right). body is the flame colour (moods blend between them),
+// alpha fades the whole thing with its content.
+func (c *canvas) ember(p palette, cx, cy, s float32, m mood, t float64, blink, bounce float32, body color.NRGBA, alpha float64, look float32) {
+	col := mixAlpha(body, alpha)
 	sway, stretch := float32(0), float32(1)
 	switch m {
 	case moodWork:
@@ -416,7 +418,9 @@ func (c *canvas) ember(p palette, cx, cy, s float32, m mood, t float64, blink, b
 		stretch = 1 + float32(math.Sin(t*9.1)*0.05)
 	case moodWait:
 		stretch = 1 + float32(math.Sin(t*3)*0.06)
-	case moodIdle: // slow breath, a lazy sway
+	case moodHappy:
+		stretch = 1 + float32(math.Sin(t*5)*0.03)
+	default: // idle: slow breath, a lazy sway
 		stretch = 1 + float32(math.Sin(t*1.6)*0.045)
 		sway = float32(math.Sin(t*0.9)*0.03) * s
 	}
@@ -429,13 +433,10 @@ func (c *canvas) ember(p palette, cx, cy, s float32, m mood, t float64, blink, b
 			k := r * kappa
 			x, y := cx-ox, by-oy
 			tX, tY := tx-ox, ty-oy
-			// main tip, down the right side
 			ras.MoveTo(tX, tY)
 			ras.CubeTo(tX+r*0.12, tY+r*0.8, x+r*1.08, y-r*0.95, x+r, y)
-			// round belly
 			ras.CubeTo(x+r, y+k, x+k, y+r, x, y+r)
 			ras.CubeTo(x-k, y+r, x-r, y+k, x-r, y)
-			// up the left side to a small second tongue, dip, then the tip
 			lx, ly := x-r*0.9+sway*0.4, y-r*1.45*stretch
 			ras.CubeTo(x-r*1.06, y-r*0.55, x-r*1.12, y-r*1.1, lx, ly)
 			ras.CubeTo(x-r*0.72, y-r*1.2, x-r*0.48, y-r*1.08, x-r*0.28, y-r*1.12)
@@ -444,24 +445,23 @@ func (c *canvas) ember(p palette, cx, cy, s float32, m mood, t float64, blink, b
 		})
 	}
 	flame(1, 0, col)
-	flame(0.5, -s*0.1, mix(col, color.NRGBA{255, 255, 255, 255}, 0.6))
+	flame(0.5, -s*0.1, mixAlpha(mix(body, color.NRGBA{255, 255, 255, 255}, 0.6), alpha))
 
-	// eyes
 	eyeY := cy + s*0.19
 	gap := s * 0.125
 	ew, eh := s*0.1, s*0.17*(1-blink*0.85)
-	ink := p.ink
 	switch m {
 	case moodHappy: // content, shut-eye smile
 		eh = s * 0.045
 		eyeY -= s * 0.02
 	case moodWait: // looking up at you
 		eyeY -= s * 0.05
-	case moodNudge: // side-eye
+	case moodNudge:
 		eh *= 0.6
 	}
+	ex := sway*0.3 + look*s*0.07
 	for _, dx := range []float32{-gap, gap} {
-		c.roundRect(cx+dx-ew/2+sway*0.3, eyeY-eh/2, ew, max(eh, 1.2), ew/2, ink)
+		c.roundRect(cx+dx-ew/2+ex, eyeY-eh/2, ew, max(eh, 1.2), ew/2, mixAlpha(p.ink, alpha))
 	}
 }
 

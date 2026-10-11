@@ -6,10 +6,7 @@ import (
 	"image/color"
 	"math"
 	"sort"
-	"strings"
 	"time"
-
-	"golang.org/x/image/vector"
 )
 
 type Button struct {
@@ -19,11 +16,11 @@ type Button struct {
 
 type Option struct{ Label, Desc string }
 
-// Card is anything that wants the user's eyes: a permission request, a
-// question, an edge nudge, a finished session.
+// Card is something that needs a decision: a permission request, a
+// question, an actionable edge nudge.
 type Card struct {
 	ID       string
-	Kind     string // perm | ask | edge | done
+	Kind     string // perm | ask | edge
 	Mood     mood
 	Title    string
 	Meta     string
@@ -62,6 +59,17 @@ type EdgeStatus struct {
 	Pending   bool   `json:"pending"`
 }
 
+// moment is a short-lived compact line: Claude finished, a new track.
+type moment struct {
+	key   string
+	act   string
+	mood  mood
+	text  string
+	sub   string
+	until time.Time
+	focus string // session to jump to on click
+}
+
 type view int
 
 const (
@@ -78,8 +86,9 @@ type hit struct {
 type spring struct{ x, v float64 }
 
 // step advances a slightly under-damped spring: quick, with a whisper of overshoot.
-func (s *spring) step(target, dt float64) {
-	const k, d = 320.0, 31.0
+func (s *spring) step(target, dt float64) { s.stepK(target, dt, 320, 31) }
+
+func (s *spring) stepK(target, dt, k, d float64) {
 	s.v += ((target-s.x)*k - s.v*d) * dt
 	s.x += s.v * dt
 }
@@ -88,39 +97,73 @@ func (s *spring) settled(target float64) bool {
 	return math.Abs(target-s.x) < 0.35 && math.Abs(s.v) < 3
 }
 
-// live is a part of the frame that animates by itself (Ember, the equaliser):
-// steady frames restore just these rectangles and redraw them.
+// live is a part of the frame that animates by itself (the equaliser, a
+// progress bar). Steady frames restore just these rectangles and redraw them.
 type live struct {
 	r    image.Rectangle
-	draw func(t float64)
+	draw func(c *canvas, t float64)
 }
+
+// emberSpot is where the current view wants Ember.
+type emberSpot struct {
+	x, y, s float32
+	mood    mood
+	show    bool
+}
+
+const (
+	hoverDelay = 240 * time.Millisecond
+	fadeIn     = 230 * time.Millisecond
+	slideTime  = 260 * time.Millisecond
+	focusHold  = 90 * time.Second // a scroll-picked activity stays this long
+)
 
 // UI owns all state; only the main loop touches it.
 type UI struct {
 	W, H     int
 	BarH     float32
 	TimeFmt  string
-	cv       *canvas
+	cv       *canvas // the frame
+	dc       *canvas // where views draw: the content layer
+	content  *canvas
+	prev     *image.RGBA // content of the view we're leaving
 	pal      palette
 	sessions map[string]*Session
 	cards    []*Card
 	edge     *EdgeStatus
 	track    *Track
 	art      *albumArt
+	moment   *moment
 
-	hover, pinned      bool
-	suppress           bool // closed by a click: don't reopen on hover until the pointer leaves
-	hoverAt, leftAt    time.Time
-	mx, my             float64
-	hoverKey           string
-	hits               []hit
-	onKey              func(key string)
+	// interaction
+	hover, pinned, suppress bool
+	hoverAt, leftAt         time.Time
+	mx, my                  float64
+	hoverKey, pressKey      string
+	pressAt                 time.Time
+	hits                    []hit
+	onKey                   func(key string)
+	focus                   string // activity picked by scrolling / the bubble
+	focusAt                 time.Time
+	page                    string // expanded card page
+	seekRect                image.Rectangle
+
+	// animation
 	sw, sh, bub        spring
+	ex, ey, es         spring // Ember's position and size, shared by every view
+	look               spring
+	emberCol           [3]float64
+	spot               emberSpot
 	lastView           view
 	lastKey            string
-	keyAt, settledAt   time.Time
+	trAt               time.Time
+	prevAlive          bool
+	lineKey, lineText  string
+	slideOld           string
+	slideAt            time.Time
 	start, lastBlink   time.Time
 	bounceAt, lastTick time.Time
+	glanceAt           time.Time
 	minute             time.Time
 	dirty              bool
 	base               *image.RGBA
@@ -132,9 +175,13 @@ type UI struct {
 }
 
 func NewUI(w, h int, barH float32) *UI {
-	u := &UI{W: w, H: h, BarH: barH, TimeFmt: "3:04 PM", cv: newCanvas(w, h), pal: loadPalette(),
-		sessions: map[string]*Session{}, now: time.Now, dirty: true, base: image.NewRGBA(image.Rect(0, 0, w, h))}
-	u.start, u.lastBlink = u.now(), u.now()
+	u := &UI{W: w, H: h, BarH: barH, TimeFmt: "3:04 PM", cv: newCanvas(w, h), content: newCanvas(w, h),
+		prev: image.NewRGBA(image.Rect(0, 0, w, h)), pal: loadPalette(), sessions: map[string]*Session{},
+		now: time.Now, dirty: true, base: image.NewRGBA(image.Rect(0, 0, w, h))}
+	u.dc = u.content
+	u.start, u.lastBlink, u.glanceAt = u.now(), u.now(), u.now()
+	c := u.pal.muted
+	u.emberCol = [3]float64{float64(c.R), float64(c.G), float64(c.B)}
 	return u
 }
 
@@ -184,7 +231,18 @@ func (u *UI) expire() bool {
 		kept = append(kept, c)
 	}
 	u.cards = kept
+	if u.moment != nil && now.After(u.moment.until) {
+		u.moment, changed = nil, true
+	}
 	return changed
+}
+
+// Moment shows a short-lived line in the pill.
+func (u *UI) Moment(m moment) {
+	u.moment = &m
+	if m.mood == moodHappy {
+		u.Bounce()
+	}
 }
 
 func (u *UI) sessionList() []*Session {
@@ -202,153 +260,125 @@ func (u *UI) sessionList() []*Session {
 	return out
 }
 
-const hoverDelay = 260 * time.Millisecond
+// ---- activities: what can be shown, and what wins ----
+
+// acts lists the activities that have something to say, in a stable order.
+func (u *UI) acts() []string {
+	var out []string
+	if len(u.sessions) > 0 {
+		out = append(out, "claude")
+	}
+	if u.track != nil {
+		out = append(out, "music")
+	}
+	if e := u.edge; e != nil && (e.Task != "" || e.Closed || e.Need > 0) {
+		out = append(out, "edge")
+	}
+	return out
+}
+
+func (u *UI) has(act string) bool {
+	for _, a := range u.acts() {
+		if a == act {
+			return true
+		}
+	}
+	return false
+}
+
+// primary decides what the pill shows. A request waiting on you always wins,
+// then a moment, then what you picked, then whatever is live.
+func (u *UI) primary() string {
+	ss := u.sessionList()
+	if len(ss) > 0 && ss[0].State == "wait" {
+		return "claude"
+	}
+	if u.moment != nil {
+		return "moment"
+	}
+	if u.focus != "" && u.now().Sub(u.focusAt) < focusHold && (u.focus == "clock" || u.has(u.focus)) {
+		return u.focus
+	}
+	if len(ss) > 0 && ss[0].State == "work" {
+		return "claude"
+	}
+	if u.track != nil && u.track.Playing {
+		return "music"
+	}
+	if e := u.edge; e != nil && (e.StartedMs > 0 || e.Closed) {
+		return "edge"
+	}
+	return "clock"
+}
+
+// secondary is what the bubble beside the pill shows, if anything.
+func (u *UI) secondary(primary string) string {
+	ss := u.sessionList()
+	working := len(ss) > 0 && (ss[0].State == "work" || ss[0].State == "wait")
+	switch {
+	case primary != "music" && u.track != nil && u.track.Playing:
+		return "music"
+	case primary != "claude" && working:
+		return "claude"
+	case primary != "edge" && u.edge != nil && u.edge.StartedMs > 0:
+		return "edge"
+	}
+	return ""
+}
+
+// cycle moves the pill's focus to the next / previous activity.
+func (u *UI) cycle(dir int) {
+	if u.moment != nil {
+		u.moment = nil
+	}
+	acts := append(u.acts(), "clock")
+	cur := u.primary()
+	i := 0
+	for j, a := range acts {
+		if a == cur {
+			i = j
+		}
+	}
+	i = (i + dir + len(acts)) % len(acts)
+	u.focus, u.focusAt = acts[i], u.now()
+}
 
 func (u *UI) currentView() view {
 	if u.top() != nil {
 		return vCard
 	}
-	if u.pinned || (u.hover && !u.suppress && u.now().Sub(u.hoverAt) >= hoverDelay) || (!u.hover && u.lastView == vExpanded && u.now().Sub(u.leftAt) < 320*time.Millisecond) {
+	if u.pinned || (u.hover && !u.suppress && u.now().Sub(u.hoverAt) >= hoverDelay) ||
+		(!u.hover && u.lastView == vExpanded && u.now().Sub(u.leftAt) < 300*time.Millisecond) {
 		return vExpanded
 	}
 	return vCompact
 }
 
-// ---- compact line: what the pill says ----
-
-type line struct {
-	key         string
-	mood        mood
-	text        string
-	plus, minus int
-	more        int
-	chip        string
-	chipCol     color.NRGBA
-	textCol     color.NRGBA
-	lock        bool
-	music       bool
-}
-
-func (u *UI) compactLine() line {
-	p := u.pal
-	ss := u.sessionList()
-	busy := 0
-	for _, s := range ss {
-		if s.State != "idle" {
-			busy++
+// pageFor picks the expanded card's page: the one you chose, else the pill's.
+func (u *UI) pageFor() string {
+	if u.page != "" && u.has(u.page) {
+		return u.page
+	}
+	switch p := u.primary(); p {
+	case "claude", "music", "edge":
+		return p
+	case "moment":
+		if u.moment != nil && u.has(u.moment.act) {
+			return u.moment.act
 		}
 	}
-	if len(ss) > 0 && ss[0].State == "wait" {
-		s := ss[0]
-		return line{key: "wait:" + s.ID, mood: moodWait, text: s.Project + " needs you", textCol: p.blue, more: busy - 1}
+	if a := u.acts(); len(a) > 0 {
+		return a[0]
 	}
-	if len(ss) > 0 && ss[0].State == "work" {
-		s := ss[0]
-		l := line{key: "work:" + s.ID, mood: moodWork, text: s.Label, plus: s.Plus, minus: s.Minus, textCol: p.fg, more: busy - 1}
-		if l.text == "" {
-			l.text = "Thinking"
-		}
-		return l
-	}
-	if t := u.track; t != nil && t.Playing {
-		txt := t.Title
-		if t.Artist != "" {
-			txt += " · " + t.Artist
-		}
-		return line{key: "music:" + t.Title, mood: moodIdle, text: txt, textCol: p.fg, music: true}
-	}
-	now := u.now()
-	l := line{key: "clock", mood: moodIdle, text: now.Format(u.TimeFmt), textCol: p.fg}
-	if e := u.edge; e != nil {
-		l.lock = e.Closed
-		switch {
-		case e.Task != "" && !e.Pending && e.StartedMs > 0:
-			l.chip = short(e.Task) + " · " + mins(now.Sub(time.UnixMilli(e.StartedMs)))
-			l.chipCol = p.green
-		case e.Task != "" && e.Pending && e.Closed:
-			l.chip, l.chipCol = "practice due", p.yellow
-		}
-	}
-	return l
-}
-
-func short(task string) string {
-	if i := strings.Index(task, " · "); i > 0 {
-		return task[:i]
-	}
-	return task
-}
-
-func mins(d time.Duration) string {
-	m := int(d.Minutes())
-	if m < 60 {
-		return fmt.Sprintf("%dm", max(m, 0))
-	}
-	return fmt.Sprintf("%dh%02dm", m/60, m%60)
-}
-
-func diffText(p, m int) string {
-	switch {
-	case p > 0 && m > 0:
-		return fmt.Sprintf("+%d −%d", p, m)
-	case p > 0:
-		return fmt.Sprintf("+%d", p)
-	}
-	return fmt.Sprintf("−%d", m)
-}
-
-// ---- layout ----
-
-const (
-	cardW   = 384
-	expW    = 384
-	padX    = 14
-	rowH    = 30
-	btnH    = 28
-	maxComp = 400
-)
-
-var (
-	fText  = func() fontFace { return face(fMedium, 12.5) }
-	fSmall = func() fontFace { return face(fRegular, 11.5) }
-)
-
-func (u *UI) compactWidth(l line) float64 {
-	w := 12 + 15 + 7 + float64(measure(fText(), l.text))
-	if l.music {
-		w += 2 + 20 // equaliser
-	}
-	if l.plus > 0 || l.minus > 0 {
-		w += 7 + float64(measure(face(fMedium, 12), diffText(l.plus, l.minus)))
-	}
-	if l.more > 0 {
-		w += 8 + float64(measure(fSmall(), fmt.Sprintf("+%d", l.more)))
-	}
-	if l.chip != "" {
-		w += 14 + float64(measure(fSmall(), l.chip))
-	}
-	if l.lock {
-		w += 15
-	}
-	return math.Min(maxComp, math.Max(64, w+12))
-}
-
-func (u *UI) measure(v view) (float64, float64) {
-	switch v {
-	case vCard:
-		return cardW, float64(u.cardHeight(u.top()))
-	case vExpanded:
-		return expW, float64(u.expandedHeight())
-	}
-	return u.compactWidth(u.compactLine()), float64(u.BarH)
-}
-
-// showBubble: music keeps a small bubble beside the pill while something else talks.
-func (u *UI) showBubble(v view) bool {
-	return v == vCompact && u.track != nil && u.track.Playing && !u.compactLine().music
+	return ""
 }
 
 // ---- render ----
+
+func easeOut(x float64) float64 {
+	x = math.Max(0, math.Min(1, x))
+	return 1 - math.Pow(1-x, 3)
+}
 
 // renderDamage draws a frame; it reports whether anything is still moving and
 // what changed. Steady frames restore only the live rectangles.
@@ -360,26 +390,27 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 	}
 	u.lastTick = now
 	v := u.currentView()
-	key := fmt.Sprint(v)
-	if v == vCompact {
-		key += u.compactLine().key
-	} else if c := u.top(); v == vCard && c != nil {
-		key += c.ID + c.Title
-	}
+	key := u.viewKey(v)
 	if v != u.lastView || key != u.lastKey {
-		u.lastView, u.lastKey, u.keyAt, u.dirty = v, key, now, true
+		// keep what's on screen to cross-fade it out while the new view grows in
+		copy(u.prev.Pix, u.content.img.Pix)
+		u.prevAlive = !u.trAt.IsZero()
+		u.lastView, u.lastKey, u.trAt, u.dirty = v, key, now, true
 	}
 	if m := now.Truncate(time.Minute); !m.Equal(u.minute) {
 		u.minute, u.dirty = m, true
 	}
 	tw, th := u.measure(v)
+	if v == vCompact && u.hover && !u.suppress { // anticipation: swell a little under the pointer
+		tw, th = tw+10, th+2
+	}
 	if u.sw.x == 0 {
 		u.sw.x, u.sh.x = tw, th
 	}
 	u.sw.step(tw, dt)
 	u.sh.step(th, dt)
 	bt := 0.0
-	if u.showBubble(v) {
+	if v == vCompact && u.secondary(u.primary()) != "" {
 		bt = 1
 	}
 	u.bub.step(bt, dt)
@@ -387,25 +418,17 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 	if settled {
 		u.sw.x, u.sh.x, u.sw.v, u.sh.v, u.bub.x, u.bub.v = tw, th, 0, 0, bt, 0
 	}
-	if !settled {
-		u.settledAt = time.Time{}
-	} else if u.settledAt.IsZero() {
-		u.settledAt = now
-	}
-	// content fades in as the shape arrives (or right after a swap)
-	fade := 0.0
-	if settled {
-		fade = math.Min(1, now.Sub(u.settledAt).Seconds()/0.12)
-	} else if v == vCompact && math.Abs(u.sh.x-th) < 2 {
-		fade = math.Min(1, now.Sub(u.keyAt).Seconds()/0.18) // width-only morph: keep text visible
-	}
+	p := easeOut(float64(now.Sub(u.trAt)) / float64(fadeIn))
+	sliding := now.Sub(u.slideAt) < slideTime
+	flashing := now.Sub(u.pressAt) < 160*time.Millisecond
 	t := now.Sub(u.start).Seconds()
 
-	full := u.dirty || !settled || fade < 1
+	full := u.dirty || !settled || p < 1 || sliding || flashing || !u.emberSettled()
 	if full {
 		u.dirty = false
-		u.cv.clear(u.cv.img.Rect)
 		u.hits, u.lives = u.hits[:0], u.lives[:0]
+		u.spot = emberSpot{}
+		// the shape, at its current (springing) size
 		w, h := float32(u.sw.x), float32(u.sh.x)
 		x := (float32(u.W) - w) / 2
 		rb := min(h/2, 12)
@@ -413,49 +436,170 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 			rb = min(h/2, 20)
 		}
 		u.shape = notch{x: x, w: w, h: h, rb: rb, ear: 6}
+		u.cv.clear(u.cv.img.Rect)
 		u.cv.drawNotch(u.pal, u.shape, 1, int(u.BarH))
 		u.drawBubble(t)
-		a := float32(fade)
-		switch v { // the container's own hit first: buttons and rows drawn later win
+		// the content, laid out at its final size, revealed by the growing shape
+		u.content.clear(u.content.img.Rect)
+		fx := (float32(u.W) - float32(tw)) / 2
+		switch v {
 		case vCompact:
 			u.hits = append(u.hits, hit{u.shape.bounds(), "pill"})
-			u.drawCompact(x, w, h, a)
+			u.drawCompact(fx, float32(tw), float32(th))
 		case vCard:
-			u.drawCard(u.top(), x, w, a)
+			u.drawCard(u.top(), fx, float32(tw))
 		case vExpanded:
 			u.hits = append(u.hits, hit{u.shape.bounds(), "panel"})
-			u.drawExpanded(x, w, a)
+			u.drawExpanded(fx, float32(tw))
 		}
+		if u.prevAlive && p < 1 {
+			composite(u.cv, u.prev, u.shape, 1-math.Min(1, p/0.45))
+		}
+		composite(u.cv, u.content.img, u.shape, p)
 		copy(u.base.Pix, u.cv.img.Pix)
+		u.stepEmber(dt, now)
 		b := u.shape.bounds().Union(u.bubble).Inset(-10)
 		damage = b.Union(u.lastBounds).Intersect(u.cv.img.Rect)
 		u.lastBounds = b
 		for _, l := range u.lives {
-			l.draw(t)
+			if u.shape.contains(l.r) || u.bubble.Inset(-2).Intersect(l.r) == l.r { // appear once the shape reaches them
+				l.draw(u.cv, t)
+			}
 		}
+		u.drawEmber(t, now)
 		return true, damage
 	}
-	for _, l := range u.lives {
-		r := l.r.Intersect(u.cv.img.Rect)
+	u.stepEmber(dt, now)
+	for _, r := range append([]image.Rectangle{u.emberRect()}, u.liveRects()...) {
+		r = r.Intersect(u.cv.img.Rect)
 		for yy := r.Min.Y; yy < r.Max.Y; yy++ {
 			o := yy*u.base.Stride + r.Min.X*4
 			copy(u.cv.img.Pix[o:o+r.Dx()*4], u.base.Pix[o:o+r.Dx()*4])
 		}
-		l.draw(t)
 		damage = damage.Union(r)
 	}
-	return u.blinking() || u.bouncing(), damage
+	for _, l := range u.lives {
+		l.draw(u.cv, t)
+	}
+	u.drawEmber(t, now)
+	return u.blinking() || u.bouncing() || !u.emberSettled(), damage
+}
+
+func (u *UI) liveRects() []image.Rectangle {
+	rs := make([]image.Rectangle, len(u.lives))
+	for i, l := range u.lives {
+		rs[i] = l.r
+	}
+	return rs
+}
+
+// composite draws src (premultiplied) over dst at strength k, only inside n.
+func composite(dst *canvas, src *image.RGBA, n notch, k float64) {
+	if k <= 0.003 {
+		return
+	}
+	kk := uint32(k * 256)
+	b := dst.img.Rect
+	for py := 0; py < min(int(math.Ceil(float64(n.h))), b.Max.Y); py++ {
+		lx, rx, ok := n.span(float32(py) + 0.5)
+		if !ok {
+			continue
+		}
+		x0, x1 := max(int(math.Ceil(float64(lx))), 0), min(int(rx), b.Max.X)
+		o := py * dst.img.Stride
+		s, d := src.Pix[o:], dst.img.Pix[o:]
+		for px := x0; px < x1; px++ {
+			i := px * 4
+			sa := uint32(s[i+3]) * kk >> 8
+			if sa == 0 {
+				continue
+			}
+			inv := 255 - min(sa, 255)
+			d[i] = uint8(min(255, uint32(s[i])*kk>>8+uint32(d[i])*inv/255))
+			d[i+1] = uint8(min(255, uint32(s[i+1])*kk>>8+uint32(d[i+1])*inv/255))
+			d[i+2] = uint8(min(255, uint32(s[i+2])*kk>>8+uint32(d[i+2])*inv/255))
+			d[i+3] = uint8(min(255, sa+uint32(d[i+3])*inv/255))
+		}
+	}
+}
+
+// ---- Ember: one element shared by every view ----
+
+func (u *UI) emberSettled() bool {
+	if !u.spot.show {
+		return true
+	}
+	return u.ex.settled(float64(u.spot.x)) && u.ey.settled(float64(u.spot.y)) && u.es.settled(float64(u.spot.s)) &&
+		math.Abs(u.look.x-u.lookTarget(u.now())) < 0.05
+}
+
+func (u *UI) lookTarget(now time.Time) float64 {
+	if u.hover {
+		return math.Max(-1, math.Min(1, (u.mx-u.ex.x)/90)) // watch the pointer
+	}
+	if g := now.Sub(u.glanceAt).Seconds(); g < 0.8 { // an idle glance, left or right
+		dir := 1.0
+		if u.glanceAt.UnixMilli()/1000%2 == 0 {
+			dir = -1
+		}
+		return 0.9 * math.Sin(g/0.8*math.Pi) * dir
+	}
+	return 0
+}
+
+func (u *UI) stepEmber(dt float64, now time.Time) {
+	if !u.spot.show {
+		return
+	}
+	if u.ex.x == 0 {
+		u.ex.x, u.ey.x, u.es.x = float64(u.spot.x), float64(u.spot.y), float64(u.spot.s)
+	}
+	u.ex.stepK(float64(u.spot.x), dt, 260, 28)
+	u.ey.stepK(float64(u.spot.y), dt, 260, 28)
+	u.es.stepK(float64(u.spot.s), dt, 260, 28)
+	u.look.stepK(u.lookTarget(now), dt, 120, 18)
+	if now.Sub(u.glanceAt) > 9*time.Second && !u.hover {
+		u.glanceAt = now
+	}
+	target := u.pal.moodColor(u.spot.mood)
+	k := math.Min(1, dt*7) // colours blend over ~150 ms
+	u.emberCol[0] += (float64(target.R) - u.emberCol[0]) * k
+	u.emberCol[1] += (float64(target.G) - u.emberCol[1]) * k
+	u.emberCol[2] += (float64(target.B) - u.emberCol[2]) * k
+}
+
+func (u *UI) emberRect() image.Rectangle {
+	if !u.spot.show {
+		return image.Rectangle{}
+	}
+	x, y, s := float32(u.ex.x), float32(u.ey.x), float32(u.es.x)
+	return image.Rect(int(x-s*0.85), int(y-s*1.3), int(x+s*0.85)+2, int(y+s*0.8)+2)
+}
+
+func (u *UI) drawEmber(t float64, now time.Time) {
+	if !u.spot.show {
+		return
+	}
+	blink := float32(0)
+	if bs := now.Sub(u.lastBlink).Seconds(); bs < 0.16 {
+		blink = float32(math.Sin(bs / 0.16 * math.Pi))
+	} else if bs > 4.3 {
+		u.lastBlink = now
+	}
+	bounce := float32(0)
+	if bt := now.Sub(u.bounceAt).Seconds(); bt < 0.7 {
+		bounce = float32(math.Abs(math.Sin(bt/0.7*2*math.Pi)) * (1 - bt/0.7))
+	}
+	col := color.NRGBA{uint8(u.emberCol[0]), uint8(u.emberCol[1]), uint8(u.emberCol[2]), 255}
+	u.cv.ember(u.pal, float32(u.ex.x), float32(u.ey.x), float32(u.es.x), u.spot.mood, t, blink, bounce, col, 1, float32(u.look.x))
 }
 
 func (u *UI) blinking() bool { return u.now().Sub(u.lastBlink) < 170*time.Millisecond }
 func (u *UI) bouncing() bool { return u.now().Sub(u.bounceAt) < 700*time.Millisecond }
 
-// lively: Ember animates at the idle rate even when nothing is going on.
-func (u *UI) lively() bool { return true }
-
-// continuous: something animates at full rate (Ember flickering, music playing).
+// continuous: something animates at full rate (Ember flickering, music, a card).
 func (u *UI) continuous() bool {
-	if u.lastView == vCard {
+	if u.lastView != vCompact {
 		return true
 	}
 	for _, s := range u.sessions {
@@ -463,554 +607,20 @@ func (u *UI) continuous() bool {
 			return true
 		}
 	}
-	return u.track != nil && u.track.Playing && u.lastView != vExpanded
+	return (u.track != nil && u.track.Playing) || u.moment != nil
 }
 
 func (u *UI) nextBlink() time.Time { return u.lastBlink.Add(4300 * time.Millisecond) }
 
-// emberLive registers Ember as a live element at (cx, cy).
-func (u *UI) emberLive(cx, cy, s float32, m mood) {
-	r := image.Rect(int(cx-s*0.8), int(cy-s*1.25), int(cx+s*0.8)+1, int(cy+s*0.75)+1)
-	u.lives = append(u.lives, live{r, func(t float64) {
-		now := u.now()
-		blink := float32(0)
-		if bs := now.Sub(u.lastBlink).Seconds(); bs < 0.16 {
-			blink = float32(math.Sin(bs / 0.16 * math.Pi))
-		} else if bs > 4.3 {
-			u.lastBlink = now
+// viewKey changes when what's on screen changes identity (a cross-fade).
+func (u *UI) viewKey(v view) string {
+	switch v {
+	case vCard:
+		if c := u.top(); c != nil {
+			return fmt.Sprint("card:", c.ID, c.Title)
 		}
-		bounce := float32(0)
-		if bt := now.Sub(u.bounceAt).Seconds(); bt < 0.7 {
-			bounce = float32(math.Abs(math.Sin(bt/0.7*2*math.Pi)) * (1 - bt/0.7))
-		}
-		u.cv.ember(u.pal, cx, cy, s, m, t, blink, bounce)
-	}})
-}
-
-// eqLive registers the little equaliser at (x, y) (bottom-left), height h.
-func (u *UI) eqLive(x, y, h float32, col color.NRGBA, playing bool) {
-	r := image.Rect(int(x)-1, int(y-h)-1, int(x+16)+1, int(y)+1)
-	u.lives = append(u.lives, live{r, func(t float64) {
-		for i := 0; i < 3; i++ {
-			k := 0.25
-			if playing {
-				k = 0.35 + 0.65*math.Abs(math.Sin(t*(4.1+float64(i)*1.7)+float64(i)*1.3))
-			}
-			bh := float32(k) * h
-			u.cv.roundRect(x+float32(i)*5.5, y-bh, 3, bh, 1.5, col)
-		}
-	}})
-}
-
-func (u *UI) drawBubble(t float64) {
-	u.bubble = image.Rectangle{}
-	k := float32(u.bub.x)
-	if k < 0.02 || u.track == nil {
-		return
+	case vExpanded:
+		return "exp:" + u.pageFor()
 	}
-	size := u.BarH * k
-	cx := u.shape.x + u.shape.w + 8 + size/2
-	n := notch{x: cx - size/2, w: size, h: u.BarH * (0.6 + 0.4*k), rb: size / 2, ear: 0}
-	u.cv.drawNotch(u.pal, n, float64(k), 0)
-	u.bubble = n.bounds()
-	if u.art != nil && k > 0.9 {
-		u.cv.drawArt(u.art.small, int(cx-9), int(n.h/2-9), 5, float64(k))
-	} else if k > 0.6 {
-		u.eqLive(cx-7.5, n.h/2+5, 10, u.pal.green, true)
-	}
-	u.hits = append(u.hits, hit{n.bounds(), "bubble"})
-}
-
-func (u *UI) drawCompact(x, w, h, a float32) {
-	p := u.pal
-	l := u.compactLine()
-	cy := h / 2
-	ix := x + 12
-	if l.music && u.art != nil {
-		u.cv.drawArt(u.art.small, int(ix-1), int(cy-9), 5, float64(a))
-	} else {
-		u.emberLive(ix+7, cy+1, 14, l.mood)
-	}
-	tx := ix + 22
-	base := cy + 4.5
-	avail := x + w - 12 - tx
-	if l.lock {
-		avail -= 15
-	}
-	if l.chip != "" {
-		avail -= 14 + measure(fSmall(), l.chip)
-	}
-	if l.music {
-		avail -= 22
-	}
-	diff := ""
-	if l.plus > 0 || l.minus > 0 {
-		diff = diffText(l.plus, l.minus)
-		avail -= 7 + measure(face(fMedium, 12), diff)
-	}
-	if l.more > 0 {
-		avail -= 8 + measure(fSmall(), fmt.Sprintf("+%d", l.more))
-	}
-	if a <= 0 {
-		return
-	}
-	tx += u.cv.text(fText(), ellipsize(fText(), l.text, avail), tx, base, alpha(l.textCol, float64(a)))
-	if diff != "" {
-		tx += 7
-		if l.plus > 0 {
-			tx += u.cv.text(face(fMedium, 12), fmt.Sprintf("+%d", l.plus), tx, base, alpha(p.green, float64(a))) + 4
-		}
-		if l.minus > 0 {
-			tx += u.cv.text(face(fMedium, 12), fmt.Sprintf("−%d", l.minus), tx, base, alpha(p.red, float64(a)))
-		}
-	}
-	if l.more > 0 {
-		tx += 8
-		tx += u.cv.text(fSmall(), fmt.Sprintf("+%d", l.more), tx, base, alpha(p.muted, float64(a)))
-	}
-	if l.music {
-		u.eqLive(tx+6, cy+5, 10, alpha(p.green, float64(a)), u.track != nil && u.track.Playing)
-		tx += 22
-	}
-	rx := x + w - 12
-	if l.lock {
-		rx -= 11
-		u.cv.lock(rx, cy-6, 11, alpha(p.yellow, float64(a)))
-		rx -= 4
-	}
-	if l.chip != "" {
-		cw := measure(fSmall(), l.chip)
-		u.cv.circle(rx-cw-7, cy, 1.5, alpha(p.faint, float64(a)))
-		u.cv.text(fSmall(), l.chip, rx-cw, base, alpha(l.chipCol, float64(a)))
-	}
-}
-
-// ---- expanded: hover card ----
-
-func (u *UI) expandedHeight() int {
-	h := 14 + 22 // date header
-	if u.track != nil {
-		h += 10 + 46 + 14 + btnH
-	}
-	ss := min(len(u.sessions), 4)
-	if ss > 0 {
-		h += 10 + ss*rowH
-	}
-	if u.edge != nil {
-		h += 8 + rowH
-	}
-	if u.track == nil && ss == 0 && u.edge == nil {
-		h += 22
-	}
-	return min(h+14, u.H-12)
-}
-
-func (u *UI) drawExpanded(x, w, a float32) {
-	p := u.pal
-	if a <= 0 {
-		return
-	}
-	A := float64(a)
-	now := u.now()
-	y := float32(14)
-	u.emberLive(x+padX+7, y+9, 15, u.compactLine().mood)
-	u.cv.text(face(fSemiBold, 13.5), now.Format(u.TimeFmt), x+padX+22, y+14, alpha(p.fg, A))
-	date := now.Format("Monday, 2 January")
-	dw := measure(fSmall(), date)
-	u.cv.text(fSmall(), date, x+w-padX-dw, y+13.5, alpha(p.muted, A))
-	y += 22
-
-	if t := u.track; t != nil {
-		y += 10
-		ax := x + padX
-		if u.art != nil {
-			u.cv.drawArt(u.art.large, int(ax), int(y), 10, A)
-		} else {
-			u.cv.roundRect(ax, y, 46, 46, 10, alpha(p.raised, A))
-			u.eqLive(ax+15, y+31, 16, alpha(p.green, A), t.Playing)
-		}
-		tx := ax + 58
-		inner := x + w - padX - tx
-		u.cv.text(face(fSemiBold, 13), ellipsize(face(fSemiBold, 13), t.Title, inner), tx, y+17, alpha(p.fg, A))
-		u.cv.text(fSmall(), ellipsize(fSmall(), t.Artist, inner), tx, y+34, alpha(p.muted, A))
-		y += 46 + 14
-		// progress
-		if t.Length > 0 {
-			k := float32(math.Min(1, float64(t.pos(now))/float64(t.Length)))
-			u.cv.roundRect(x+padX, y-6, w-2*padX, 3, 1.5, alpha(p.line, A))
-			u.cv.roundRect(x+padX, y-6, (w-2*padX)*k, 3, 1.5, alpha(p.fg, A*0.9))
-		}
-		// controls, centred
-		cx := x + w/2
-		for i, k := range []string{"prev", "toggle", "next"} {
-			bx := cx + float32(i-1)*44
-			key := "music:" + k
-			if u.hoverKey == key {
-				u.cv.circle(bx, y+btnH/2, 15, alpha(p.raised, A))
-			}
-			u.mediaGlyph(k, bx, y+btnH/2, t.Playing, alpha(p.fg, A))
-			u.hits = append(u.hits, hit{image.Rect(int(bx-16), int(y), int(bx+16), int(y+btnH)), key})
-		}
-		y += btnH
-	}
-
-	ss := u.sessionList()
-	if len(ss) > 0 {
-		y += 10
-		for i, s := range ss {
-			if i == 4 {
-				break
-			}
-			key := "focus:" + s.ID
-			if u.hoverKey == key {
-				u.cv.roundRect(x+padX-6, y, w-2*padX+12, rowH, 10, alpha(p.raised, A))
-			}
-			dot := p.faint
-			lbl := "idle"
-			switch s.State {
-			case "work":
-				dot, lbl = p.green, s.Label
-			case "wait":
-				dot, lbl = p.blue, "waiting for you"
-			}
-			u.cv.circle(x+padX+4, y+rowH/2, 3.5, alpha(dot, A))
-			pf := face(fSemiBold, 12.5)
-			pw := u.cv.text(pf, ellipsize(pf, s.Project, 110), x+padX+16, y+rowH/2+4.5, alpha(p.fg, A))
-			el := ""
-			if !s.Since.IsZero() {
-				el = mins(now.Sub(s.Since))
-			}
-			ew := measure(fSmall(), el)
-			u.cv.text(fSmall(), el, x+w-padX-ew, y+rowH/2+4.5, alpha(p.faint, A))
-			lf := face(fRegular, 12)
-			u.cv.text(lf, ellipsize(lf, lbl, w-2*padX-pw-ew-36), x+padX+16+pw+8, y+rowH/2+4.5, alpha(p.muted, A))
-			u.hits = append(u.hits, hit{image.Rect(int(x+padX-6), int(y), int(x+w-padX+6), int(y+rowH)), key})
-			y += rowH
-		}
-	}
-
-	if e := u.edge; e != nil {
-		y += 8
-		u.cv.roundRect(x+padX-6, y, w-2*padX+12, rowH, 10, alpha(p.raised, A))
-		lx := x + padX + 2
-		if e.Closed {
-			u.cv.lock(lx, y+rowH/2-6, 11, alpha(p.yellow, A))
-			lx += 17
-		}
-		label := fmt.Sprintf("today %d/%d · streak %d", e.Today, e.Need, e.Streak)
-		if e.Task != "" {
-			label = short(e.Task) + "  ·  " + label
-		}
-		right := x + w - padX
-		if e.Task != "" && e.Pending {
-			bf := face(fSemiBold, 12)
-			bw := measure(bf, "Start") + 22
-			bx := right - bw + 4
-			key := "btn:edge:start"
-			fill := p.green
-			if u.hoverKey == key {
-				fill = mix(p.green, p.fg, 0.25)
-			}
-			u.cv.roundRect(bx, y+4, bw, rowH-8, (rowH-8)/2, alpha(fill, A))
-			u.cv.text(bf, "Start", bx+11, y+rowH/2+4.5, alpha(p.ink, A))
-			u.hits = append(u.hits, hit{image.Rect(int(bx), int(y), int(bx+bw), int(y+rowH)), key})
-			right = bx - 8
-		} else if e.StartedMs > 0 {
-			el := mins(now.Sub(time.UnixMilli(e.StartedMs)))
-			ew := measure(fSmall(), el)
-			u.cv.text(fSmall(), el, right-ew, y+rowH/2+4.5, alpha(p.green, A))
-			right -= ew + 8
-		}
-		lf := face(fMedium, 12)
-		u.cv.text(lf, ellipsize(lf, label, right-lx), lx, y+rowH/2+4.5, alpha(p.fg, A))
-		y += rowH
-	}
-	if u.track == nil && len(ss) == 0 && u.edge == nil {
-		u.cv.text(fSmall(), "Nothing playing · no Claude sessions", x+padX, y+16, alpha(p.faint, A))
-	}
-}
-
-// mediaGlyph draws prev / play-pause / next centred at (cx, cy).
-func (u *UI) mediaGlyph(kind string, cx, cy float32, playing bool, col color.NRGBA) {
-	tri := func(x0, y0, x1, y1, x2, y2 float32) {
-		u.cv.fillPath(min(x0, x1, x2), min(y0, y1, y2), max(x0, x1, x2), max(y0, y1, y2), col, func(r *vector.Rasterizer, ox, oy float32) {
-			r.MoveTo(x0-ox, y0-oy)
-			r.LineTo(x1-ox, y1-oy)
-			r.LineTo(x2-ox, y2-oy)
-			r.ClosePath()
-		})
-	}
-	switch kind {
-	case "toggle":
-		if playing {
-			u.cv.roundRect(cx-5, cy-7, 3.6, 14, 1.4, col)
-			u.cv.roundRect(cx+1.4, cy-7, 3.6, 14, 1.4, col)
-		} else {
-			tri(cx-4, cy-7.5, cx-4, cy+7.5, cx+8, cy)
-		}
-	case "prev":
-		u.cv.roundRect(cx-7, cy-5.5, 2.4, 11, 1, col)
-		tri(cx+5, cy-5.5, cx+5, cy+5.5, cx-4, cy)
-	case "next":
-		u.cv.roundRect(cx+4.6, cy-5.5, 2.4, 11, 1, col)
-		tri(cx-5, cy-5.5, cx-5, cy+5.5, cx+4, cy)
-	}
-}
-
-// ---- attention cards ----
-
-func (u *UI) cardHeight(c *Card) int {
-	if c == nil {
-		return 60
-	}
-	h := 14 + 22
-	inner := float32(cardW - 2*padX)
-	if c.Body != "" {
-		h += 6 + 17*len(wrap(face(fRegular, 12.5), c.Body, inner, 3))
-	}
-	if c.Code != "" {
-		h += 8 + 16 + 15*len(codeLines(c.Code, inner-16))
-	}
-	if len(c.Options) > 0 {
-		h += 8 + len(c.Options)*(rowH+5) - 5
-	}
-	if len(c.Buttons) > 0 || c.Footer != "" {
-		h += 12 + btnH
-	}
-	return min(h+padX, u.H-12)
-}
-
-func codeLines(code string, w float32) []string {
-	f := face(fMono, 11.5)
-	var out []string
-	for _, ln := range strings.Split(strings.TrimSpace(code), "\n") {
-		out = append(out, ellipsize(f, ln, w))
-		if len(out) == 3 {
-			break
-		}
-	}
-	return out
-}
-
-func (u *UI) drawCard(c *Card, x, w, a float32) {
-	if c == nil {
-		return
-	}
-	p := u.pal
-	A := float64(a)
-	u.emberLive(x+padX+8, 14+10, 17, c.Mood)
-	if a <= 0 {
-		return
-	}
-	inner := w - 2*padX
-	y := float32(14)
-	metaW := float32(0)
-	closable := c.Kind == "done" || c.Kind == "edge"
-	if c.Meta != "" {
-		mf := fSmall()
-		meta := ellipsize(mf, c.Meta, 130)
-		metaW = measure(mf, meta)
-		mx := x + w - padX - metaW
-		if closable {
-			mx -= 22
-		}
-		u.cv.text(mf, meta, mx, y+13.5, alpha(p.muted, A))
-	}
-	tf := face(fSemiBold, 13.5)
-	u.cv.text(tf, ellipsize(tf, c.Title, inner-26-metaW-30), x+padX+24, y+14, alpha(p.fg, A))
-	if closable {
-		cx, cy := x+w-padX-6, y+9
-		key := "close:" + c.ID
-		col := p.faint
-		if u.hoverKey == key {
-			u.cv.circle(cx, cy, 10, alpha(p.raised, A))
-			col = p.fg
-		}
-		u.cv.text(face(fRegular, 14), "×", cx-4, cy+4.5, alpha(col, A))
-		u.hits = append(u.hits, hit{image.Rect(int(cx-11), int(cy-11), int(cx+11), int(cy+11)), key})
-	}
-	cy := y + 22
-	if c.Body != "" {
-		cy += 6
-		for _, ln := range wrap(face(fRegular, 12.5), c.Body, inner, 3) {
-			cy += 17
-			u.cv.text(face(fRegular, 12.5), ln, x+padX, cy-4, alpha(mix(p.fg, p.bg, 0.18), A))
-		}
-	}
-	if c.Code != "" {
-		lines := codeLines(c.Code, inner-16)
-		bh := float32(16 + 15*len(lines))
-		cy += 8
-		u.cv.roundRect(x+padX, cy, inner, bh, 9, alpha(p.raised, A))
-		for i, ln := range lines {
-			u.cv.text(face(fMono, 11.5), ln, x+padX+8, cy+8+11+float32(i)*15, alpha(p.fg, A))
-		}
-		cy += bh
-	}
-	if len(c.Options) > 0 {
-		cy += 8
-		for i, o := range c.Options {
-			key := fmt.Sprintf("opt:%d", i)
-			bg := p.raised
-			if u.hoverKey == key {
-				bg = p.line
-			}
-			u.cv.roundRect(x+padX, cy, inner, rowH, 10, alpha(bg, A))
-			lx := x + padX + 12
-			if c.Multi {
-				u.cv.roundRect(lx, cy+rowH/2-6, 12, 12, 4, alpha(p.line, A))
-				if c.picked[i] {
-					u.cv.roundRect(lx+2, cy+rowH/2-4, 8, 8, 2.5, alpha(p.green, A))
-				}
-				lx += 20
-			}
-			lf := face(fMedium, 12.5)
-			lw := u.cv.text(lf, ellipsize(lf, o.Label, inner*0.55), lx, cy+rowH/2+4.5, alpha(p.fg, A))
-			if o.Desc != "" {
-				u.cv.text(fSmall(), ellipsize(fSmall(), o.Desc, x+padX+inner-12-(lx+lw+10)), lx+lw+10, cy+rowH/2+4.5, alpha(p.muted, A))
-			}
-			u.hits = append(u.hits, hit{image.Rect(int(x+padX), int(cy), int(x+padX+inner), int(cy+rowH)), key})
-			cy += rowH + 5
-		}
-		cy -= 5
-	}
-	if len(c.Buttons) > 0 || c.Footer != "" {
-		cy += 12
-		bx := x + w - padX
-		for i := len(c.Buttons) - 1; i >= 0; i-- {
-			b := c.Buttons[i]
-			bf := face(fMedium, 12.5)
-			if b.Primary {
-				bf = face(fSemiBold, 12.5)
-			}
-			bw := measure(bf, b.Label) + 28
-			bx -= bw
-			key := "btn:" + b.Key
-			hov := u.hoverKey == key
-			fill, txt := p.raised, p.fg
-			switch {
-			case b.Primary:
-				fill, txt = p.green, p.ink
-				if hov {
-					fill = mix(p.green, p.fg, 0.25)
-				}
-			case b.Danger:
-				txt = p.red
-				if hov {
-					fill = mix(p.raised, p.red, 0.16)
-				}
-			default:
-				if hov {
-					fill = p.line
-				}
-			}
-			u.cv.roundRect(bx, cy, bw, btnH, btnH/2, alpha(fill, A))
-			u.cv.text(bf, b.Label, bx+14, cy+btnH/2+4.5, alpha(txt, A))
-			u.hits = append(u.hits, hit{image.Rect(int(bx), int(cy), int(bx+bw), int(cy+btnH)), key})
-			bx -= 8
-		}
-		if c.Footer != "" {
-			key := "btn:footer"
-			col := p.muted
-			if u.hoverKey == key {
-				col = p.fg
-			}
-			fw := u.cv.text(face(fRegular, 12), c.Footer, x+padX+2, cy+btnH/2+4.5, alpha(col, A))
-			u.hits = append(u.hits, hit{image.Rect(int(x+padX), int(cy), int(x+padX+fw+4), int(cy+btnH)), key})
-		}
-	}
-}
-
-// ---- input ----
-
-func (u *UI) hitAt(x, y float64) string {
-	for i := len(u.hits) - 1; i >= 0; i-- {
-		if (image.Point{int(x), int(y)}).In(u.hits[i].r) {
-			return u.hits[i].key
-		}
-	}
-	return ""
-}
-
-func (u *UI) pointer(e pointerEvent) (redraw, hand bool) {
-	switch e.kind {
-	case "enter", "motion":
-		u.mx, u.my = e.x, e.y
-		if !u.hover {
-			u.hover, u.hoverAt = true, u.now()
-			redraw = true
-		}
-	case "leave":
-		u.hover, u.pinned, u.suppress = false, false, false
-		u.leftAt = u.now()
-		u.hoverKey = ""
-		return true, false
-	case "press":
-		u.press(u.hitAt(e.x, e.y))
-		return true, false
-	}
-	k := u.hitAt(u.mx, u.my)
-	if k != u.hoverKey {
-		u.hoverKey = k
-		redraw = true
-	}
-	for _, pre := range []string{"btn:", "opt:", "focus:", "close:", "music:"} {
-		hand = hand || strings.HasPrefix(k, pre)
-	}
-	return redraw, hand
-}
-
-func (u *UI) press(k string) {
-	c := u.top()
-	switch {
-	case k == "pill":
-		// a waiting session: go to it; otherwise open now (no hover delay)
-		if ss := u.sessionList(); len(ss) > 0 && ss[0].State == "wait" {
-			u.key("focus:" + ss[0].ID)
-			return
-		}
-		u.pinned, u.suppress = true, false
-	case k == "panel": // a click on the card's background closes it
-		u.pinned, u.suppress = false, true
-	case k == "bubble":
-		u.pinned, u.suppress = true, false
-	case strings.HasPrefix(k, "close:") && c != nil:
-		u.RemoveCard(c.ID)
-		if c.OnPick != nil {
-			c.OnPick("dismiss", nil)
-		}
-	case strings.HasPrefix(k, "opt:") && c != nil:
-		var i int
-		fmt.Sscanf(k, "opt:%d", &i)
-		if c.Multi {
-			if c.picked == nil {
-				c.picked = map[int]bool{}
-			}
-			c.picked[i] = !c.picked[i]
-			return
-		}
-		u.RemoveCard(c.ID)
-		if c.OnPick != nil {
-			c.OnPick("option", []int{i})
-		}
-	case strings.HasPrefix(k, "btn:edge:"), strings.HasPrefix(k, "music:"), strings.HasPrefix(k, "focus:"):
-		u.key(k)
-	case strings.HasPrefix(k, "btn:") && c != nil:
-		var picked []int
-		for i := range c.Options {
-			if c.picked[i] {
-				picked = append(picked, i)
-			}
-		}
-		u.RemoveCard(c.ID)
-		if c.OnPick != nil {
-			c.OnPick(strings.TrimPrefix(k, "btn:"), picked)
-		}
-	}
-}
-
-func (u *UI) key(k string) {
-	if u.onKey != nil {
-		u.onKey(k)
-	}
+	return "pill:" + u.compactLine().key
 }

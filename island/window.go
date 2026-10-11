@@ -3,6 +3,7 @@ package island
 import (
 	"image"
 	"log"
+	"math"
 )
 
 // layer-shell constants (wlr-layer-shell-unstable-v1)
@@ -15,8 +16,10 @@ const (
 )
 
 type pointerEvent struct {
-	kind string // enter | motion | leave | press
-	x, y float64
+	kind   string // enter | motion | leave | press | scroll
+	x, y   float64
+	button int     // press: 1 left, 2 middle, 3 right
+	steps  float64 // scroll: wheel notches, positive = down
 }
 
 // window is the island's one layer surface.
@@ -32,6 +35,7 @@ type window struct {
 	configured, framePending, closed   bool
 	enterSerial                        uint32
 	px, py                             float64
+	scroll                             float64
 	onPointer                          func(pointerEvent)
 	onFrame                            func()
 	lastInput                          image.Rectangle
@@ -149,8 +153,21 @@ func (win *window) onPointerEv(op uint16, d *dec) {
 		d.u32()
 		d.u32()
 		btn, state := d.u32(), d.u32()
-		if btn == btnLeft && state == 1 {
-			win.emit(pointerEvent{kind: "press", x: win.px, y: win.py})
+		if state == 1 {
+			b := map[uint32]int{0x110: 1, 0x112: 2, 0x111: 3}[btn]
+			if b != 0 {
+				win.emit(pointerEvent{kind: "press", x: win.px, y: win.py, button: b})
+			}
+		}
+	case 4: // axis: vertical wheel / touchpad, ~15 units per notch
+		d.u32()
+		if axis := d.u32(); axis == 0 {
+			win.scroll += d.fixed()
+		}
+	case 5: // frame: deliver the accumulated scroll as whole notches
+		if steps := math.Trunc(win.scroll / 15); steps != 0 {
+			win.scroll -= steps * 15
+			win.emit(pointerEvent{kind: "scroll", x: win.px, y: win.py, steps: steps})
 		}
 	}
 }

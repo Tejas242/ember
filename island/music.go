@@ -2,6 +2,7 @@ package island
 
 import (
 	"log"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -182,4 +183,37 @@ func (m *music) position(player string) {
 			}
 		}
 	}()
+}
+
+// seek moves the playhead by delta (MPRIS Seek takes microseconds).
+func (m *music) seek(player string, delta time.Duration) {
+	if m == nil || player == "" {
+		return
+	}
+	go m.conn.Object(player, "/org/mpris/MediaPlayer2").Call("org.mpris.MediaPlayer2.Player.Seek", 0, int64(delta/time.Microsecond))
+}
+
+// nudgeVolume changes the player's volume by d (0..1 scale), if it has one.
+func (m *music) nudgeVolume(player string, d float64) {
+	if m == nil || player == "" {
+		return
+	}
+	go func() {
+		obj := m.conn.Object(player, "/org/mpris/MediaPlayer2")
+		v, err := obj.GetProperty("org.mpris.MediaPlayer2.Player.Volume")
+		if err != nil {
+			return
+		}
+		cur, _ := v.Value().(float64)
+		obj.SetProperty("org.mpris.MediaPlayer2.Player.Volume", dbus.MakeVariant(math.Max(0, math.Min(1, cur+d))))
+	}()
+}
+
+// playerName is the friendly name of a bus name ("org.mpris.MediaPlayer2.YoutubeMusic" -> "YoutubeMusic").
+func playerName(bus string) string {
+	n := strings.TrimPrefix(bus, mprisPrefix)
+	if i := strings.IndexByte(n, '.'); i > 0 {
+		n = n[:i]
+	}
+	return n
 }

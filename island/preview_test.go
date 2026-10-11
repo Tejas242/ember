@@ -83,7 +83,16 @@ func TestPreview(t *testing.T) {
 	music(u, true)
 	u.edge = &EdgeStatus{Today: 0, Need: 1, Streak: 3, Closed: true, Task: "1360E · Polygon", Pending: true}
 	u.pinned = true
+	u.page = "music"
 	save("6-expanded", u)
+
+	u.page = "claude"
+	save("6b-expanded-claude", u)
+
+	u.page = "edge"
+	u.edge.StartedMs = clock.Add(-23 * time.Minute).UnixMilli()
+	u.edge.Pending = false
+	save("6c-expanded-edge", u)
 
 	u = mk()
 	u.AddCard(&Card{ID: "p", Kind: "perm", Mood: moodWait, Title: "Run this command?", Meta: "kinvault",

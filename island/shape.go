@@ -126,3 +126,17 @@ func mixAlpha(c color.NRGBA, a float64) color.NRGBA {
 	c.A = uint8(math.Round(float64(c.A) * math.Max(0, math.Min(1, a))))
 	return c
 }
+
+// contains reports whether r lies inside the shape (checked on its top and bottom rows).
+func (n notch) contains(r image.Rectangle) bool {
+	if float32(r.Max.Y) > n.h {
+		return false
+	}
+	for _, y := range []int{r.Min.Y, r.Max.Y - 1} {
+		lx, rx, ok := n.span(float32(y) + 0.5)
+		if !ok || float32(r.Min.X) < lx || float32(r.Max.X) > rx {
+			return false
+		}
+	}
+	return true
+}
