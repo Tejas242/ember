@@ -416,8 +416,9 @@ func (c *canvas) ember(p palette, cx, cy, s float32, m mood, t float64, blink, b
 		stretch = 1 + float32(math.Sin(t*9.1)*0.05)
 	case moodWait:
 		stretch = 1 + float32(math.Sin(t*3)*0.06)
-	case moodIdle:
-		stretch = 1 + float32(math.Sin(t*1.4)*0.025)
+	case moodIdle: // slow breath, a lazy sway
+		stretch = 1 + float32(math.Sin(t*1.6)*0.045)
+		sway = float32(math.Sin(t*0.9)*0.03) * s
 	}
 	cy -= bounce * s * 0.35
 	flame := func(scale, lift float32, col color.NRGBA) {

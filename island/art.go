@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime/debug"
 	"time"
 
 	xdraw "golang.org/x/image/draw"
@@ -50,7 +51,10 @@ func loadArt(raw string, done func(*albumArt)) {
 		if err != nil {
 			return
 		}
-		done(&albumArt{url: raw, small: scaleSquare(src, 18), large: scaleSquare(src, 46)})
+		art := &albumArt{url: raw, small: scaleSquare(src, 18), large: scaleSquare(src, 46)}
+		src, data = nil, nil
+		debug.FreeOSMemory() // a decoded cover can be tens of MB; give it back now
+		done(art)
 	}()
 }
 

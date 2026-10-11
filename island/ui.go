@@ -109,6 +109,7 @@ type UI struct {
 	art      *albumArt
 
 	hover, pinned      bool
+	suppress           bool // closed by a click: don't reopen on hover until the pointer leaves
 	hoverAt, leftAt    time.Time
 	mx, my             float64
 	hoverKey           string
@@ -207,7 +208,7 @@ func (u *UI) currentView() view {
 	if u.top() != nil {
 		return vCard
 	}
-	if u.pinned || (u.hover && u.now().Sub(u.hoverAt) >= hoverDelay) || (!u.hover && u.lastView == vExpanded && u.now().Sub(u.leftAt) < 320*time.Millisecond) {
+	if u.pinned || (u.hover && !u.suppress && u.now().Sub(u.hoverAt) >= hoverDelay) || (!u.hover && u.lastView == vExpanded && u.now().Sub(u.leftAt) < 320*time.Millisecond) {
 		return vExpanded
 	}
 	return vCompact
@@ -415,15 +416,15 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 		u.cv.drawNotch(u.pal, u.shape, 1, int(u.BarH))
 		u.drawBubble(t)
 		a := float32(fade)
-		switch v {
+		switch v { // the container's own hit first: buttons and rows drawn later win
 		case vCompact:
-			u.drawCompact(x, w, h, a)
 			u.hits = append(u.hits, hit{u.shape.bounds(), "pill"})
+			u.drawCompact(x, w, h, a)
 		case vCard:
 			u.drawCard(u.top(), x, w, a)
 		case vExpanded:
-			u.drawExpanded(x, w, a)
 			u.hits = append(u.hits, hit{u.shape.bounds(), "panel"})
+			u.drawExpanded(x, w, a)
 		}
 		copy(u.base.Pix, u.cv.img.Pix)
 		b := u.shape.bounds().Union(u.bubble).Inset(-10)
@@ -449,7 +450,10 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 func (u *UI) blinking() bool { return u.now().Sub(u.lastBlink) < 170*time.Millisecond }
 func (u *UI) bouncing() bool { return u.now().Sub(u.bounceAt) < 700*time.Millisecond }
 
-// continuous: something animates by itself (Ember flickering, music playing).
+// lively: Ember animates at the idle rate even when nothing is going on.
+func (u *UI) lively() bool { return true }
+
+// continuous: something animates at full rate (Ember flickering, music playing).
 func (u *UI) continuous() bool {
 	if u.lastView == vCard {
 		return true
@@ -937,7 +941,7 @@ func (u *UI) pointer(e pointerEvent) (redraw, hand bool) {
 			redraw = true
 		}
 	case "leave":
-		u.hover = false
+		u.hover, u.pinned, u.suppress = false, false, false
 		u.leftAt = u.now()
 		u.hoverKey = ""
 		return true, false
@@ -959,15 +963,17 @@ func (u *UI) pointer(e pointerEvent) (redraw, hand bool) {
 func (u *UI) press(k string) {
 	c := u.top()
 	switch {
-	case k == "pill" || k == "panel":
-		// a waiting session: go to it; otherwise pin / unpin the card
-		if ss := u.sessionList(); k == "pill" && len(ss) > 0 && ss[0].State == "wait" {
+	case k == "pill":
+		// a waiting session: go to it; otherwise open now (no hover delay)
+		if ss := u.sessionList(); len(ss) > 0 && ss[0].State == "wait" {
 			u.key("focus:" + ss[0].ID)
 			return
 		}
-		u.pinned = !u.pinned
+		u.pinned, u.suppress = true, false
+	case k == "panel": // a click on the card's background closes it
+		u.pinned, u.suppress = false, true
 	case k == "bubble":
-		u.pinned = true
+		u.pinned, u.suppress = true, false
 	case strings.HasPrefix(k, "close:") && c != nil:
 		u.RemoveCard(c.ID)
 		if c.OnPick != nil {

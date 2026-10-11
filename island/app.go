@@ -18,6 +18,8 @@ import (
 const (
 	surfW, surfH = 440, 280
 	flickerEvery = time.Second / 12
+	idleEvery    = time.Second / 6
+	frameGrace   = 50 * time.Millisecond // a frame callback that never comes doesn't stall us
 )
 
 type app struct {
@@ -66,11 +68,14 @@ func Run() error {
 	log.Printf("ember up (bar %.0fpx)", a.ui.BarH)
 
 	animating, waitingFrame, tick := false, false, false
+	var waitingSince time.Time
 	draw := func() {
 		var damage image.Rectangle
 		animating, damage = a.ui.renderDamage()
 		if win.present(a.ui.cv.img, a.ui.shape.bounds().Union(a.ui.bubble), damage, animating) {
-			waitingFrame = animating
+			waitingFrame, waitingSince = animating, time.Now()
+		} else {
+			a.ui.dirty = true // no free buffer: try again on the next wake
 		}
 		if b := a.ui.shape.blurRects(); !slices.Equal(b, win.lastBlur) {
 			win.setBlur(b)
@@ -112,13 +117,16 @@ func Run() error {
 			lastPos = time.Now()
 			a.music.position(a.track.Player)
 		}
+		if waitingFrame && time.Since(waitingSince) > frameGrace {
+			waitingFrame = false // niri skipped the callback (nothing on screen changed)
+		}
 		switch {
 		case frameDue:
 			frameDue, waitingFrame = false, false
 			if animating || a.ui.dirty {
 				draw()
 			}
-		case (a.ui.dirty || tick) && !waitingFrame:
+		case (a.ui.dirty || tick || animating) && !waitingFrame:
 			draw()
 		}
 		tick = false
@@ -132,12 +140,14 @@ func Run() error {
 func (a *app) nextWake(animating bool) time.Duration {
 	u := a.ui
 	now := u.now()
-	if animating {
-		return time.Second
+	if animating || u.dirty {
+		return 16 * time.Millisecond // normally the frame callback comes first
 	}
 	next := u.nextBlink()
 	if u.continuous() {
 		next = now.Add(flickerEvery)
+	} else if u.lively() {
+		next = minTime(next, now.Add(idleEvery))
 	}
 	if u.lastView == vExpanded && a.track != nil && a.track.Playing {
 		next = minTime(next, now.Add(time.Second)) // the progress bar moves
