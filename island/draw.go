@@ -1,0 +1,496 @@
+package island
+
+import (
+	"bufio"
+	"embed"
+	"image"
+	"image/color"
+	"image/draw"
+	"math"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/opentype"
+	"golang.org/x/image/math/fixed"
+	"golang.org/x/image/vector"
+)
+
+//go:embed fonts/*.ttf
+var fontFS embed.FS
+
+type palette struct {
+	bg, raised, line, fg, muted, faint color.NRGBA
+	green, blue, red, yellow, ink      color.NRGBA
+	island                             color.NRGBA // the body: dark, a little see-through over the blur
+}
+
+type fontFace = font.Face
+
+var colorWhite = color.NRGBA{255, 255, 255, 255}
+
+func hexColor(s string) (color.NRGBA, bool) {
+	s = strings.Trim(strings.TrimSpace(s), `'"`)
+	s = strings.TrimPrefix(strings.TrimPrefix(s, "#"), "0x")
+	if len(s) != 6 {
+		return color.NRGBA{}, false
+	}
+	var v [3]uint8
+	for i := range v {
+		var n uint8
+		for _, ch := range s[i*2 : i*2+2] {
+			n <<= 4
+			switch {
+			case ch >= '0' && ch <= '9':
+				n |= uint8(ch - '0')
+			case ch >= 'a' && ch <= 'f':
+				n |= uint8(ch-'a') + 10
+			case ch >= 'A' && ch <= 'F':
+				n |= uint8(ch-'A') + 10
+			default:
+				return color.NRGBA{}, false
+			}
+		}
+		v[i] = n
+	}
+	return color.NRGBA{v[0], v[1], v[2], 255}, true
+}
+
+func mix(a, b color.NRGBA, t float64) color.NRGBA {
+	l := func(x, y uint8) uint8 { return uint8(math.Round(float64(x)*(1-t) + float64(y)*t)) }
+	return color.NRGBA{l(a.R, b.R), l(a.G, b.G), l(a.B, b.B), l(a.A, b.A)}
+}
+
+func alpha(c color.NRGBA, a float64) color.NRGBA {
+	c.A = uint8(math.Round(float64(c.A) * math.Max(0, math.Min(1, a))))
+	return c
+}
+
+// themePath is Noctalia's generated alacritty theme: it follows the wallpaper palette.
+func themePath() string {
+	h, _ := os.UserHomeDir()
+	return filepath.Join(h, ".config", "alacritty", "themes", "noctalia.toml")
+}
+
+func loadPalette() palette {
+	col := map[string]color.NRGBA{
+		"primary.background": {0x0f, 0x15, 0x0e, 255}, "primary.foreground": {0xde, 0xe5, 0xd8, 255},
+		"normal.green": {0x72, 0xdd, 0x71, 255}, "normal.blue": {0x9c, 0xca, 0xff, 255},
+		"normal.red": {0xff, 0xb4, 0xab, 255}, "normal.yellow": {0xf2, 0xd3, 0x8a, 255},
+	}
+	if f, err := os.Open(themePath()); err == nil {
+		sc := bufio.NewScanner(f)
+		section := ""
+		for sc.Scan() {
+			line := strings.TrimSpace(sc.Text())
+			if strings.HasPrefix(line, "[colors.") {
+				section = strings.TrimSuffix(strings.TrimPrefix(line, "[colors."), "]")
+				continue
+			}
+			k, v, ok := strings.Cut(line, "=")
+			if !ok {
+				continue
+			}
+			if c, ok := hexColor(v); ok {
+				col[section+"."+strings.TrimSpace(k)] = c
+			}
+		}
+		f.Close()
+	}
+	bg, fg := col["primary.background"], col["primary.foreground"]
+	black := color.NRGBA{0, 0, 0, 255}
+	base := mix(bg, black, 0.45)
+	return palette{
+		bg: base, raised: mix(base, fg, 0.07), line: mix(base, fg, 0.13),
+		fg: fg, muted: mix(fg, base, 0.42), faint: mix(fg, base, 0.66),
+		green: col["normal.green"], blue: col["normal.blue"], red: col["normal.red"],
+		yellow: mix(col["normal.yellow"], color.NRGBA{0xff, 0xc4, 0x6b, 255}, 0.7), // warm amber, whatever the wallpaper
+		ink:    base, island: color.NRGBA{base.R, base.G, base.B, 222},
+	}
+}
+
+// ---- fonts ----
+
+type faceKey struct {
+	name string
+	size float64
+}
+
+var (
+	fonts = map[string]*opentype.Font{}
+	faces = map[faceKey]font.Face{}
+)
+
+func face(name string, size float64) font.Face {
+	k := faceKey{name, size}
+	if f := faces[k]; f != nil {
+		return f
+	}
+	ft := fonts[name]
+	if ft == nil {
+		b, err := fontFS.ReadFile("fonts/" + name + ".ttf")
+		if err != nil {
+			panic(err)
+		}
+		if ft, err = opentype.Parse(b); err != nil {
+			panic(err)
+		}
+		fonts[name] = ft
+	}
+	f, err := opentype.NewFace(ft, &opentype.FaceOptions{Size: size, DPI: 72, Hinting: font.HintingVertical})
+	if err != nil {
+		panic(err)
+	}
+	faces[k] = f
+	return f
+}
+
+const (
+	fRegular  = "Geist-Regular"
+	fMedium   = "Geist-Medium"
+	fSemiBold = "Geist-SemiBold"
+	fMono     = "GeistMono-Regular"
+)
+
+// ---- canvas ----
+
+type canvas struct {
+	img   *image.RGBA
+	r     *vector.Rasterizer
+	masks map[maskKey]*textMask
+}
+
+type maskKey struct {
+	f font.Face
+	s string
+}
+
+type textMask struct {
+	m      *image.Alpha
+	w, asc int
+}
+
+func newCanvas(w, h int) *canvas {
+	return &canvas{img: image.NewRGBA(image.Rect(0, 0, w, h)), r: vector.NewRasterizer(1, 1), masks: map[maskKey]*textMask{}}
+}
+
+func (c *canvas) clear(r image.Rectangle) {
+	r = r.Intersect(c.img.Rect)
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		row := c.img.Pix[y*c.img.Stride+r.Min.X*4 : y*c.img.Stride+r.Max.X*4]
+		clear(row)
+	}
+}
+
+// fillPath rasterizes path (in canvas coordinates) within its bounding box.
+func (c *canvas) fillPath(x0, y0, x1, y1 float32, col color.NRGBA, path func(r *vector.Rasterizer, ox, oy float32)) {
+	b := c.img.Rect
+	bx, by := max(int(math.Floor(float64(x0)))-1, b.Min.X), max(int(math.Floor(float64(y0)))-1, b.Min.Y)
+	bw := min(int(math.Ceil(float64(x1)))+1, b.Max.X) - bx
+	bh := min(int(math.Ceil(float64(y1)))+1, b.Max.Y) - by
+	if bw <= 0 || bh <= 0 || col.A == 0 {
+		return
+	}
+	c.r.Reset(bw, bh)
+	path(c.r, float32(bx), float32(by))
+	c.r.Draw(c.img, image.Rect(bx, by, bx+bw, by+bh), image.NewUniform(col), image.Point{})
+}
+
+const kappa = 0.5522847
+
+func roundRectPath(r *vector.Rasterizer, x, y, w, h, rad float32) {
+	rad = min(rad, w/2, h/2)
+	k := rad * kappa
+	r.MoveTo(x+rad, y)
+	r.LineTo(x+w-rad, y)
+	r.CubeTo(x+w-rad+k, y, x+w, y+rad-k, x+w, y+rad)
+	r.LineTo(x+w, y+h-rad)
+	r.CubeTo(x+w, y+h-rad+k, x+w-rad+k, y+h, x+w-rad, y+h)
+	r.LineTo(x+rad, y+h)
+	r.CubeTo(x+rad-k, y+h, x, y+h-rad+k, x, y+h-rad)
+	r.LineTo(x, y+rad)
+	r.CubeTo(x, y+rad-k, x+rad-k, y, x+rad, y)
+	r.ClosePath()
+}
+
+// roundRect fills a rounded rectangle by scanline spans with anti-aliased
+// edges: several times faster than the general rasterizer for big shapes.
+func (c *canvas) roundRect(x, y, w, h, rad float32, col color.NRGBA) {
+	c.roundRectHole(x, y, w, h, rad, col, image.Rectangle{})
+}
+
+// roundRectHole skips pixels inside hole: shadows and borders don't need to
+// paint the interior that the fill covers anyway.
+func (c *canvas) roundRectHole(x, y, w, h, rad float32, col color.NRGBA, hole image.Rectangle) {
+	if col.A == 0 || w <= 0 || h <= 0 {
+		return
+	}
+	rad = min(rad, w/2, h/2)
+	b := c.img.Rect
+	sa := float32(col.A) / 255
+	sr, sg, sb := float32(col.R)*sa, float32(col.G)*sa, float32(col.B)*sa
+	// integer fast path for fully covered pixels: dst = src + dst*(256-a)/256
+	ia := uint32(col.A) + uint32(col.A)>>7
+	ir, ig, ib, iA := uint32(sr+0.5), uint32(sg+0.5), uint32(sb+0.5), uint32(col.A)
+	inv := 256 - ia
+	y0, y1 := max(int(math.Floor(float64(y))), b.Min.Y), min(int(math.Ceil(float64(y+h))), b.Max.Y)
+	for py := y0; py < y1; py++ {
+		vcov := min(y+h, float32(py+1)) - max(y, float32(py))
+		if vcov <= 0 {
+			continue
+		}
+		cy := float32(py) + 0.5
+		inset := float32(0)
+		if d := y + rad - cy; d > 0 {
+			inset = rad - float32(math.Sqrt(float64(max(0, rad*rad-d*d))))
+		} else if d := cy - (y + h - rad); d > 0 {
+			inset = rad - float32(math.Sqrt(float64(max(0, rad*rad-d*d))))
+		}
+		lx, rx := x+inset, x+w-inset
+		x0, x1 := max(int(math.Floor(float64(lx))), b.Min.X), min(int(math.Ceil(float64(rx))), b.Max.X)
+		skip0, skip1 := 0, 0
+		if py >= hole.Min.Y && py < hole.Max.Y {
+			skip0, skip1 = hole.Min.X, hole.Max.X
+		}
+		row := c.img.Pix[py*c.img.Stride:]
+		for px := x0; px < x1; px++ {
+			if px >= skip0 && px < skip1 {
+				px = skip1 - 1
+				continue
+			}
+			i := px * 4
+			if vcov >= 1 && float32(px) >= lx && float32(px+1) <= rx {
+				row[i] = uint8(ir + uint32(row[i])*inv>>8)
+				row[i+1] = uint8(ig + uint32(row[i+1])*inv>>8)
+				row[i+2] = uint8(ib + uint32(row[i+2])*inv>>8)
+				row[i+3] = uint8(iA + uint32(row[i+3])*inv>>8)
+				continue
+			}
+			cov := (min(rx, float32(px+1)) - max(lx, float32(px))) * vcov
+			if cov <= 0 {
+				continue
+			}
+			cov = min(cov, 1)
+			a := sa * cov
+			fi := 1 - a
+			row[i] = uint8(sr*cov + float32(row[i])*fi)
+			row[i+1] = uint8(sg*cov + float32(row[i+1])*fi)
+			row[i+2] = uint8(sb*cov + float32(row[i+2])*fi)
+			row[i+3] = uint8(a*255 + float32(row[i+3])*fi)
+		}
+	}
+}
+
+// ring draws a 1px-ish outline by filling the outer shape and punching the inner
+// with the background: callers draw the fill afterwards.
+func (c *canvas) shadow(x, y, w, h, rad float32, strength float64) {
+	hole := insetRect(x, y, w, h, rad)
+	for i := 4; i >= 1; i-- {
+		g := float32(i) * 2.2
+		c.roundRectHole(x-g, y-g+3, w+2*g, h+2*g, rad+g, color.NRGBA{0, 0, 0, uint8(strength * float64(5-i) * 13)}, hole)
+	}
+}
+
+// insetRect is a rectangle safely inside the rounded shape.
+func insetRect(x, y, w, h, rad float32) image.Rectangle {
+	k := rad * 0.3
+	return image.Rect(int(math.Ceil(float64(x+k)))+1, int(math.Ceil(float64(y+k)))+1, int(x+w-k)-1, int(y+h-k)-1)
+}
+
+func (c *canvas) circle(cx, cy, rad float32, col color.NRGBA) {
+	c.roundRect(cx-rad, cy-rad, 2*rad, 2*rad, rad, col)
+}
+
+func (c *canvas) mask(f font.Face, s string) *textMask {
+	k := maskKey{f, s}
+	if m := c.masks[k]; m != nil {
+		return m
+	}
+	if len(c.masks) > 400 {
+		clear(c.masks)
+	}
+	met := f.Metrics()
+	asc, desc := met.Ascent.Ceil(), met.Descent.Ceil()
+	w := font.MeasureString(f, s).Ceil()
+	m := image.NewAlpha(image.Rect(0, 0, w+2, asc+desc+1))
+	d := font.Drawer{Dst: m, Src: image.Opaque, Face: f, Dot: fixed.P(1, asc)}
+	d.DrawString(s)
+	tm := &textMask{m: m, w: w, asc: asc}
+	c.masks[k] = tm
+	return tm
+}
+
+// text draws s with its baseline at y and returns its advance width.
+func (c *canvas) text(f font.Face, s string, x, y float32, col color.NRGBA) float32 {
+	if s == "" {
+		return 0
+	}
+	m := c.mask(f, s)
+	if col.A > 0 {
+		px, py := int(math.Round(float64(x)))-1, int(math.Round(float64(y)))-m.asc
+		draw.DrawMask(c.img, image.Rect(px, py, px+m.m.Rect.Dx(), py+m.m.Rect.Dy()), image.NewUniform(col), image.Point{}, m.m, image.Point{}, draw.Over)
+	}
+	return float32(m.w)
+}
+
+func measure(f font.Face, s string) float32 { return float32(font.MeasureString(f, s).Ceil()) }
+
+func ellipsize(f font.Face, s string, maxW float32) string {
+	if measure(f, s) <= maxW {
+		return s
+	}
+	r := []rune(s)
+	for len(r) > 0 && measure(f, string(r)+"…") > maxW {
+		r = r[:len(r)-1]
+	}
+	return strings.TrimRight(string(r), " ") + "…"
+}
+
+// wrap greedily breaks s into at most n lines of width maxW.
+func wrap(f font.Face, s string, maxW float32, n int) []string {
+	var lines []string
+	for _, para := range strings.Split(strings.TrimSpace(s), "\n") {
+		cur := ""
+		for _, w := range strings.Fields(para) {
+			try := w
+			if cur != "" {
+				try = cur + " " + w
+			}
+			if measure(f, try) <= maxW || cur == "" {
+				cur = try
+				continue
+			}
+			lines = append(lines, cur)
+			cur = w
+		}
+		if cur != "" {
+			lines = append(lines, cur)
+		}
+	}
+	if len(lines) > n {
+		lines = lines[:n]
+		lines[n-1] = ellipsize(f, lines[n-1]+" …", maxW)
+	}
+	for i := range lines {
+		lines[i] = ellipsize(f, lines[i], maxW)
+	}
+	return lines
+}
+
+// ---- Ember: edge's mascot, a small flame with eyes ----
+
+type mood int
+
+const (
+	moodIdle mood = iota
+	moodWork
+	moodWait // needs you
+	moodHappy
+	moodError
+	moodNudge
+)
+
+func (p palette) moodColor(m mood) color.NRGBA {
+	switch m {
+	case moodWork, moodHappy:
+		return p.green
+	case moodWait:
+		return p.blue
+	case moodError:
+		return p.red
+	case moodNudge:
+		return p.yellow
+	}
+	return p.muted
+}
+
+// ember draws the flame centred on (cx, cy) with height s. t is seconds since
+// start, blink 0..1 (1 = eyes shut), bounce lifts it.
+func (c *canvas) ember(p palette, cx, cy, s float32, m mood, t float64, blink, bounce float32) {
+	col := p.moodColor(m)
+	sway, stretch := float32(0), float32(1)
+	switch m {
+	case moodWork:
+		sway = float32(math.Sin(t*7)*0.06+math.Sin(t*11.3)*0.035) * s
+		stretch = 1 + float32(math.Sin(t*9.1)*0.05)
+	case moodWait:
+		stretch = 1 + float32(math.Sin(t*3)*0.06)
+	case moodIdle:
+		stretch = 1 + float32(math.Sin(t*1.4)*0.025)
+	}
+	cy -= bounce * s * 0.35
+	flame := func(scale, lift float32, col color.NRGBA) {
+		r := s * 0.36 * scale
+		by := cy + s*0.17 - lift
+		tx, ty := cx+r*0.3+sway*scale, by-s*0.74*scale*stretch
+		c.fillPath(cx-r*1.3, ty-2, cx+r*1.2+abs32(sway), by+r+2, col, func(ras *vector.Rasterizer, ox, oy float32) {
+			k := r * kappa
+			x, y := cx-ox, by-oy
+			tX, tY := tx-ox, ty-oy
+			// main tip, down the right side
+			ras.MoveTo(tX, tY)
+			ras.CubeTo(tX+r*0.12, tY+r*0.8, x+r*1.08, y-r*0.95, x+r, y)
+			// round belly
+			ras.CubeTo(x+r, y+k, x+k, y+r, x, y+r)
+			ras.CubeTo(x-k, y+r, x-r, y+k, x-r, y)
+			// up the left side to a small second tongue, dip, then the tip
+			lx, ly := x-r*0.9+sway*0.4, y-r*1.45*stretch
+			ras.CubeTo(x-r*1.06, y-r*0.55, x-r*1.12, y-r*1.1, lx, ly)
+			ras.CubeTo(x-r*0.72, y-r*1.2, x-r*0.48, y-r*1.08, x-r*0.28, y-r*1.12)
+			ras.CubeTo(x-r*0.08, y-r*1.5, tX-r*0.32, tY+r*0.62, tX, tY)
+			ras.ClosePath()
+		})
+	}
+	flame(1, 0, col)
+	flame(0.5, -s*0.1, mix(col, color.NRGBA{255, 255, 255, 255}, 0.6))
+
+	// eyes
+	eyeY := cy + s*0.19
+	gap := s * 0.125
+	ew, eh := s*0.1, s*0.17*(1-blink*0.85)
+	ink := p.ink
+	switch m {
+	case moodHappy: // content, shut-eye smile
+		eh = s * 0.045
+		eyeY -= s * 0.02
+	case moodWait: // looking up at you
+		eyeY -= s * 0.05
+	case moodNudge: // side-eye
+		eh *= 0.6
+	}
+	for _, dx := range []float32{-gap, gap} {
+		c.roundRect(cx+dx-ew/2+sway*0.3, eyeY-eh/2, ew, max(eh, 1.2), ew/2, ink)
+	}
+}
+
+func abs32(x float32) float32 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+// lock draws a small padlock (gate closed) at x,y with height s.
+func (c *canvas) lock(x, y, s float32, col color.NRGBA) {
+	bw, bh := s*0.78, s*0.55
+	c.roundRect(x, y+s-bh, bw, bh, s*0.12, col)
+	sw := s * 0.13
+	c.fillPath(x, y, x+bw, y+s-bh+1, col, func(r *vector.Rasterizer, ox, oy float32) {
+		cx, top := x+bw/2-ox, y-oy
+		rx := bw/2 - sw*0.6
+		bottom := top + s - bh + 1
+		// outer arc
+		r.MoveTo(cx-rx-sw/2, bottom)
+		r.LineTo(cx-rx-sw/2, top+rx)
+		r.CubeTo(cx-rx-sw/2, top-sw/2+rx*(1-kappa), cx-rx*kappa, top-sw/2, cx, top-sw/2)
+		r.CubeTo(cx+rx*kappa, top-sw/2, cx+rx+sw/2, top-sw/2+rx*(1-kappa), cx+rx+sw/2, top+rx)
+		r.LineTo(cx+rx+sw/2, bottom)
+		r.LineTo(cx+rx-sw/2, bottom)
+		r.LineTo(cx+rx-sw/2, top+rx)
+		r.CubeTo(cx+rx-sw/2, top+sw/2+rx*(1-kappa)*0.6, cx+rx*kappa*0.7, top+sw/2, cx, top+sw/2)
+		r.CubeTo(cx-rx*kappa*0.7, top+sw/2, cx-rx+sw/2, top+sw/2+rx*(1-kappa)*0.6, cx-rx+sw/2, top+rx)
+		r.LineTo(cx-rx+sw/2, bottom)
+		r.ClosePath()
+	})
+}
