@@ -171,6 +171,7 @@ type UI struct {
 	shape              notch
 	bubble             image.Rectangle
 	lastBounds         image.Rectangle
+	lastEmber          image.Rectangle
 	now                func() time.Time
 }
 
@@ -423,7 +424,10 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 	flashing := now.Sub(u.pressAt) < 160*time.Millisecond
 	t := now.Sub(u.start).Seconds()
 
-	full := u.dirty || !settled || p < 1 || sliding || flashing || !u.emberSettled()
+	// Ember (blinks, glances, gliding to a new spot) and other live parts only
+	// need their own rectangles repainted: that's the cheap path below.
+	full := u.dirty || !settled || p < 1 || sliding || flashing
+	moving := !settled || p < 1 || sliding || flashing || u.blinking() || u.bouncing() || !u.emberSettled()
 	if full {
 		u.dirty = false
 		u.hits, u.lives = u.hits[:0], u.lives[:0]
@@ -467,10 +471,12 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 			}
 		}
 		u.drawEmber(t, now)
-		return true, damage
+		u.lastEmber = u.emberRect()
+		return moving, damage
 	}
 	u.stepEmber(dt, now)
-	for _, r := range append([]image.Rectangle{u.emberRect()}, u.liveRects()...) {
+	er := u.emberRect()
+	for _, r := range append([]image.Rectangle{er.Union(u.lastEmber)}, u.liveRects()...) {
 		r = r.Intersect(u.cv.img.Rect)
 		for yy := r.Min.Y; yy < r.Max.Y; yy++ {
 			o := yy*u.base.Stride + r.Min.X*4
@@ -482,7 +488,8 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 		l.draw(u.cv, t)
 	}
 	u.drawEmber(t, now)
-	return u.blinking() || u.bouncing() || !u.emberSettled(), damage
+	u.lastEmber = er
+	return moving, damage
 }
 
 func (u *UI) liveRects() []image.Rectangle {
@@ -529,8 +536,12 @@ func (u *UI) emberSettled() bool {
 	if !u.spot.show {
 		return true
 	}
-	return u.ex.settled(float64(u.spot.x)) && u.ey.settled(float64(u.spot.y)) && u.es.settled(float64(u.spot.s)) &&
-		math.Abs(u.look.x-u.lookTarget(u.now())) < 0.05
+	return u.ex.settled(float64(u.spot.x)) && u.ey.settled(float64(u.spot.y)) && u.es.settled(float64(u.spot.s))
+}
+
+// glancing: Ember's eyes are moving (an idle glance, or following the pointer).
+func (u *UI) glancing() bool {
+	return u.now().Sub(u.glanceAt) < 900*time.Millisecond || math.Abs(u.look.x-u.lookTarget(u.now())) > 0.05
 }
 
 func (u *UI) lookTarget(now time.Time) float64 {

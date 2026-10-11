@@ -6,6 +6,7 @@ import (
 	"image"
 	"log"
 	"net/url"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -69,12 +70,22 @@ func Run() error {
 
 	animating, waitingFrame, tick := false, false, false
 	var waitingSince time.Time
+	debug := os.Getenv("EMBER_DEBUG") != ""
+	var nFull, nFast, nFail, nPost, nWake int
+	statAt := time.Now()
 	draw := func() {
 		var damage image.Rectangle
+		wasDirty := a.ui.dirty
 		animating, damage = a.ui.renderDamage()
+		if wasDirty || damage.Dx() > 60 {
+			nFull++
+		} else {
+			nFast++
+		}
 		if win.present(a.ui.cv.img, a.ui.shape.bounds().Union(a.ui.bubble), damage, animating) {
 			waitingFrame, waitingSince = animating, time.Now()
 		} else {
+			nFail++
 			a.ui.dirty = true // no free buffer: try again on the next wake
 		}
 		if b := a.ui.shape.blurRects(); !slices.Equal(b, win.lastBlur) {
@@ -95,6 +106,7 @@ func Run() error {
 		case f := <-posts:
 			f(a)
 			a.ui.Invalidate()
+			nPost++
 		case <-housekeep.C:
 			if a.sweep() {
 				a.ui.Invalidate()
@@ -130,6 +142,11 @@ func Run() error {
 			draw()
 		}
 		tick = false
+		nWake++
+		if debug && time.Since(statAt) > 5*time.Second {
+			log.Printf("5s: wakes %d, full %d, fast %d, failed %d, posts %d, view %v, cont %v", nWake, nFull, nFast, nFail, nPost, a.ui.lastView, a.ui.continuous())
+			nFull, nFast, nFail, nPost, nWake, statAt = 0, 0, 0, 0, 0, time.Now()
+		}
 		timer.Reset(a.nextWake(animating))
 		win.c.flush()
 	}
@@ -146,6 +163,8 @@ func (a *app) nextWake(animating bool) time.Duration {
 	next := u.nextBlink()
 	if u.continuous() {
 		next = now.Add(flickerEvery)
+	} else if u.glancing() {
+		next = now.Add(time.Second / 30) // eyes move smoothly; nothing else needs the rate
 	} else {
 		next = minTime(next, now.Add(idleEvery)) // Ember breathes even when nothing happens
 	}
