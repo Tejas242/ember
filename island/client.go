@@ -16,13 +16,16 @@ func Ancestors() []int {
 	var out []int
 	pid := os.Getppid()
 	for i := 0; i < 8 && pid > 1; i++ {
-		out = append(out, pid)
 		b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
 		if err != nil {
 			break
 		}
 		// pid (comm) state ppid ...; comm may contain spaces, so cut after ')'
 		s := string(b)
+		if comm := s[strings.IndexByte(s, '(')+1 : strings.LastIndexByte(s, ')')]; comm == "systemd" || comm == "init" {
+			break // the session manager outlives every session: it would keep this one forever
+		}
+		out = append(out, pid)
 		f := strings.Fields(s[strings.LastIndexByte(s, ')')+1:])
 		if len(f) < 2 {
 			break

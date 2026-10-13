@@ -35,11 +35,15 @@ func TestPreviewMoments(t *testing.T) {
 				img.Set(x, y, color.NRGBA{uint8(120 + x*2), uint8(40 + y), uint8(160 - x), 255})
 			}
 		}
-		u.art = &albumArt{small: scaleSquare(img, 18), large: scaleSquare(img, 46)}
+		u.art = &albumArt{small: scaleSquare(img, 18), large: scaleSquare(img, 60)}
 		u.art.accent = accentOf(u.art.large)
 	}
 	states := []state{
 		{"clock", func(u *UI) {}},
+		{"asleep", func(u *UI) {
+			u.mind.asleep, u.mind.arousal, u.mind.sleepAt = true, 0.08, clock.Add(-time.Hour)
+			u.mind.lastEvent = clock.Add(-time.Hour)
+		}},
 		{"claude", func(u *UI) { working(u) }},
 		{"claude-music", func(u *UI) {
 			working(u)
@@ -91,6 +95,7 @@ func TestPreviewMoments(t *testing.T) {
 	for i, st := range states {
 		u := NewUI(440, 280, 24)
 		u.now = func() time.Time { return clock }
+		u.mind = newMind(clock)
 		u.start, u.lastBlink, u.bounceAt = clock, clock, clock.Add(-time.Hour)
 		st.set(u)
 		for f := 0; f < 90; f++ {

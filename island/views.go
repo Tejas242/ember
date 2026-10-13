@@ -12,15 +12,7 @@ import (
 	"golang.org/x/image/vector"
 )
 
-const (
-	cardW   = 384
-	expW    = 384
-	padX    = 14
-	rowH    = 30
-	btnH    = 28
-	maxComp = 400
-	headH   = 40 // expanded header: Ember, time, tabs
-)
+const maxComp = 400
 
 var (
 	fText  = func() fontFace { return face(fMedium, 12.5) }
@@ -71,6 +63,7 @@ type line struct {
 	chipCol     color.NRGBA
 	lock        bool
 	music       bool
+	work        bool    // Claude is working: the label shimmers
 	m           *moment // a system moment: icon, meter, value, battery
 }
 
@@ -102,13 +95,18 @@ func (u *UI) compactLine() line {
 		case "wait":
 			return line{key: "claude:wait:" + s.ID, mood: moodWait, text: s.Project + " needs you", textCol: p.blue, more: busy - 1}
 		case "work":
-			l := line{key: "claude:" + s.ID, mood: moodWork, text: s.Label, plus: s.Plus, minus: s.Minus, textCol: p.fg, more: busy - 1}
+			l := line{key: "claude:" + s.ID, mood: moodWork, text: s.Label, plus: s.Plus, minus: s.Minus, textCol: p.fg, more: busy - 1, work: true}
 			if l.text == "" {
 				l.text = "Thinking"
 			}
+			var chips []string
 			if s.Agents > 0 {
-				l.chip, l.chipCol = agentsText(s.Agents), p.muted
+				chips = append(chips, agentsText(s.Agents))
 			}
+			if !s.StepAt.IsZero() && now.Sub(s.StepAt) >= time.Minute { // one step running long: say how long
+				chips = append(chips, mins(now.Sub(s.StepAt)))
+			}
+			l.chip, l.chipCol = strings.Join(chips, " · "), p.muted
 			return l
 		}
 		return line{key: "claude:idle", mood: moodIdle, text: fmt.Sprintf("Claude · %d idle", len(ss)), textCol: p.muted}
@@ -171,7 +169,7 @@ func (u *UI) compactWidth(l line) float64 {
 			w += 8 + meterW
 		}
 		if m.right != "" {
-			w += 10 + float64(measure(fValue(), m.right))
+			w += 10 + float64(tabWidth(fValue(), m.right))
 		}
 		if m.batt {
 			w += 6 + float64(battW()) + 3
@@ -184,7 +182,7 @@ func (u *UI) compactWidth(l line) float64 {
 		w += 24
 	}
 	if l.plus > 0 || l.minus > 0 {
-		w += 7 + float64(measure(face(fMedium, 12), diffText(l.plus, l.minus)))
+		w += 7 + float64(tabWidth(face(fMedium, 12), diffText(l.plus, l.minus)))
 	}
 	if l.more > 0 {
 		w += 8 + float64(measure(fSmall(), fmt.Sprintf("+%d", l.more)))
@@ -258,14 +256,12 @@ func (u *UI) drawCompact(x, w, h float32) {
 			u.dc.battery(rx-bw-3, cy, 9, float32(m.pct), alpha(p.fg, 0.45), m.tint)
 			rx -= bw + 3 + 6
 		}
-		if m.right != "" {
-			vw := measure(fValue(), m.right)
+		if m.right != "" { // the value rolls as it changes
 			col := p.fg
 			if m.tint == p.muted {
 				col = p.muted
 			}
-			u.dc.text(fValue(), m.right, rx-vw, base, col)
-			rx -= vw + 10
+			rx -= u.rollText(u.dc, "pill:value", m.right, fValue(), rx, base, col) + 10
 		}
 		if m.meter {
 			mx := tx
@@ -303,7 +299,7 @@ func (u *UI) drawCompact(x, w, h float32) {
 	diff := ""
 	if l.plus > 0 || l.minus > 0 {
 		diff = diffText(l.plus, l.minus)
-		avail -= 7 + measure(face(fMedium, 12), diff)
+		avail -= 7 + tabWidth(face(fMedium, 12), diff)
 	}
 	if l.more > 0 {
 		avail -= 8 + measure(fSmall(), fmt.Sprintf("+%d", l.more))
@@ -319,6 +315,10 @@ func (u *UI) drawCompact(x, w, h float32) {
 		u.dc.text(fText(), ellipsize(fText(), u.slideOld, avail), tx, base-9*e, alpha(l.textCol, 1-float64(e)))
 		u.dc.text(fText(), text, tx, base+9*(1-e), alpha(l.textCol, float64(e)))
 		tx += measure(fText(), text)
+	} else if l.work { // lit from inside while Claude works
+		u.dc.text(fText(), text, tx, base, mix(l.textCol, p.bg, 0.22))
+		u.shimmerLive(fText(), text, tx, base, mix(l.textCol, colorWhite, 0.55))
+		tx += measure(fText(), text)
 	} else {
 		tx += u.dc.text(fText(), text, tx, base, l.textCol)
 	}
@@ -328,11 +328,14 @@ func (u *UI) drawCompact(x, w, h float32) {
 	}
 	if diff != "" {
 		tx += 7
+		df := face(fMedium, 12)
 		if l.plus > 0 {
-			tx += u.dc.text(face(fMedium, 12), fmt.Sprintf("+%d", l.plus), tx, base, p.green) + 4
+			s := fmt.Sprintf("+%d", l.plus)
+			tx += u.rollText(u.dc, "pill:plus", s, df, tx+tabWidth(df, s), base, p.green) + 4
 		}
 		if l.minus > 0 {
-			tx += u.dc.text(face(fMedium, 12), fmt.Sprintf("−%d", l.minus), tx, base, p.red)
+			s := fmt.Sprintf("−%d", l.minus)
+			tx += u.rollText(u.dc, "pill:minus", s, df, tx+tabWidth(df, s), base, p.red)
 		}
 	}
 	if l.more > 0 {
@@ -341,7 +344,7 @@ func (u *UI) drawCompact(x, w, h float32) {
 	}
 	if l.music && u.track != nil {
 		u.eqLive(tx+8, cy+5, 10, u.accent(p.green), u.track.Playing)
-		u.progressLive(x+16, h-2.5, w-32, 1.5, u.accent(p.fg)) // a hairline of the song under the pill
+		u.progressLive(x+16, h-2.5, w-32, 1.5, u.accent(p.fg), 0) // a hairline of the song under the pill
 	}
 }
 
@@ -369,12 +372,12 @@ func (u *UI) eqLive(x, y, h float32, col color.NRGBA, playing bool) {
 }
 
 // progressLive registers a progress bar that moves on its own while playing.
-func (u *UI) progressLive(x, y, w, th float32, col color.NRGBA) {
+func (u *UI) progressLive(x, y, w, th float32, col color.NRGBA, knob float32) {
 	t := u.track
 	if t == nil || t.Length <= 0 {
 		return
 	}
-	r := image.Rect(int(x)-6, int(y-th)-6, int(x+w)+7, int(y+th)+7)
+	r := image.Rect(int(x)-8, int(y-th)-8, int(x+w)+9, int(y+th)+9)
 	u.lives = append(u.lives, live{r, func(c *canvas, _ float64) {
 		k := float32(math.Min(1, float64(t.pos(u.now()))/float64(t.Length)))
 		if u.drag == "music:seek" {
@@ -382,8 +385,8 @@ func (u *UI) progressLive(x, y, w, th float32, col color.NRGBA) {
 		}
 		c.roundRect(x, y-th/2, w, th, th/2, alpha(u.pal.line, 0.9))
 		c.roundRect(x, y-th/2, max(w*k, th), th, th/2, alpha(col, 0.9))
-		if th > 2 { // a knob on the big bar
-			c.circle(x+w*k, y, th+2, u.pal.fg)
+		if knob > 0.02 { // a knob grows on the big bar as you come near
+			c.circle(x+w*k, y, 6.5*knob, u.pal.fg)
 		}
 	}})
 }
@@ -428,402 +431,6 @@ func (u *UI) drawBubble(t float64) {
 	u.hits = append(u.hits, hit{n.bounds(), "bubble"})
 }
 
-// ---- expanded: the card that drops from the pill ----
-
-func (u *UI) expandedHeight() int {
-	h := headH
-	switch u.pageFor() {
-	case "music":
-		h += 56 + 16 + 18 + 36 + 8
-	case "claude":
-		h += min(len(u.sessions), 4)*(rowH+2) + 8
-	case "edge":
-		h += 34 + rowH + 10 + btnH + 10
-	case "system":
-		h += u.systemRows()*sysRowH + 6
-	default:
-		h += 30
-	}
-	return min(h+6, u.H-12)
-}
-
-func (u *UI) drawExpanded(x, w float32) {
-	p, now := u.pal, u.now()
-	page := u.pageFor()
-	// header: Ember · time   …   tabs (or the date)
-	em := moodIdle
-	switch page {
-	case "claude":
-		em = moodWork
-		if ss := u.sessionList(); len(ss) > 0 && ss[0].State != "work" {
-			em = map[string]mood{"wait": moodWait, "idle": moodIdle}[ss[0].State]
-		}
-	case "edge":
-		em = moodNudge
-	}
-	u.spot = emberSpot{x: x + padX + 8, y: 20, s: 17, mood: em, show: true}
-	u.dc.text(face(fSemiBold, 13.5), now.Format(u.TimeFmt), x+padX+24, 25, p.fg)
-	acts := u.pages()
-	if len(acts) >= 2 {
-		rx := x + w - padX
-		for i := len(acts) - 1; i >= 0; i-- {
-			a := acts[i]
-			label := map[string]string{"claude": "Claude", "music": "Music", "edge": "edge", "system": "System"}[a]
-			f := face(fMedium, 11.5)
-			tw := measure(f, label) + 18
-			rx -= tw
-			key := "tab:" + a
-			fill := color.NRGBA{}
-			col := p.muted
-			if a == page {
-				fill, col = p.raised, p.fg
-			} else if u.hoverKey == key {
-				fill = mixAlpha(p.raised, 0.6)
-			}
-			if fill.A > 0 {
-				u.dc.roundRect(rx, 10, tw, 21, 10.5, fill)
-			}
-			u.dc.text(f, label, rx+9, 24.5, col)
-			u.hits = append(u.hits, hit{image.Rect(int(rx), 6, int(rx+tw), 35), key})
-			rx -= 4
-		}
-	} else {
-		date := now.Format("Monday, 2 January")
-		u.dc.text(fSmall(), date, x+w-padX-measure(fSmall(), date), 24.5, p.muted)
-	}
-	y := float32(headH)
-	switch page {
-	case "music":
-		u.musicPage(x, w, y)
-	case "claude":
-		u.claudePage(x, w, y)
-	case "edge":
-		u.edgePage(x, w, y)
-	case "system":
-		u.systemPage(x, w, y)
-	default:
-		u.dc.text(fSmall(), "Nothing playing · no Claude sessions", x+padX, y+18, p.faint)
-	}
-}
-
-func (u *UI) musicPage(x, w, y float32) {
-	p, t := u.pal, u.track
-	if t == nil {
-		return
-	}
-	ax := x + padX
-	if acc := u.accent(color.NRGBA{}); acc.A > 0 { // the card takes on the cover's light
-		u.dc.glow(image.Rect(int(x), 0, int(x+w), u.H), ax+23, y+23, 230, acc, 0.2)
-	}
-	if u.art != nil {
-		u.dc.drawArt(u.art.large, int(ax), int(y), 11, 1)
-	} else {
-		u.dc.roundRect(ax, y, 46, 46, 11, p.raised)
-		u.eqLive(ax+15, y+31, 16, p.green, t.Playing)
-	}
-	tx := ax + 60
-	inner := x + w - padX - tx
-	u.dc.text(face(fSemiBold, 13.5), ellipsize(face(fSemiBold, 13.5), t.Title, inner), tx, y+15, p.fg)
-	u.dc.text(face(fRegular, 12), ellipsize(face(fRegular, 12), t.Artist, inner), tx, y+31, p.muted)
-	u.dc.text(face(fRegular, 10.5), playerName(t.Player), tx, y+45, p.faint)
-	if t.Playing {
-		u.eqLive(x+w-padX-16, y+45, 9, u.accent(p.green), true)
-	}
-	y += 56 + 10
-	// progress with times; click to seek
-	bw := w - 2*padX
-	u.seekRect = image.Rect(int(x+padX), int(y-6), int(x+padX+bw), int(y+8))
-	if t.Length > 0 {
-		u.progressLive(x+padX, y, bw, 3, u.accent(p.fg))
-		u.hits = append(u.hits, hit{u.seekRect, "music:seek"})
-		ty := y + 17                                                            // y moves on below; the closure must not see that
-		tr := image.Rect(int(x+padX)-3, int(ty-12), int(x+w-padX)+3, int(ty+5)) // glyphs reach a pixel past their box
-		u.lives = append(u.lives, live{tr, func(c *canvas, _ float64) {
-			f := face(fRegular, 10.5)
-			pos := t.pos(u.now())
-			if u.drag == "music:seek" {
-				pos = time.Duration(u.seekPreview * float64(t.Length))
-			}
-			el, tot := clock(pos), clock(t.Length)
-			c.text(f, el, x+padX, ty, p.faint)
-			c.text(f, tot, x+w-padX-measure(f, tot), ty, p.faint)
-		}})
-	}
-	y += 20
-	cx := x + w/2
-	for i, k := range []string{"prev", "toggle", "next"} {
-		bx := cx + float32(i-1)*48
-		key := "music:" + k
-		r := float32(15)
-		if k == "toggle" {
-			r = 17
-		}
-		switch {
-		case u.pressKey == key && u.now().Sub(u.pressAt) < 160*time.Millisecond:
-			u.dc.circle(bx, y+btnH/2+2, r, p.line)
-		case u.hoverKey == key:
-			u.dc.circle(bx, y+btnH/2+2, r, mix(p.raised, u.accent(p.raised), 0.25))
-		}
-		u.mediaGlyph(k, bx, y+btnH/2+2, t.Playing, p.fg)
-		u.hits = append(u.hits, hit{image.Rect(int(bx-r), int(y), int(bx+r), int(y+btnH+4)), key})
-	}
-}
-
-func (u *UI) claudePage(x, w, y float32) {
-	p, now := u.pal, u.now()
-	for i, s := range u.sessionList() {
-		if i == 4 {
-			break
-		}
-		key := "focus:" + s.ID
-		dot, lbl := p.faint, "idle"
-		if s.Title != "" {
-			lbl = s.Title
-		}
-		switch s.State {
-		case "work":
-			dot, lbl = p.green, s.Label
-		case "wait":
-			dot, lbl = p.blue, "waiting for you"
-		}
-		if s.State == "wait" {
-			u.dc.roundRect(x+padX-6, y, w-2*padX+12, rowH, 10, mixAlpha(p.blue, 0.12))
-		} else if u.hoverKey == key {
-			u.dc.roundRect(x+padX-6, y, w-2*padX+12, rowH, 10, p.raised)
-		}
-		u.dc.circle(x+padX+4, y+rowH/2, 3.5, dot)
-		pf := face(fSemiBold, 12.5)
-		pw := u.dc.text(pf, ellipsize(pf, s.Project, 110), x+padX+16, y+rowH/2+4.5, p.fg)
-		right := x + w - padX
-		if !s.Since.IsZero() {
-			el := mins(now.Sub(s.Since))
-			if s.Agents > 0 && s.State != "idle" {
-				el = agentsText(s.Agents) + " · " + el
-			}
-			ew := measure(fSmall(), el)
-			u.dc.text(fSmall(), el, right-ew, y+rowH/2+4.5, p.faint)
-			right -= ew + 8
-		}
-		if s.State == "work" && (s.Plus > 0 || s.Minus > 0) {
-			f := face(fMedium, 11.5)
-			if s.Minus > 0 {
-				m := fmt.Sprintf("−%d", s.Minus)
-				right -= measure(f, m)
-				u.dc.text(f, m, right, y+rowH/2+4.5, p.red)
-				right -= 4
-			}
-			if s.Plus > 0 {
-				pl := fmt.Sprintf("+%d", s.Plus)
-				right -= measure(f, pl)
-				u.dc.text(f, pl, right, y+rowH/2+4.5, p.green)
-			}
-			right -= 8
-		}
-		lf := face(fRegular, 12)
-		u.dc.text(lf, ellipsize(lf, lbl, right-(x+padX+16+pw+8)), x+padX+16+pw+8, y+rowH/2+4.5, p.muted)
-		u.hits = append(u.hits, hit{image.Rect(int(x+padX-6), int(y), int(x+w-padX+6), int(y+rowH)), key})
-		y += rowH + 2
-	}
-}
-
-func (u *UI) edgePage(x, w, y float32) {
-	p, now, e := u.pal, u.now(), u.edge
-	if e == nil {
-		return
-	}
-	// the day, big
-	big := face(fSemiBold, 20)
-	tx := x + padX
-	tx += u.dc.text(big, fmt.Sprintf("%d/%d", e.Today, e.Need), tx, y+22, p.fg)
-	tx += u.dc.text(fSmall(), "  today", tx, y+21, p.muted) + 16
-	tx += u.dc.text(big, fmt.Sprint(e.Streak), tx, y+22, p.fg)
-	u.dc.text(fSmall(), "  day streak", tx, y+21, p.muted)
-	if e.Closed {
-		u.dc.lock(x+w-padX-60, y+10, 11, p.yellow)
-		u.dc.text(fSmall(), "locked", x+w-padX-44, y+21, p.yellow)
-	}
-	y += 34
-	if e.Task != "" {
-		u.dc.roundRect(x+padX-6, y, w-2*padX+12, rowH, 10, p.raised)
-		right := x + w - padX
-		if e.StartedMs > 0 && !e.Pending {
-			el := mins(now.Sub(time.UnixMilli(e.StartedMs)))
-			ew := measure(fSmall(), el)
-			u.dc.text(fSmall(), el, right-ew, y+rowH/2+4.5, p.green)
-			right -= ew + 8
-		}
-		lf := face(fMedium, 12.5)
-		u.dc.text(lf, ellipsize(lf, e.Task, right-(x+padX+2)), x+padX+2, y+rowH/2+4.5, p.fg)
-	}
-	y += rowH + 10
-	var btns []Button
-	switch {
-	case e.Task != "" && e.Pending:
-		btns = []Button{{Key: "snooze", Label: "Later"}, {Key: "start", Label: "Start", Primary: true}}
-	case e.Task != "":
-		btns = []Button{{Key: "teach", Label: "Give up"}, {Key: "hint", Label: "Hint", Primary: true}}
-	}
-	u.buttonRow(btns, "btn:edge:", x, w, y, "")
-}
-
-// ---- System: volume, brightness, battery ----
-
-const sysRowH = 34
-
-func (u *UI) systemRows() int {
-	n := 0
-	if u.vol.ok {
-		n++
-	}
-	if u.light >= 0 {
-		n++
-	}
-	if u.power != nil {
-		n++
-	}
-	return n
-}
-
-func (u *UI) systemPage(x, w, y float32) {
-	p := u.pal
-	slider := func(key, icon, iconKey string, v float64, tint color.NRGBA, value string) {
-		cy := y + sysRowH/2
-		ix := x + padX + 8
-		if iconKey != "" {
-			if u.hoverKey == iconKey {
-				u.dc.circle(ix, cy, 13, p.raised)
-			}
-			u.hits = append(u.hits, hit{image.Rect(int(ix-13), int(cy-13), int(ix+13), int(cy+13)), iconKey})
-		}
-		u.dc.icon(icon, ix, cy, 16, tint)
-		sx, sw := x+padX+30, w-2*padX-30-40
-		th := float32(6)
-		if u.hoverKey == key {
-			th = 8
-		}
-		u.dc.roundRect(sx, cy-th/2, sw, th, th/2, alpha(p.fg, 0.14))
-		if v > 0 {
-			u.dc.roundRect(sx, cy-th/2, max(sw*float32(math.Min(v, 1)), th), th, th/2, tint)
-		}
-		vf := fValue()
-		u.dc.text(vf, value, x+w-padX-measure(vf, value), cy+4.5, p.fg)
-		r := image.Rect(int(sx), int(cy-11), int(sx+sw), int(cy+11))
-		u.sliders[key] = r
-		u.hits = append(u.hits, hit{r, key})
-		y += sysRowH
-	}
-	if v := u.vol; v.ok {
-		icon, tint, val := "volume", p.fg, fmt.Sprint(int(v.v*100+0.5))
-		switch {
-		case v.muted:
-			icon, tint, val = "mute", p.muted, "Off"
-		case v.v < 0.4:
-			icon = "volume-low"
-		}
-		slider("sys:vol", icon, "sys:mute", v.v, tint, val)
-	}
-	if u.light >= 0 {
-		slider("sys:light", "sun", "", u.light, p.yellow, fmt.Sprint(int(u.light*100+0.5)))
-	}
-	if pw := u.power; pw != nil {
-		cy := y + sysRowH/2
-		fill := p.fg
-		switch {
-		case charging(pw.state):
-			fill = p.green
-		case pw.pct <= 10:
-			fill = p.red
-		case pw.pct <= 20:
-			fill = p.yellow
-		}
-		u.dc.battery(x+padX, cy, 9.5, float32(pw.pct/100), alpha(p.fg, 0.45), fill)
-		tx := x + padX + 30
-		tx += u.dc.text(fValue(), pctText(pw.pct), tx, cy+4.5, p.fg)
-		if charging(pw.state) && pw.state != 4 {
-			u.dc.icon("bolt", tx+9, cy, 12, p.green)
-			tx += 16
-		}
-		if s := powerText(pw); s != "" {
-			u.dc.text(fSmall(), s, tx+8, cy+4.5, p.muted)
-		}
-	}
-}
-
-// powerText: "2h 41m left", "full in 1h 05m", "fully charged".
-func powerText(pw *power) string {
-	dur := func(sec int64) string {
-		d := time.Duration(sec) * time.Second
-		if d < time.Hour {
-			return fmt.Sprintf("%dm", int(d.Minutes()))
-		}
-		return fmt.Sprintf("%dh %02dm", int(d.Hours()), int(d.Minutes())%60)
-	}
-	switch {
-	case pw.state == 4:
-		return "Fully charged"
-	case pw.state == 1 && pw.ttf > 0:
-		return "Full in " + dur(pw.ttf)
-	case pw.state == 1:
-		return "Charging"
-	case pw.state == 2 && pw.tte > 0:
-		return dur(pw.tte) + " left"
-	case charging(pw.state):
-		return "Plugged in"
-	}
-	return ""
-}
-
-// buttonRow draws right-aligned pill buttons (and an optional ghost footer on the left).
-func (u *UI) buttonRow(btns []Button, prefix string, x, w, y float32, footer string) {
-	p := u.pal
-	bx := x + w - padX
-	for i := len(btns) - 1; i >= 0; i-- {
-		b := btns[i]
-		bf := face(fMedium, 12.5)
-		if b.Primary {
-			bf = face(fSemiBold, 12.5)
-		}
-		bw := measure(bf, b.Label) + 28
-		bx -= bw
-		key := prefix + b.Key
-		hov := u.hoverKey == key
-		pressed := u.pressKey == key && u.now().Sub(u.pressAt) < 160*time.Millisecond
-		fill, txt := p.raised, p.fg
-		switch {
-		case b.Primary:
-			fill, txt = p.green, p.ink
-			if hov {
-				fill = mix(p.green, p.fg, 0.22)
-			}
-		case b.Danger:
-			txt = p.red
-			if hov {
-				fill = mix(p.raised, p.red, 0.16)
-			}
-		default:
-			if hov {
-				fill = p.line
-			}
-		}
-		if pressed {
-			fill = mix(fill, p.fg, 0.35)
-		}
-		u.dc.roundRect(bx, y, bw, btnH, btnH/2, fill)
-		u.dc.text(bf, b.Label, bx+14, y+btnH/2+4.5, txt)
-		u.hits = append(u.hits, hit{image.Rect(int(bx), int(y), int(bx+bw), int(y+btnH)), key})
-		bx -= 8
-	}
-	if footer != "" {
-		key := prefix + "footer"
-		col := p.muted
-		if u.hoverKey == key {
-			col = p.fg
-		}
-		fw := u.dc.text(face(fRegular, 12), footer, x+padX+2, y+btnH/2+4.5, col)
-		u.hits = append(u.hits, hit{image.Rect(int(x+padX), int(y), int(x+padX+fw+4), int(y+btnH)), key})
-	}
-}
-
 // mediaGlyph draws prev / play-pause / next centred at (cx, cy).
 func (u *UI) mediaGlyph(kind string, cx, cy float32, playing bool, col color.NRGBA) {
 	tri := func(x0, y0, x1, y1, x2, y2 float32) {
@@ -851,126 +458,26 @@ func (u *UI) mediaGlyph(kind string, cx, cy float32, playing bool, col color.NRG
 	}
 }
 
-// ---- cards: decisions ----
-
-func (u *UI) cardHeight(c *Card) int {
-	if c == nil {
-		return 60
-	}
-	h := 14 + 22
-	inner := float32(cardW - 2*padX)
-	if c.Body != "" {
-		h += 6 + 17*len(wrap(face(fRegular, 12.5), c.Body, inner, 3))
-	}
-	if c.Code != "" {
-		h += 8 + 16 + 15*len(codeLines(c.Code, inner-16))
-	}
-	if len(c.Options) > 0 {
-		h += 8 + len(c.Options)*(rowH+5) - 5
-	}
-	if len(c.Buttons) > 0 || c.Footer != "" {
-		h += 12 + btnH
-	}
-	return min(h+padX, u.H-12)
-}
-
-func codeLines(code string, w float32) []string {
-	f := face(fMono, 11.5)
-	var out []string
-	for _, ln := range strings.Split(strings.TrimSpace(code), "\n") {
-		out = append(out, ellipsize(f, ln, w))
-		if len(out) == 3 {
-			break
+// powerText: "2h 41m left", "full in 1h 05m", "fully charged".
+func powerText(pw *power) string {
+	dur := func(sec int64) string {
+		d := time.Duration(sec) * time.Second
+		if d < time.Hour {
+			return fmt.Sprintf("%dm", int(d.Minutes()))
 		}
+		return fmt.Sprintf("%dh %02dm", int(d.Hours()), int(d.Minutes())%60)
 	}
-	return out
-}
-
-func (u *UI) drawCard(c *Card, x, w float32) {
-	if c == nil {
-		return
+	switch {
+	case pw.state == 4:
+		return "Fully charged"
+	case pw.state == 1 && pw.ttf > 0:
+		return "Full in " + dur(pw.ttf)
+	case pw.state == 1:
+		return "Charging"
+	case pw.state == 2 && pw.tte > 0:
+		return dur(pw.tte) + " left"
+	case charging(pw.state):
+		return "Plugged in"
 	}
-	p := u.pal
-	u.spot = emberSpot{x: x + padX + 8, y: 23, s: 17, mood: c.Mood, show: true}
-	inner := w - 2*padX
-	y := float32(14)
-	metaW := float32(0)
-	closable := c.Kind == "edge"
-	meta := c.Meta
-	if n := len(u.cards) - 1; n > 0 { // more requests are queued behind this one
-		meta = fmt.Sprintf("%s · %d more", meta, n)
-		if c.Meta == "" {
-			meta = fmt.Sprintf("%d more", n)
-		}
-	}
-	if meta != "" {
-		meta := ellipsize(fSmall(), meta, 150)
-		metaW = measure(fSmall(), meta)
-		mx := x + w - padX - metaW
-		if closable {
-			mx -= 22
-		}
-		u.dc.text(fSmall(), meta, mx, y+13.5, p.muted)
-	}
-	tf := face(fSemiBold, 13.5)
-	u.dc.text(tf, ellipsize(tf, c.Title, inner-26-metaW-30), x+padX+24, y+14, p.fg)
-	if closable {
-		cx, cy := x+w-padX-6, y+9
-		key := "close:" + c.ID
-		col := p.faint
-		if u.hoverKey == key {
-			u.dc.circle(cx, cy, 10, p.raised)
-			col = p.fg
-		}
-		u.dc.text(face(fRegular, 14), "×", cx-4, cy+4.5, col)
-		u.hits = append(u.hits, hit{image.Rect(int(cx-11), int(cy-11), int(cx+11), int(cy+11)), key})
-	}
-	cy := y + 22
-	if c.Body != "" {
-		cy += 6
-		for _, ln := range wrap(face(fRegular, 12.5), c.Body, inner, 3) {
-			cy += 17
-			u.dc.text(face(fRegular, 12.5), ln, x+padX, cy-4, mix(p.fg, p.bg, 0.18))
-		}
-	}
-	if c.Code != "" {
-		lines := codeLines(c.Code, inner-16)
-		bh := float32(16 + 15*len(lines))
-		cy += 8
-		u.dc.roundRect(x+padX, cy, inner, bh, 9, p.raised)
-		for i, ln := range lines {
-			u.dc.text(face(fMono, 11.5), ln, x+padX+8, cy+8+11+float32(i)*15, p.fg)
-		}
-		cy += bh
-	}
-	if len(c.Options) > 0 {
-		cy += 8
-		for i, o := range c.Options {
-			key := fmt.Sprintf("opt:%d", i)
-			bg := p.raised
-			if u.hoverKey == key {
-				bg = p.line
-			}
-			u.dc.roundRect(x+padX, cy, inner, rowH, 10, bg)
-			lx := x + padX + 12
-			if c.Multi {
-				u.dc.roundRect(lx, cy+rowH/2-6, 12, 12, 4, p.line)
-				if c.picked[i] {
-					u.dc.roundRect(lx+2, cy+rowH/2-4, 8, 8, 2.5, p.green)
-				}
-				lx += 20
-			}
-			lf := face(fMedium, 12.5)
-			lw := u.dc.text(lf, ellipsize(lf, o.Label, inner*0.55), lx, cy+rowH/2+4.5, p.fg)
-			if o.Desc != "" {
-				u.dc.text(fSmall(), ellipsize(fSmall(), o.Desc, x+padX+inner-12-(lx+lw+10)), lx+lw+10, cy+rowH/2+4.5, p.muted)
-			}
-			u.hits = append(u.hits, hit{image.Rect(int(x+padX), int(cy), int(x+padX+inner), int(cy+rowH)), key})
-			cy += rowH + 5
-		}
-		cy -= 5
-	}
-	if len(c.Buttons) > 0 || c.Footer != "" {
-		u.buttonRow(c.Buttons, "btn:", x, w, cy+12, c.Footer)
-	}
+	return ""
 }

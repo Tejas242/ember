@@ -37,6 +37,7 @@ type Card struct {
 	Priority int
 	OnPick   func(key string, picked []int)
 	OnExpire func()
+	Born     time.Time // when it appeared: the countdown line starts here
 
 	picked map[int]bool
 }
@@ -47,7 +48,36 @@ type Session struct {
 	Plus, Minus               int
 	Agents                    int // subagents running
 	Since, Seen               time.Time
+	StepAt                    time.Time // when the current step (Label) began
 	Pids                      []int
+	Bins                      [30]int64  // activity: 30 bins of 20 s (bin numbers)
+	Counts                    [30]uint16 // tool calls in each bin
+}
+
+const binSecs = 20
+
+// bump counts a tool call in the session's activity history.
+func (s *Session) bump(now time.Time) {
+	b := now.Unix() / binSecs
+	i := b % int64(len(s.Bins))
+	if s.Bins[i] != b {
+		s.Bins[i], s.Counts[i] = b, 0
+	}
+	s.Counts[i]++
+}
+
+// activity is the last ten minutes of tool calls, oldest first.
+func (s *Session) activity(now time.Time) []float64 {
+	n := int64(len(s.Bins))
+	cur := now.Unix() / binSecs
+	out := make([]float64, n)
+	for k := int64(0); k < n; k++ {
+		b := cur - n + 1 + k
+		if i := b % n; s.Bins[i] == b {
+			out[k] = float64(s.Counts[i])
+		}
+	}
+	return out
 }
 
 // EdgeStatus is what edge reports about the day (optional).
@@ -176,6 +206,21 @@ type UI struct {
 	sw, sh, bub        spring
 	meter              spring // a moment's level bar
 	meterKey           string
+	tweens             map[string]*tween
+	rolls              map[string]*roll
+	frame              int     // full frames drawn: tweens step once per frame
+	dt                 float64 // this frame's time step
+	tweening           bool    // a tween or roll is still moving
+	slideDir           float64 // pages slide sideways: -1 back, 1 forward
+	lastPage           string
+	mind               *mind
+	watching           map[string]bool // sessions whose terminal has your focus
+	habits             *habits
+	openCtx            string // the desk when the card opened
+	openAt             time.Time
+	chosen             string // the page you switched to while it was open
+	lastChip           string
+	bubbleOn           bool
 	ex, ey, es         spring // Ember's position and size, shared by every view
 	look               spring
 	emberCol           [3]float64
@@ -208,6 +253,9 @@ func NewUI(w, h int, barH float32) *UI {
 	u.dc = u.content
 	u.light = -1
 	u.sliders = map[string]image.Rectangle{}
+	u.tweens, u.rolls, u.watching = map[string]*tween{}, map[string]*roll{}, map[string]bool{}
+	u.mind = newMind(u.now())
+	u.habits = &habits{Counts: map[string]map[string]float64{}}
 	u.start, u.lastBlink, u.glanceAt = u.now(), u.now(), u.now()
 	c := u.pal.muted
 	u.emberCol = [3]float64{float64(c.R), float64(c.G), float64(c.B)}
@@ -220,6 +268,9 @@ func (u *UI) Bounce()     { u.bounceAt = u.now() }
 // ---- cards ----
 
 func (u *UI) AddCard(c *Card) {
+	if c.Born.IsZero() {
+		c.Born = u.now()
+	}
 	for i, old := range u.cards {
 		if old.ID == c.ID {
 			u.cards[i] = c
@@ -278,6 +329,9 @@ func (u *UI) expire() bool {
 func (u *UI) Moment(m moment) {
 	if cur := u.moment; m.osd && cur != nil && !cur.osd && cur.until.After(u.now()) {
 		u.under = cur
+	}
+	if u.moment == nil || u.moment.key != m.key {
+		u.mind.notice(u.now(), 0.6) // Ember looks at the news
 	}
 	u.moment = &m
 	if m.mood == moodHappy {
@@ -354,16 +408,7 @@ func (u *UI) primary() string {
 	if u.focus != "" && u.now().Sub(u.focusAt) < focusHold && (u.focus == "clock" || u.has(u.focus)) {
 		return u.focus
 	}
-	if len(ss) > 0 && ss[0].State == "work" {
-		return "claude"
-	}
-	if u.track != nil && u.track.Playing && u.cfg.Music {
-		return "music"
-	}
-	if e := u.edge; e != nil && u.cfg.Edge && (e.StartedMs > 0 || e.Closed) {
-		return "edge"
-	}
-	return "clock"
+	return u.attend(u.now()) // the rest is a matter of salience: see mind.go
 }
 
 // secondary is what the bubble beside the pill shows, if anything.
@@ -444,16 +489,20 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 		dt = 1.0 / 60
 	}
 	u.lastTick = now
+	u.dt = dt
 	v := u.currentView()
 	key := u.viewKey(v)
 	if v != u.lastView || key != u.lastKey {
-		if u.lastView == vExpanded && v != vExpanded {
-			u.page = "" // the next open follows the pill again
-		}
+		u.transition(v, key, now)
 		// keep what's on screen to cross-fade it out while the new view grows in
 		copy(u.prev.Pix, u.content.img.Pix)
 		u.prevAlive = !u.trAt.IsZero()
 		u.lastView, u.lastKey, u.trAt, u.dirty = v, key, now, true
+	}
+	if v == vCompact { // a chip that counts minutes changes without any event
+		if c := u.compactLine().chip; c != u.lastChip {
+			u.lastChip, u.dirty = c, true
+		}
 	}
 	if m := now.Truncate(time.Minute); !m.Equal(u.minute) {
 		u.minute, u.dirty = m, true
@@ -470,6 +519,12 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 	bt := 0.0
 	if v == vCompact && u.secondary(u.primary()) != "" {
 		bt = 1
+	}
+	if on := bt == 1; on != u.bubbleOn {
+		u.bubbleOn = on
+		if on {
+			u.mind.notice(now, 1) // something new beside the pill: Ember looks
+		}
 	}
 	u.bub.step(bt, dt)
 	mt := 0.0
@@ -492,10 +547,13 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 
 	// Ember (blinks, glances, gliding to a new spot) and other live parts only
 	// need their own rectangles repainted: that's the cheap path below.
-	full := u.dirty || !settled || p < 1 || sliding || flashing
-	moving := !settled || p < 1 || sliding || flashing || u.blinking() || u.bouncing() || !u.emberSettled()
+	full := u.dirty || !settled || p < 1 || sliding || flashing || u.tweening
 	if full {
-		u.dirty = false
+		u.dirty, u.tweening = false, false
+		u.frame++
+		if u.frame%300 == 0 {
+			u.gcTweens()
+		}
 		u.hits, u.lives = u.hits[:0], u.lives[:0]
 		u.spot = emberSpot{}
 		// the shape, at its current (springing) size
@@ -522,10 +580,15 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 			u.hits = append(u.hits, hit{u.shape.bounds(), "panel"})
 			u.drawExpanded(fx, float32(tw))
 		}
-		if u.prevAlive && p < 1 {
-			composite(u.cv, u.prev, u.shape, 1-math.Min(1, p/0.45))
+		// pages slide sideways as they cross-fade; everything else just fades
+		off := float32(0)
+		if v == vExpanded && u.slideDir != 0 {
+			off = float32(u.slideDir) * 26
 		}
-		composite(u.cv, u.content.img, u.shape, p)
+		if u.prevAlive && p < 1 {
+			composite(u.cv, u.prev, u.shape, 1-math.Min(1, p/0.45), int(-off*float32(p)))
+		}
+		composite(u.cv, u.content.img, u.shape, p, int(off*float32(1-p)))
 		copy(u.base.Pix, u.cv.img.Pix)
 		u.stepEmber(dt, now)
 		b := u.shape.bounds().Union(u.bubble).Inset(-10)
@@ -538,7 +601,7 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 		}
 		u.drawEmber(t, now)
 		u.lastEmber = u.emberRect()
-		return moving, damage
+		return u.moving(settled, p, sliding, flashing), damage
 	}
 	u.stepEmber(dt, now)
 	er := u.emberRect()
@@ -555,7 +618,62 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 	}
 	u.drawEmber(t, now)
 	u.lastEmber = er
-	return moving, damage
+	return u.moving(settled, p, sliding, flashing), damage
+}
+
+func (u *UI) moving(settled bool, p float64, sliding, flashing bool) bool {
+	return !settled || p < 1 || sliding || flashing || u.tweening || u.mind.blinking(u.now()) || u.bouncing() || !u.emberSettled()
+}
+
+// transition: the view is about to change. The card learns which page you
+// wanted, pages slide in the direction you moved, and a fresh open gets the
+// page you usually pick in this situation.
+func (u *UI) transition(v view, key string, now time.Time) {
+	switch {
+	case v == vExpanded && u.lastView == vExpanded: // a page change
+		u.slideDir = 0
+		pages := u.pages()
+		from, to := -1, -1
+		for i, pg := range pages {
+			if "exp:"+pg == u.lastKey {
+				from = i
+			}
+			if "exp:"+pg == key {
+				to = i
+			}
+		}
+		if from >= 0 && to >= 0 && from != to {
+			u.slideDir = float64(sign(to - from))
+		}
+	case v == vExpanded:
+		u.slideDir, u.openCtx, u.openAt, u.chosen = 0, u.habitContext(), now, ""
+		if u.page == "" {
+			if pg := u.habits.predict(u.openCtx, u.pages()); pg != "" {
+				u.page = pg
+			}
+		}
+	case u.lastView == vExpanded:
+		if now.Sub(u.openAt) > 900*time.Millisecond && u.openCtx != "" { // a real look, not a pass-by
+			pg := u.chosen
+			if pg == "" {
+				pg = u.lastPage
+			}
+			if pg != "" {
+				u.habits.learn(u.openCtx, pg)
+			}
+		}
+		u.page, u.slideDir = "", 0 // the next open follows the pill again
+	}
+}
+
+func sign(x int) int {
+	switch {
+	case x < 0:
+		return -1
+	case x > 0:
+		return 1
+	}
+	return 0
 }
 
 func (u *UI) liveRects() []image.Rectangle {
@@ -566,8 +684,9 @@ func (u *UI) liveRects() []image.Rectangle {
 	return rs
 }
 
-// composite draws src (premultiplied) over dst at strength k, only inside n.
-func composite(dst *canvas, src *image.RGBA, n notch, k float64) {
+// composite draws src (premultiplied) over dst at strength k, only inside n,
+// shifted dx pixels sideways.
+func composite(dst *canvas, src *image.RGBA, n notch, k float64, dx int) {
 	if k <= 0.003 {
 		return
 	}
@@ -582,15 +701,19 @@ func composite(dst *canvas, src *image.RGBA, n notch, k float64) {
 		o := py * dst.img.Stride
 		s, d := src.Pix[o:], dst.img.Pix[o:]
 		for px := x0; px < x1; px++ {
-			i := px * 4
-			sa := uint32(s[i+3]) * kk >> 8
+			sx := px - dx
+			if sx < 0 || sx >= b.Max.X {
+				continue
+			}
+			i, j := px*4, sx*4
+			sa := uint32(s[j+3]) * kk >> 8
 			if sa == 0 {
 				continue
 			}
 			inv := 255 - min(sa, 255)
-			d[i] = uint8(min(255, uint32(s[i])*kk>>8+uint32(d[i])*inv/255))
-			d[i+1] = uint8(min(255, uint32(s[i+1])*kk>>8+uint32(d[i+1])*inv/255))
-			d[i+2] = uint8(min(255, uint32(s[i+2])*kk>>8+uint32(d[i+2])*inv/255))
+			d[i] = uint8(min(255, uint32(s[j])*kk>>8+uint32(d[i])*inv/255))
+			d[i+1] = uint8(min(255, uint32(s[j+1])*kk>>8+uint32(d[i+1])*inv/255))
+			d[i+2] = uint8(min(255, uint32(s[j+2])*kk>>8+uint32(d[i+2])*inv/255))
 			d[i+3] = uint8(min(255, sa+uint32(d[i+3])*inv/255))
 		}
 	}
@@ -605,26 +728,30 @@ func (u *UI) emberSettled() bool {
 	return u.ex.settled(float64(u.spot.x)) && u.ey.settled(float64(u.spot.y)) && u.es.settled(float64(u.spot.s))
 }
 
-// glancing: Ember's eyes are moving (an idle glance, or following the pointer).
+// glancing: Ember's eyes are moving (a glance, a notice, the pointer).
 func (u *UI) glancing() bool {
-	return u.now().Sub(u.glanceAt) < 900*time.Millisecond || math.Abs(u.look.x-u.lookTarget(u.now())) > 0.05
+	_, moving := u.mind.gaze(u.now(), 0, u.hover)
+	return moving || math.Abs(u.look.x-u.lookTarget(u.now())) > 0.03
 }
 
 func (u *UI) lookTarget(now time.Time) float64 {
-	if u.hover {
-		return math.Max(-1, math.Min(1, (u.mx-u.ex.x)/90)) // watch the pointer
+	ptr := math.Max(-1, math.Min(1, (u.mx-u.ex.x)/90)) // watch the pointer
+	g, _ := u.mind.gaze(now, ptr, u.hover)
+	return g
+}
+
+// senses is what the mind takes in each frame.
+func (u *UI) senses() senses {
+	s := senses{music: u.track != nil && u.track.Playing, hovered: u.hover}
+	for _, x := range u.sessions {
+		s.working = s.working || x.State == "work"
+		s.waiting = s.waiting || x.State == "wait"
 	}
-	if g := now.Sub(u.glanceAt).Seconds(); g < 0.8 { // an idle glance, left or right
-		dir := 1.0
-		if u.glanceAt.UnixMilli()/1000%2 == 0 {
-			dir = -1
-		}
-		return 0.9 * math.Sin(g/0.8*math.Pi) * dir
-	}
-	return 0
+	return s
 }
 
 func (u *UI) stepEmber(dt float64, now time.Time) {
+	u.mind.step(now, u.senses())
 	if !u.spot.show {
 		return
 	}
@@ -634,44 +761,62 @@ func (u *UI) stepEmber(dt float64, now time.Time) {
 	u.ex.stepK(float64(u.spot.x), dt, 260, 28)
 	u.ey.stepK(float64(u.spot.y), dt, 260, 28)
 	u.es.stepK(float64(u.spot.s), dt, 260, 28)
-	u.look.stepK(u.lookTarget(now), dt, 120, 18)
-	if now.Sub(u.glanceAt) > 9*time.Second && !u.hover {
-		u.glanceAt = now
-	}
+	u.look.stepK(u.lookTarget(now), dt, 160, 22)
+	// colour: the mood's, pulled toward red by a bad mood, lifted by a good one
 	target := u.pal.moodColor(u.spot.mood)
+	if v := u.mind.valence; v < 0 {
+		target = mix(target, u.pal.red, math.Min(0.6, -v*0.6))
+	} else if v > 0.45 {
+		target = mix(target, colorWhite, (v-0.45)*0.25)
+	}
 	k := math.Min(1, dt*7) // colours blend over ~150 ms
 	u.emberCol[0] += (float64(target.R) - u.emberCol[0]) * k
 	u.emberCol[1] += (float64(target.G) - u.emberCol[1]) * k
 	u.emberCol[2] += (float64(target.B) - u.emberCol[2]) * k
 }
 
+// emberRect covers Ember, the light it casts, and its z's when asleep.
 func (u *UI) emberRect() image.Rectangle {
 	if !u.spot.show {
 		return image.Rectangle{}
 	}
 	x, y, s := float32(u.ex.x), float32(u.ey.x), float32(u.es.x)
-	return image.Rect(int(x-s*0.85), int(y-s*1.3), int(x+s*0.85)+2, int(y+s*0.8)+2)
+	g := s * 1.5
+	r := image.Rect(int(x-g), int(y-g), int(x+g)+2, int(y+g)+2)
+	if u.mind.asleep {
+		r = r.Union(image.Rect(int(x), 0, int(x+s+10), int(y)))
+	}
+	return r
 }
 
 func (u *UI) drawEmber(t float64, now time.Time) {
 	if !u.spot.show {
 		return
 	}
-	blink := float32(0)
-	if bs := now.Sub(u.lastBlink).Seconds(); bs < 0.16 {
-		blink = float32(math.Sin(bs / 0.16 * math.Pi))
-	} else if bs > 4.3 {
-		u.lastBlink = now
-	}
+	m := u.mind
 	bounce := float32(0)
 	if bt := now.Sub(u.bounceAt).Seconds(); bt < 0.7 {
 		bounce = float32(math.Abs(math.Sin(bt/0.7*2*math.Pi)) * (1 - bt/0.7))
 	}
 	col := color.NRGBA{uint8(u.emberCol[0]), uint8(u.emberCol[1]), uint8(u.emberCol[2]), 255}
-	u.cv.ember(u.pal, float32(u.ex.x), float32(u.ey.x), float32(u.es.x), u.spot.mood, t, blink, bounce, col, 1, float32(u.look.x))
+	x, y, s := float32(u.ex.x), float32(u.ey.x), float32(u.es.x)
+	s *= 1 + 0.06*float32(m.arousal-0.5) // a touch bigger when lively
+	if s > 2 && !m.asleep {              // the light it casts on the island, brighter with energy
+		u.cv.glowInside(u.emberRect(), x, y-s*0.2, s*1.5, col, 0.08+0.16*m.arousal)
+	}
+	u.cv.emberX(u.pal, x, y, s, u.spot.mood, t, expr{blink: float32(m.blink(now)), bounce: bounce,
+		look: float32(u.look.x), lids: float32(m.lids(now)), energy: float32(m.arousal)}, col, 1)
+	if m.asleep && s > 6 { // z's drift up and fade
+		f := face(fSemiBold, 7)
+		for i := 0; i < 2; i++ {
+			k := math.Mod(t/2.4+float64(i)*0.5, 1)
+			zx := x + s*0.45 + float32(k)*5
+			zy := y - s*0.3 - float32(k)*s*0.75
+			u.cv.text(f, "z", zx, zy, alpha(u.pal.muted, math.Sin(k*math.Pi)*0.9))
+		}
+	}
 }
 
-func (u *UI) blinking() bool { return u.now().Sub(u.lastBlink) < 170*time.Millisecond }
 func (u *UI) bouncing() bool { return u.now().Sub(u.bounceAt) < 700*time.Millisecond }
 
 // continuous: something animates at full rate (Ember flickering, music, a card).
@@ -687,7 +832,12 @@ func (u *UI) continuous() bool {
 	return (u.track != nil && u.track.Playing) || u.moment != nil
 }
 
-func (u *UI) nextBlink() time.Time { return u.lastBlink.Add(4300 * time.Millisecond) }
+func (u *UI) nextBlink() time.Time { return u.mind.blinkAt }
+
+// shimmering: the pill's label is lit while Claude works.
+func (u *UI) shimmering() bool {
+	return u.lastView == vCompact && u.primary() == "claude" && u.compactLine().work
+}
 
 // viewKey changes when what's on screen changes identity (a cross-fade).
 func (u *UI) viewKey(v view) string {

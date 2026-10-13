@@ -27,7 +27,7 @@ func TestFilmstrip(t *testing.T) {
 			img.Set(x, y, color.NRGBA{uint8(120 + x*2), uint8(40 + y), uint8(160 - x), 255})
 		}
 	}
-	u.art = &albumArt{small: scaleSquare(img, 18), large: scaleSquare(img, 46)}
+	u.art = &albumArt{small: scaleSquare(img, 18), large: scaleSquare(img, 60)}
 	settle(u, &clock)
 	u.pinned = true
 	frames := []int{0, 2, 4, 6, 9, 14, 30}

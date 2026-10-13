@@ -175,7 +175,11 @@ func (a *app) sessionWindow(pids []int) (deskWindow, bool) {
 func (a *app) deskChanged() {
 	changed := false // Claude's title spinner ticks every second: only a real change costs a frame
 	for _, s := range a.ui.sessions {
-		if w, ok := a.sessionWindow(s.Pids); ok {
+		w, ok := a.sessionWindow(s.Pids)
+		if watching := ok && w.ID == a.desk.focused; watching != a.ui.watching[s.ID] {
+			a.ui.watching[s.ID], changed = watching, true // attention: you can see this one already
+		}
+		if ok {
 			if t := sessionTitle(w.Title); t != "" && t != s.Title {
 				s.Title, changed = t, true
 			}

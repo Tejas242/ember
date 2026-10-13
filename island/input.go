@@ -29,6 +29,7 @@ func (u *UI) pointer(e pointerEvent) (redraw, hand bool) {
 		}
 		if !u.hover {
 			u.hover, u.hoverAt = true, u.now()
+			u.mind.kick(u.now(), 0.15, 0.02) // it notices you
 			redraw = true
 		}
 	case "leave":
@@ -99,6 +100,7 @@ func (u *UI) scroll(steps float64) {
 		for i, a := range acts {
 			if a == cur && len(acts) > 0 {
 				u.page = acts[(i+dir+len(acts))%len(acts)]
+				u.chosen = u.page
 				return
 			}
 		}
@@ -158,6 +160,7 @@ func (u *UI) press(k string, button int) {
 		}
 	case strings.HasPrefix(k, "tab:"):
 		u.page = strings.TrimPrefix(k, "tab:")
+		u.chosen = u.page
 	case k == "sys:mute":
 		u.vol.muted = !u.vol.muted
 		u.key(k)

@@ -1,0 +1,327 @@
+package island
+
+import (
+	"image"
+	"image/color"
+	"math"
+	"time"
+
+	"golang.org/x/image/vector"
+)
+
+// The design system: spacing, type, motion. Every interactive thing eases
+// (hover, press, the tab indicator), numbers roll instead of jumping, and
+// corners are continuous (a superellipse), not circular arcs.
+
+const (
+	pad     = 16  // the card's inner margin
+	headH   = 50  // the card's header: Ember, title, context line, page switcher
+	rowGap  = 6   // between rows
+	radCard = 22  // the card's bottom corners
+	radRow  = 12  // rows, code, options
+	cornerN = 2.7 // superellipse exponent: 2 is a circle; Apple's corners are ~2.5–3
+)
+
+var (
+	fTitle   = func() fontFace { return face(fSemiBold, 14) }
+	fBody    = func() fontFace { return face(fMedium, 12.5) }
+	fBodyReg = func() fontFace { return face(fRegular, 12.5) }
+	fCaption = func() fontFace { return face(fRegular, 11) }
+	fNum     = func() fontFace { return face(fSemiBold, 12) }
+	fMonoS   = func() fontFace { return face(fMono, 11.5) }
+)
+
+// cornerInset is how far a continuous corner of radius r sits in from the
+// straight edge, d px into the corner (0 at its start, r at the very edge).
+func cornerInset(r, d float32, n float64) float32 {
+	if d <= 0 || r <= 0 {
+		return 0
+	}
+	k := math.Min(1, float64(d/r))
+	return r * float32(1-math.Pow(1-math.Pow(k, n), 1/n))
+}
+
+// ---- tweens: small springs keyed by name, stepped once per frame ----
+
+type tween struct {
+	x, v  float64
+	frame int
+}
+
+// tw eases the value under key toward target and returns it. A new key
+// starts at from. Keys nobody asks for fade out of the table.
+func (u *UI) tw(key string, target, from float64) float64 {
+	t := u.tweens[key]
+	if t == nil {
+		t = &tween{x: from}
+		u.tweens[key] = t
+	}
+	if t.frame != u.frame {
+		t.frame = u.frame
+		dt := u.dt
+		for dt > 0 { // critically damped, stepped finely for stability
+			h := math.Min(dt, 1.0/120)
+			t.v += ((target-t.x)*520 - t.v*2*math.Sqrt(520)) * h
+			t.x += t.v * h
+			dt -= h
+		}
+		if math.Abs(target-t.x) < 0.002 && math.Abs(t.v) < 0.02 {
+			t.x, t.v = target, 0
+		}
+	}
+	if t.x != target {
+		u.tweening = true
+	}
+	return t.x
+}
+
+// hl is the eased highlight (0..1) of a hoverable control.
+func (u *UI) hl(key string) float64 {
+	on := 0.0
+	if u.hoverKey == key || u.drag == key {
+		on = 1
+	}
+	return u.tw("hl:"+key, on, 0)
+}
+
+// pressed is a brief 0..1 dip after a click on key.
+func (u *UI) pressed(key string) float64 {
+	if u.pressKey != key {
+		return 0
+	}
+	t := u.now().Sub(u.pressAt).Seconds()
+	if t > 0.22 {
+		return 0
+	}
+	u.tweening = true
+	return math.Sin(t / 0.22 * math.Pi)
+}
+
+func (u *UI) gcTweens() {
+	for k, t := range u.tweens {
+		if u.frame-t.frame > 240 {
+			delete(u.tweens, k)
+		}
+	}
+}
+
+// ---- numbers that roll ----
+
+type roll struct {
+	old, cur string
+	at       time.Time
+}
+
+const rollTime = 260 * time.Millisecond
+
+// tabWidth is the width rollText gives s. (Geist's digits are close to
+// even; at 12 px a strict tabular grid looks gappier than it is steady.)
+func tabWidth(f fontFace, s string) float32 { return measure(f, s) }
+
+// rollText draws s right-aligned at rx. When it changes, each changed
+// character rolls: the old one up and out, the new one in from below.
+func (u *UI) rollText(c *canvas, key, s string, f fontFace, rx, base float32, col color.NRGBA) float32 {
+	r := u.rolls[key]
+	if r == nil {
+		r = &roll{cur: s}
+		u.rolls[key] = r
+	}
+	if s != r.cur {
+		r.old, r.cur, r.at = r.cur, s, u.now()
+	}
+	k := float64(u.now().Sub(r.at)) / float64(rollTime)
+	if k < 1 {
+		u.tweening = true
+	}
+	e := float32(easeOut(k))
+	w := tabWidth(f, s)
+	// align old and new from the right, character by character
+	newR, oldR := []rune(s), []rune(r.old)
+	x := rx
+	for i := 1; i <= max(len(newR), len(oldR)); i++ {
+		var n, o rune
+		if i <= len(newR) {
+			n = newR[len(newR)-i]
+		}
+		if i <= len(oldR) {
+			o = oldR[len(oldR)-i]
+		}
+		cw := float32(0)
+		if n != 0 {
+			cw = measure(f, string(n))
+		} else {
+			cw = measure(f, string(o))
+		}
+		x -= cw
+		if k >= 1 || n == o {
+			if n != 0 {
+				c.text(f, string(n), x+(cw-measure(f, string(n)))/2, base, col)
+			}
+			continue
+		}
+		if o != 0 {
+			c.text(f, string(o), x+(cw-measure(f, string(o)))/2, base-8*e, alpha(col, 1-float64(e)))
+		}
+		if n != 0 {
+			c.text(f, string(n), x+(cw-measure(f, string(n)))/2, base+8*(1-e), alpha(col, float64(e)))
+		}
+	}
+	return w
+}
+
+// ---- the shimmer on a label while Claude thinks ----
+
+// shimmerLive sweeps a soft band of light across text already drawn at
+// (x, base): the label looks lit from inside while work is going on.
+func (u *UI) shimmerLive(f fontFace, s string, x, base float32, col color.NRGBA) {
+	m := u.cv.mask(f, s)
+	px, py := int(math.Round(float64(x)))-1, int(math.Round(float64(base)))-m.asc
+	r := image.Rect(px, py, px+m.m.Rect.Dx(), py+m.m.Rect.Dy())
+	w := float64(r.Dx())
+	u.lives = append(u.lives, live{r.Inset(-1), func(c *canvas, t float64) {
+		span := w + 120
+		center := math.Mod(t*95, span+160) - 60 // a pass every couple of seconds, with a rest
+		for yy := 0; yy < m.m.Rect.Dy(); yy++ {
+			row := c.img.Pix[(py+yy)*c.img.Stride:]
+			for xx := 0; xx < m.m.Rect.Dx(); xx++ {
+				a := float64(m.m.Pix[yy*m.m.Stride+xx])
+				if a == 0 {
+					continue
+				}
+				d := (float64(xx) - center) / 26
+				k := math.Exp(-d*d) * 0.75 * a / 255
+				if k < 0.01 {
+					continue
+				}
+				i := (px + xx) * 4
+				if px+xx < 0 || i+3 >= len(row) {
+					continue
+				}
+				for ch, v := range [3]uint8{col.R, col.G, col.B} {
+					row[i+ch] = uint8(float64(row[i+ch])*(1-k) + float64(v)*k)
+				}
+			}
+		}
+	}})
+}
+
+// ---- the page switcher ----
+
+// segmented draws icon tabs right-aligned at rx with an indicator that
+// glides to the current page.
+func (u *UI) segmented(pages []string, cur string, rx, y float32) {
+	p := u.pal
+	const sw, sh, gap = 30, 24, 2
+	n := float32(len(pages))
+	w := n*sw + (n-1)*gap + 4
+	x := rx - w
+	u.dc.roundRect(x, y, w, sh+4, 12, alpha(p.fg, 0.06))
+	idx := 0
+	for i, pg := range pages {
+		if pg == cur {
+			idx = i
+		}
+	}
+	target := float64(x + 2 + float32(idx)*(sw+gap))
+	ix := float32(u.tw("seg:x", target, target))
+	u.dc.roundRect(ix, y+2, sw, sh, 10, alpha(p.fg, 0.13))
+	for i, pg := range pages {
+		sx := x + 2 + float32(i)*(sw+gap)
+		key := "tab:" + pg
+		on := 1 - math.Min(1, math.Abs(float64(ix-sx))/(sw+gap)) // brightens as the indicator arrives
+		h := u.hl(key)
+		col := mix(p.muted, p.fg, math.Max(on, h*0.6))
+		u.tabIcon(pg, sx+sw/2, y+2+sh/2, col)
+		u.hits = append(u.hits, hit{image.Rect(int(sx), int(y), int(sx+sw), int(y+sh+4)), key})
+	}
+}
+
+// tabIcon is each page's glyph: a flame, a note, a target, sliders.
+func (u *UI) tabIcon(page string, cx, cy float32, col color.NRGBA) {
+	c := u.dc
+	switch page {
+	case "claude":
+		c.fillPath(cx-6, cy-8, cx+6, cy+7, col, func(r *vector.Rasterizer, ox, oy float32) {
+			x, y := cx-ox, cy-oy
+			r.MoveTo(x+1, y-7)
+			r.CubeTo(x+1.5, y-3, x+5.5, y-2.5, x+5.2, y+1.8)
+			r.CubeTo(x+5, y+5, x+2.5, y+6.5, x, y+6.5)
+			r.CubeTo(x-2.8, y+6.5, x-5.2, y+4.6, x-5.2, y+1.6)
+			r.CubeTo(x-5.2, y-0.8, x-4, y-2.2, x-3.2, y-3)
+			r.CubeTo(x-3, y-1.2, x-2.2, y-0.2, x-1.2, y+0.2)
+			r.CubeTo(x-1.8, y-3, x-0.6, y-5.4, x+1, y-7)
+			r.ClosePath()
+		})
+	case "music":
+		c.circle(cx-3.2, cy+4, 2.7, col)
+		c.roundRect(cx-1.2, cy-6.5, 1.6, 11, 0.8, col)
+		c.poly(col, pt{cx - 0.4, cy - 6.5}, pt{cx + 5, cy - 4.4}, pt{cx + 5, cy - 2.2}, pt{cx - 0.4, cy - 4.2})
+	case "edge":
+		c.frame(cx-6.5, cy-6.5, 13, 13, 6.5, 1.4, col)
+		c.circle(cx, cy, 2.4, col)
+	case "system":
+		for i, k := range []float32{0.3, 0.7} {
+			yy := cy - 3.5 + float32(i)*7
+			c.roundRect(cx-6.5, yy-0.8, 13, 1.6, 0.8, alpha(col, 0.55))
+			c.circle(cx-6.5+13*k, yy, 2.4, col)
+		}
+	}
+}
+
+// ---- syntax tint for commands ----
+
+// shellTokens splits a command line into coloured runs: the program, flags,
+// strings, the rest.
+func shellTokens(p palette, ln string) []struct {
+	s   string
+	col color.NRGBA
+} {
+	type run = struct {
+		s   string
+		col color.NRGBA
+	}
+	var out []run
+	first := true
+	i := 0
+	for i < len(ln) {
+		j := i
+		switch ln[i] {
+		case ' ', '\t':
+			for j < len(ln) && (ln[j] == ' ' || ln[j] == '\t') {
+				j++
+			}
+			out = append(out, run{ln[i:j], p.fg})
+			i = j
+			continue
+		case '"', '\'':
+			q := ln[i]
+			j++
+			for j < len(ln) && ln[j] != q {
+				j++
+			}
+			j = min(j+1, len(ln))
+			out = append(out, run{ln[i:j], mix(p.green, p.fg, 0.25)})
+		case '|', '&', ';', '>', '<':
+			for j < len(ln) && (ln[j] == '|' || ln[j] == '&' || ln[j] == ';' || ln[j] == '>' || ln[j] == '<') {
+				j++
+			}
+			out = append(out, run{ln[i:j], p.yellow})
+			first = true
+		default:
+			for j < len(ln) && ln[j] != ' ' && ln[j] != '\t' && ln[j] != '"' && ln[j] != '\'' && ln[j] != '|' && ln[j] != ';' {
+				j++
+			}
+			tok := ln[i:j]
+			col := p.fg
+			switch {
+			case first:
+				col, first = mix(p.blue, p.fg, 0.15), false
+			case tok[0] == '-':
+				col = p.muted
+			}
+			out = append(out, run{tok, col})
+		}
+		i = j
+	}
+	return out
+}

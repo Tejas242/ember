@@ -4,6 +4,7 @@ import (
 	"image"
 	"log"
 	"math"
+	"time"
 )
 
 // layer-shell constants (wlr-layer-shell-unstable-v1)
@@ -38,6 +39,8 @@ type window struct {
 	scroll                             float64
 	onPointer                          func(pointerEvent)
 	onFrame                            func()
+	onIdle                             func(idle bool)
+	idleMgr, idleVer                   uint32
 	lastInput                          image.Rectangle
 	lastShape                          uint32
 }
@@ -70,6 +73,9 @@ func openWindow(w, h, marginTop int, layer uint32) (*window, error) {
 			win.cursorMgr = bind(1, nil)
 		case "ext_background_effect_manager_v1":
 			win.blurMgr = bind(1, nil)
+		case "ext_idle_notifier_v1":
+			win.idleVer = min(ver, 2)
+			win.idleMgr = bind(2, nil)
 		case "wl_seat":
 			if win.seat == 0 {
 				win.seat = bind(5, win.onSeat)
@@ -86,6 +92,7 @@ func openWindow(w, h, marginTop int, layer uint32) (*window, error) {
 	if err := c.roundtrip(); err != nil { // seat capabilities
 		return nil, err
 	}
+	win.watchIdle(2 * time.Minute)
 
 	win.surface = c.newID(nil)
 	c.send(win.compositor, 0, win.surface)
@@ -107,6 +114,25 @@ func openWindow(w, h, marginTop int, layer uint32) (*window, error) {
 		}
 	}
 	return win, nil
+}
+
+// watchIdle asks to hear when you've been away from the keyboard and mouse
+// for d, and when you come back (ext-idle-notify-v1). Version 2's input
+// idle ignores inhibitors, so a playing video doesn't count as you.
+func (win *window) watchIdle(d time.Duration) {
+	if win.idleMgr == 0 || win.seat == 0 {
+		return
+	}
+	id := win.c.newID(func(op uint16, _ *dec) {
+		if win.onIdle != nil {
+			win.onIdle(op == 0) // 0 idled, 1 resumed
+		}
+	})
+	op := uint16(1) // get_idle_notification
+	if win.idleVer >= 2 {
+		op = 2 // get_input_idle_notification
+	}
+	win.c.send(win.idleMgr, op, id, uint32(d.Milliseconds()), win.seat)
 }
 
 func (win *window) onSeat(op uint16, d *dec) {

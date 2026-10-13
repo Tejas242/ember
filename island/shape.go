@@ -22,7 +22,11 @@ func (n notch) span(cy float32) (lx, rx float32, ok bool) {
 	}
 	lx, rx = n.x, n.x+n.w
 	if d := cy - (n.h - n.rb); d > 0 {
-		in := n.rb - float32(math.Sqrt(float64(max(0, n.rb*n.rb-d*d))))
+		e := cornerN // continuous corners on the card; a pill keeps round ends
+		if n.rb >= n.h/2-0.5 {
+			e = 2
+		}
+		in := cornerInset(n.rb, d, e)
 		lx, rx = lx+in, rx-in
 	}
 	if cy < n.ear {
@@ -113,8 +117,9 @@ func (n notch) blurRects() []image.Rectangle {
 // part that sits in the bar (rows above barH): there it is part of the bar.
 func (c *canvas) drawNotch(p palette, n notch, alpha float64, barH int) {
 	hole := n.interior()
-	for i := 4; i >= 1; i-- {
-		c.fillNotch(n, float32(i)*2, color.NRGBA{0, 0, 0, uint8(alpha * float64(5-i) * 7)}, hole, 2, barH-2)
+	for i := 7; i >= 1; i-- { // a soft, wide shadow: rings with a gaussian falloff
+		a := 30 * math.Exp(-math.Pow(float64(i)/3.4, 2))
+		c.fillNotch(n, float32(i)*1.6, color.NRGBA{0, 0, 0, uint8(alpha * a)}, hole, 2.5, barH-2)
 	}
 	c.fillNotch(n, 1, mixAlpha(p.line, 0.5*alpha), hole, 0, barH/2)
 	body := p.island

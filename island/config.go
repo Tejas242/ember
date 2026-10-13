@@ -125,6 +125,18 @@ func stripComment(ln string) string {
 	return ln
 }
 
+func (c Config) enabled(act string) bool {
+	switch act {
+	case "claude":
+		return c.Claude
+	case "music":
+		return c.Music
+	case "edge":
+		return c.Edge
+	}
+	return true
+}
+
 func (c Config) timeFormat() string {
 	if c.Clock24 {
 		return "15:04"

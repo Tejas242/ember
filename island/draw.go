@@ -143,6 +143,7 @@ func face(name string, size float64) font.Face {
 		panic(err)
 	}
 	faces[k] = f
+	faceInfo[f] = k
 	return f
 }
 
@@ -242,10 +243,14 @@ func (c *canvas) roundRectHole(x, y, w, h, rad float32, col color.NRGBA, hole im
 		}
 		cy := float32(py) + 0.5
 		inset := float32(0)
+		e := cornerN // continuous corners; pills and circles stay round
+		if rad >= min(w, h)/2-0.5 {
+			e = 2
+		}
 		if d := y + rad - cy; d > 0 {
-			inset = rad - float32(math.Sqrt(float64(max(0, rad*rad-d*d))))
+			inset = cornerInset(rad, d, e)
 		} else if d := cy - (y + h - rad); d > 0 {
-			inset = rad - float32(math.Sqrt(float64(max(0, rad*rad-d*d))))
+			inset = cornerInset(rad, d, e)
 		}
 		lx, rx := x+inset, x+w-inset
 		x0, x1 := max(int(math.Floor(float64(lx))), b.Min.X), min(int(math.Ceil(float64(rx))), b.Max.X)
@@ -303,6 +308,7 @@ func (c *canvas) circle(cx, cy, rad float32, col color.NRGBA) {
 }
 
 func (c *canvas) mask(f font.Face, s string) *textMask {
+	s = display(s)
 	k := maskKey{f, s}
 	if m := c.masks[k]; m != nil {
 		return m
@@ -312,10 +318,10 @@ func (c *canvas) mask(f font.Face, s string) *textMask {
 	}
 	met := f.Metrics()
 	asc, desc := met.Ascent.Ceil(), met.Descent.Ceil()
-	w := font.MeasureString(f, s).Ceil()
+	w := advance(f, s).Ceil()
 	m := image.NewAlpha(image.Rect(0, 0, w+2, asc+desc+1))
 	d := font.Drawer{Dst: m, Src: image.Opaque, Face: f, Dot: fixed.P(1, asc)}
-	d.DrawString(s)
+	runs(f, s, func(fc font.Face, part string) { d.Face = fc; d.DrawString(part) })
 	tm := &textMask{m: m, w: w, asc: asc}
 	c.masks[k] = tm
 	return tm
@@ -334,7 +340,7 @@ func (c *canvas) text(f font.Face, s string, x, y float32, col color.NRGBA) floa
 	return float32(m.w)
 }
 
-func measure(f font.Face, s string) float32 { return float32(font.MeasureString(f, s).Ceil()) }
+func measure(f font.Face, s string) float32 { return float32(advance(f, display(s)).Ceil()) }
 
 func ellipsize(f font.Face, s string, maxW float32) string {
 	if measure(f, s) <= maxW {
@@ -410,19 +416,31 @@ func (p palette) moodColor(m mood) color.NRGBA {
 // (-1 left … 1 right). body is the flame colour (moods blend between them),
 // alpha fades the whole thing with its content.
 func (c *canvas) ember(p palette, cx, cy, s float32, m mood, t float64, blink, bounce float32, body color.NRGBA, alpha float64, look float32) {
+	c.emberX(p, cx, cy, s, m, t, expr{blink: blink, bounce: bounce, look: look, lids: 1, energy: 0.6}, body, alpha)
+}
+
+// expr is Ember's expression, from the mind: lids 0 (shut) … 1, energy 0 … 1.
+type expr struct {
+	blink, bounce, look, lids, energy float32
+}
+
+func (c *canvas) emberX(p palette, cx, cy, s float32, m mood, t float64, e expr, body color.NRGBA, alpha float64) {
+	blink, bounce, look := e.blink, e.bounce, e.look
 	col := mixAlpha(body, alpha)
 	sway, stretch := float32(0), float32(1)
+	en := float64(e.energy)
 	switch m {
-	case moodWork:
-		sway = float32(math.Sin(t*7)*0.06+math.Sin(t*11.3)*0.035) * s
-		stretch = 1 + float32(math.Sin(t*9.1)*0.05)
+	case moodWork: // flickers harder and faster the busier it is
+		f := 0.75 + 0.5*en
+		sway = float32((math.Sin(t*7*f)*0.06+math.Sin(t*11.3*f)*0.035)*(0.6+0.8*en)) * s
+		stretch = 1 + float32(math.Sin(t*9.1*f)*0.05*(0.6+0.8*en))
 	case moodWait:
-		stretch = 1 + float32(math.Sin(t*3)*0.06)
+		stretch = 1 + float32(math.Sin(t*3*(0.8+0.6*en))*0.06)
 	case moodHappy:
 		stretch = 1 + float32(math.Sin(t*5)*0.03)
-	default: // idle: slow breath, a lazy sway
-		stretch = 1 + float32(math.Sin(t*1.6)*0.045)
-		sway = float32(math.Sin(t*0.9)*0.03) * s
+	default: // idle: a breath whose pace follows its energy, a lazy sway
+		stretch = 1 + float32(math.Sin(t*1.6*(0.55+0.9*en))*0.05)
+		sway = float32(math.Sin(t*0.9*(0.6+0.6*en))*0.03) * s
 	}
 	cy -= bounce * s * 0.35
 	flame := func(scale, lift float32, col color.NRGBA) {
@@ -460,8 +478,41 @@ func (c *canvas) ember(p palette, cx, cy, s float32, m mood, t float64, blink, b
 		eh *= 0.6
 	}
 	ex := sway*0.3 + look*s*0.07
+	if e.lids < 0.15 { // asleep: closed eyes, two soft curves
+		for _, dx := range []float32{-gap, gap} {
+			c.arc(cx+dx+ex, eyeY-s*0.03, ew*0.75, max(s*0.045, 1), 0.2, math.Pi-0.2, mixAlpha(p.ink, alpha))
+		}
+		return
+	}
+	eh *= float32(math.Min(1, float64(e.lids)))
 	for _, dx := range []float32{-gap, gap} {
 		c.roundRect(cx+dx-ew/2+ex, eyeY-eh/2, ew, max(eh, 1.2), ew/2, mixAlpha(p.ink, alpha))
+	}
+}
+
+// glowInside lights the island's body (and only its body: transparent
+// pixels around it stay untouched) with a soft radial light.
+func (c *canvas) glowInside(r image.Rectangle, cx, cy, rad float32, col color.NRGBA, strength float64) {
+	r = r.Intersect(c.img.Rect)
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		row := c.img.Pix[y*c.img.Stride:]
+		dy := float32(y) + 0.5 - cy
+		for x := r.Min.X; x < r.Max.X; x++ {
+			i := x * 4
+			if row[i+3] < 180 {
+				continue
+			}
+			dx := float32(x) + 0.5 - cx
+			d := (dx*dx + dy*dy) / (rad * rad)
+			if d >= 1 {
+				continue
+			}
+			k := (1 - d) * (1 - d) * float32(strength)
+			a := float32(row[i+3]) / 255 // stay premultiplied: light scales with the body's own alpha
+			row[i] = uint8(min(float32(row[i])+(float32(col.R)*a-float32(row[i]))*k, 255))
+			row[i+1] = uint8(min(float32(row[i+1])+(float32(col.G)*a-float32(row[i+1]))*k, 255))
+			row[i+2] = uint8(min(float32(row[i+2])+(float32(col.B)*a-float32(row[i+2]))*k, 255))
+		}
 	}
 }
 

@@ -23,6 +23,7 @@ func TestPreview(t *testing.T) {
 	mk := func() *UI {
 		u := NewUI(440, 280, 24)
 		u.now = func() time.Time { return clock }
+		u.mind = newMind(clock)
 		u.start, u.lastBlink, u.bounceAt = clock, clock, clock.Add(-time.Hour)
 		return u
 	}
@@ -34,7 +35,7 @@ func TestPreview(t *testing.T) {
 				img.Set(x, y, color.NRGBA{uint8(120 + x*2), uint8(40 + y), uint8(160 - x), 255})
 			}
 		}
-		u.art = &albumArt{small: scaleSquare(img, 18), large: scaleSquare(img, 46)}
+		u.art = &albumArt{small: scaleSquare(img, 18), large: scaleSquare(img, 60)}
 		u.art.accent = accentOf(u.art.large)
 	}
 	save := func(name string, u *UI) {

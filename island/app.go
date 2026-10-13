@@ -110,6 +110,8 @@ func Run() error {
 	}
 	a := &app{ui: NewUI(surfW, surfH, barHeight()), win: win, posts: posts, started: time.Now()}
 	a.ui.onKey = a.key
+	a.ui.habits = loadHabits()
+	win.onIdle = func(idle bool) { a.presence(idle); a.ui.Invalidate() }
 	a.reloadConfig()
 	a.loadSessions()
 	a.music = startMusic(posts)
@@ -178,6 +180,7 @@ func Run() error {
 				a.saveSessions()
 				saveDue = false
 			}
+			a.ui.habits.save()
 			if p := loadPalette(); p != a.ui.pal { // the wallpaper palette changed
 				a.ui.pal = p
 				a.ui.Invalidate()
@@ -233,6 +236,11 @@ func (a *app) nextWake(animating bool) time.Duration {
 	next := u.nextBlink()
 	if u.continuous() {
 		next = now.Add(flickerEvery)
+		if u.shimmering() {
+			next = now.Add(time.Second / 20) // the label's light moves smoothly
+		}
+	} else if u.mind.asleep {
+		next = now.Add(time.Second / 4) // slow breaths, drifting z's
 	} else if u.glancing() {
 		next = now.Add(time.Second / 30) // eyes move smoothly; nothing else needs the rate
 	} else {
@@ -261,21 +269,43 @@ func minTime(a, b time.Time) time.Time {
 	return a
 }
 
-// sweep forgets sessions whose Claude process is gone.
+// sweep forgets sessions whose Claude process is gone, and settles ones
+// that went silent: a Claude that was killed never says Stop, so after 30
+// minutes without a word "working" becomes idle (a long build still shows
+// its minutes in the pill until then).
 func (a *app) sweep() bool {
-	changed := false
+	changed, now := false, a.ui.now()
 	for id, s := range a.ui.sessions {
-		if !slices.ContainsFunc(s.Pids, alive) || (s.State == "idle" && a.ui.now().Sub(s.Seen) > 3*time.Hour) {
+		quiet := now.Sub(s.Seen)
+		switch {
+		case !slices.ContainsFunc(s.Pids, alive) || (s.State == "idle" && quiet > 3*time.Hour):
 			delete(a.ui.sessions, id)
+			changed = true
+		case s.State != "idle" && quiet > 30*time.Minute && !a.hasCard(id):
+			s.State, s.Label = "idle", ""
 			changed = true
 		}
 	}
 	return changed
 }
 
+// hasCard: a request from this session is still on the island.
+func (a *app) hasCard(session string) bool {
+	for _, c := range a.ui.cards {
+		if strings.Contains(c.ID, ":"+session) {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *app) setTrack(t *Track) {
 	prev := a.track
 	a.track, a.ui.track = t, t
+	if t != nil && t.Playing && (prev == nil || prev.Title != t.Title) {
+		a.ui.mind.novel["music"] = a.ui.now()
+		a.ui.mind.kick(a.ui.now(), 0.1, 0.1)
+	}
 	if t != nil && t.Playing && a.cfg.Music && (prev == nil || prev.Title != t.Title) && a.ui.primary() != "music" && a.ui.primary() != "moment" {
 		a.ui.Moment(moment{key: "track:" + t.Title, act: "music", mood: moodIdle, text: t.Title, sub: t.Artist,
 			until: a.ui.now().Add(4 * time.Second)})
@@ -512,7 +542,9 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 	case "SessionStart":
 		s.Agents = 0
 	case "UserPromptSubmit":
-		s.State, s.Label, s.Plus, s.Minus, s.Since = "work", "Thinking", 0, 0, now
+		s.State, s.Label, s.Plus, s.Minus, s.Since, s.StepAt = "work", "Thinking", 0, 0, now, now
+		a.ui.mind.kick(now, 0.25, 0.05)
+		a.ui.mind.novel["claude"] = now
 	case "SubagentStart":
 		s.Agents++
 	case "SubagentStop":
@@ -529,6 +561,11 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		if msg == "" {
 			msg = "unknown error"
 		}
+		a.ui.mind.kick(now, 0.35, -0.6) // a start, and a low mood that takes a while to lift
+		if a.ui.mind.away {
+			a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"fail", s.Project, s.ID})
+			break
+		}
 		a.ui.Moment(moment{key: "fail:" + s.ID, act: "claude", mood: moodError, text: "Stopped · " + s.Project,
 			sub: strings.ReplaceAll(msg, "_", " "), until: now.Add(8 * time.Second), focus: s.ID})
 	case "AskUserQuestion":
@@ -541,7 +578,13 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 			break
 		}
 		s.State = "work"
+		label := s.Label
 		s.Label, s.Plus, s.Minus = activity(in.Tool, tin)
+		if s.Label != label || s.StepAt.IsZero() {
+			s.StepAt = now
+		}
+		s.bump(now)
+		a.ui.mind.toolCall(now)
 	case "PostToolUse":
 		if s.State == "wait" {
 			s.State = "work"
@@ -560,20 +603,84 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		}
 	case "Stop":
 		s.State, s.Label = "idle", ""
+		a.ui.mind.kick(now, 0.2, 0.35) // pleased
+		if a.ui.mind.away {            // tell them when they're back
+			a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"done", s.Project, s.ID})
+			break
+		}
 		if !a.cfg.Done || slices.Contains(s.Pids, a.focusedPid()) {
 			break // they're looking at it
 		}
-		body := strings.TrimSpace(in.LastMessage)
-		if i := strings.IndexByte(body, '\n'); i > 0 {
-			body = body[:i]
-		}
-		a.ui.Moment(moment{key: "done:" + s.ID, act: "claude", mood: moodHappy, text: "Done · " + s.Project,
-			sub: strings.TrimLeft(body, "#*- "), until: now.Add(6 * time.Second), focus: s.ID})
+		a.done(s, summarize(in.LastMessage), now)
 	}
 	return ""
 }
 
+// done shows "Done · project". If another session's note is still up, the
+// two merge into one ("Done · edge, ember") rather than one hiding the other.
+func (a *app) done(s *Session, summary string, now time.Time) {
+	m := moment{key: "done:" + s.ID, act: "claude", mood: moodHappy, text: "Done · " + s.Project,
+		sub: summary, until: now.Add(6 * time.Second), focus: s.ID}
+	if cur := a.ui.moment; cur != nil && strings.HasPrefix(cur.key, "done") && cur.focus != s.ID && now.Before(cur.until) {
+		names := strings.TrimPrefix(cur.text, "Done · ")
+		n := strings.Count(names, ",") + 2
+		m.key = "done:many"
+		m.text = "Done · " + names + ", " + s.Project
+		m.sub = fmt.Sprintf("%d sessions finished", n)
+		m.until = now.Add(7 * time.Second)
+	}
+	a.ui.Moment(m)
+}
+
+// welcomeBack: you were away; here's what happened, in one line.
+func (a *app) welcomeBack(now time.Time) {
+	ms := a.ui.mind.missed
+	a.ui.mind.missed = nil
+	if len(ms) == 0 {
+		return
+	}
+	var parts []string
+	seen := map[string]bool{}
+	md, focus := moodHappy, ms[len(ms)-1].session
+	for _, n := range ms {
+		k := n.kind + n.project
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		switch n.kind {
+		case "done":
+			parts = append(parts, n.project+" done")
+		case "fail":
+			parts, md = append(parts, n.project+" stopped"), moodError
+		case "wait":
+			parts, md, focus = append(parts, n.project+" asked you"), moodWait, n.session
+		}
+	}
+	a.ui.Moment(moment{key: "away", act: "claude", mood: md, text: "While you were away",
+		sub: strings.Join(parts, " · "), until: now.Add(10 * time.Second), focus: focus})
+}
+
+// presence: the compositor says you've stopped (or started) using the machine.
+func (a *app) presence(idle bool) {
+	m, now := a.ui.mind, a.ui.now()
+	if idle {
+		m.away, m.awaySince = true, now
+		return
+	}
+	m.away = false
+	m.kick(now, 0.45, 0.1) // you're back: Ember perks up
+	if now.Sub(m.awaySince) > 30*time.Second {
+		a.ui.Bounce()
+		a.welcomeBack(now)
+	}
+}
+
 func (a *app) permission(s *Session, in hookInput, tin map[string]any, answer chan<- json.RawMessage) string {
+	a.ui.mind.kick(a.ui.now(), 0.4, -0.05)
+	if a.ui.mind.away {
+		a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"wait", s.Project, s.ID})
+	}
 	str := func(k string) string { v, _ := tin[k].(string); return v }
 	c := &Card{ID: "perm:" + s.ID + ":" + fmt.Sprint(time.Now().UnixNano()), Kind: "perm", Mood: moodWait,
 		Meta: s.Project, Priority: 10, Footer: "In terminal", Expires: a.ui.now().Add(AskTimeout - 5*time.Second)}
@@ -653,6 +760,10 @@ type question struct {
 
 // ask walks the AskUserQuestion questions one card at a time.
 func (a *app) ask(s *Session, in hookInput, tin map[string]any, answer chan<- json.RawMessage) string {
+	a.ui.mind.kick(a.ui.now(), 0.4, 0)
+	if a.ui.mind.away {
+		a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"wait", s.Project, s.ID})
+	}
 	var qs []question
 	b, _ := json.Marshal(tin["questions"])
 	json.Unmarshal(b, &qs)
