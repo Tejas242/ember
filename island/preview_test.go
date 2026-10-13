@@ -94,10 +94,8 @@ func TestPreview(t *testing.T) {
 	save("6-expanded", u)
 	u.edge = &EdgeStatus{Today: 0, Need: 1, Streak: 3, Closed: true, Task: "1360E · Polygon", Pending: true}
 
-	u.page = "claude"
 	save("6b-expanded-claude", u)
 
-	u.page = "edge"
 	u.edge.StartedMs = clock.Add(-23 * time.Minute).UnixMilli()
 	u.edge.Pending = false
 	save("6c-expanded-edge", u)
@@ -107,14 +105,14 @@ func TestPreview(t *testing.T) {
 	u.light = 0.7
 	u.power = &power{pct: 66, state: 2, present: true, tte: 2*3600 + 41*60}
 	u.sessions["c"] = &Session{ID: "c", Project: "ember", State: "idle", Title: "Ember end-to-end product", Since: clock.Add(-2 * time.Hour)}
-	u.pinned, u.page = true, "system"
+	u.pinned = true
 	save("6d-expanded-system", u)
-	u.page = "claude"
+
 	save("6e-expanded-claude-titles", u)
 
 	u = mk()
 	u.AddCard(&Card{ID: "p", Kind: "perm", Mood: moodWait, Title: "Run the store tests with the race detector", Meta: "kinvault", Shell: true,
-		Code: "go test -race ./store/... -run TestRepair -count=1",
+		Code:    "go test -race ./store/... -run TestRepair -count=1",
 		Buttons: []Button{{Key: "deny", Label: "Deny", Danger: true}, {Key: "always", Label: "Always"}, {Key: "allow", Label: "Allow", Primary: true}},
 		Footer:  "In terminal"})
 	save("7-permission", u)

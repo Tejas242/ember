@@ -77,7 +77,7 @@ func (u *UI) pointer(e pointerEvent) (redraw, hand bool) {
 }
 
 // scroll: over the pill it switches what the pill shows; over the card it
-// switches pages, except on the music page where it's volume.
+// changes the level under the pointer (a chip, the music row).
 func (u *UI) scroll(steps float64) {
 	dir := 1
 	if steps < 0 {
@@ -139,7 +139,7 @@ func (u *UI) press(k string, button int) {
 				u.moment = nil
 				return
 			case m.osd || m.batt || m.key == "power": // volume, brightness, battery: their controls
-				u.moment, u.page = nil, "system"
+				u.moment = nil
 			}
 		}
 		u.pinned, u.suppress = true, false

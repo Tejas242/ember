@@ -12,7 +12,7 @@ func TestSteadyFrameMatchesFull(t *testing.T) {
 	cases := map[string]func(u *UI, clock time.Time){
 		"music-card": func(u *UI, clock time.Time) {
 			u.track = &Track{Player: "p", Title: "Veridis Quo", Artist: "Daft Punk", Playing: true, Length: 5 * time.Minute, Position: 2 * time.Minute, PosAt: clock}
-			u.pinned, u.page = true, "music"
+			u.pinned = true
 		},
 		"music-pill": func(u *UI, clock time.Time) {
 			u.track = &Track{Player: "p", Title: "Veridis Quo", Artist: "Daft Punk", Playing: true, Length: 5 * time.Minute, Position: 2 * time.Minute, PosAt: clock}

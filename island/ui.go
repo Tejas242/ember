@@ -5,7 +5,6 @@ import (
 	"image"
 	"image/color"
 	"math"
-	"slices"
 	"sort"
 	"time"
 )
@@ -196,7 +195,6 @@ type UI struct {
 	onKey                   func(key string)
 	focus                   string // activity picked by scrolling / the bubble
 	focusAt                 time.Time
-	page                    string // expanded card page
 	seekRect                image.Rectangle
 	seekPreview             float64                    // where a dragged playhead is, 0..1
 	drag                    string                     // the control being dragged: sys:vol, sys:light, music:seek
@@ -219,7 +217,6 @@ type UI struct {
 	habits      *habits
 	openCtx     string // the desk when the card opened
 	openAt      time.Time
-	chosen      string // the page you switched to while it was open
 	lastChip    string
 	trailOn     bool
 	lastDone    struct {
@@ -376,15 +373,6 @@ func (u *UI) acts() []string {
 	return out
 }
 
-// pages are what the open card can show: the activities, then System.
-func (u *UI) pages() []string {
-	ps := u.acts()
-	if u.power != nil || u.vol.ok || u.light >= 0 {
-		ps = append(ps, "system")
-	}
-	return ps
-}
-
 func (u *UI) has(act string) bool {
 	for _, a := range u.acts() {
 		if a == act {
@@ -457,25 +445,6 @@ func (u *UI) currentView() view {
 		return vExpanded
 	}
 	return vCompact
-}
-
-// pageFor picks the expanded card's page: the one you chose, else the pill's.
-func (u *UI) pageFor() string {
-	if u.page != "" && slices.Contains(u.pages(), u.page) {
-		return u.page
-	}
-	switch p := u.primary(); p {
-	case "claude", "music", "edge":
-		return p
-	case "moment":
-		if u.moment != nil && u.has(u.moment.act) {
-			return u.moment.act
-		}
-	}
-	if a := u.pages(); len(a) > 0 {
-		return a[0]
-	}
-	return ""
 }
 
 // ---- render ----
@@ -627,8 +596,6 @@ func (u *UI) transition(v view, key string, now time.Time) {
 	switch {
 	case v == vExpanded && u.lastView != vExpanded:
 		u.openCtx, u.openAt = u.habitContext(), now
-	case u.lastView == vExpanded && v != vExpanded:
-		u.page = ""
 	}
 }
 
