@@ -122,6 +122,15 @@ func (s *server) serve(c *net.UnixConn) {
 		s.posts <- func(a *app) { a.fromEdge(m.Payload) }
 	case "cmd": // keyboard: allow / deny / always / terminal / answer <key>
 		s.posts <- func(a *app) { a.command(m.Event, m.ID) }
+	case "status": // `ember doctor` asks what the island is connected to
+		st := make(chan Status, 1)
+		s.posts <- func(a *app) { st <- a.status() }
+		select {
+		case v := <-st:
+			b, _ := json.Marshal(v)
+			c.Write(append(b, '\n'))
+		case <-time.After(2 * time.Second):
+		}
 	}
 }
 

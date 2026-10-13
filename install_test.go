@@ -16,11 +16,11 @@ func TestPatchSettingsOnRealCopy(t *testing.T) {
 		t.Skip("no settings")
 	}
 	exe := "/home/x/.local/bin/ember"
-	out, err := patchSettings(raw, exe)
+	out, err := patchSettings(raw, exe, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	again, _ := patchSettings(out, exe)
+	again, _ := patchSettings(out, exe, true)
 	if string(again) != string(out) {
 		t.Fatal("not idempotent")
 	}
@@ -30,6 +30,10 @@ func TestPatchSettingsOnRealCopy(t *testing.T) {
 	}
 	if !strings.Contains(s, "edge hook") {
 		t.Fatal("must keep edge's gate hooks")
+	}
+	gone, _ := patchSettings(out, exe, false)
+	if strings.Contains(string(gone), "ember hook") || !strings.Contains(string(gone), "edge hook") {
+		t.Fatal("uninstall must remove Ember's hooks and only those")
 	}
 	var before, after map[string]any
 	json.Unmarshal(raw, &before)

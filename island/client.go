@@ -91,3 +91,23 @@ func oneShot(m inMsg) bool {
 	_, err = c.Write(append(b, '\n'))
 	return err == nil
 }
+
+// QueryStatus asks the running island what it's connected to; ok is false if
+// it isn't running.
+func QueryStatus() (st Status, ok bool) {
+	c, err := dialIsland()
+	if err != nil {
+		return st, false
+	}
+	defer c.Close()
+	c.SetDeadline(time.Now().Add(3 * time.Second))
+	b, _ := json.Marshal(inMsg{Type: "status"})
+	if _, err := c.Write(append(b, '\n')); err != nil {
+		return st, false
+	}
+	line, err := bufio.NewReader(c).ReadBytes('\n')
+	if err != nil {
+		return st, false
+	}
+	return st, json.Unmarshal(line, &st) == nil
+}

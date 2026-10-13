@@ -24,14 +24,47 @@ const (
 )
 
 type app struct {
-	ui    *UI
-	win   *window
-	music *music
-	track *Track
-	posts chan func(*app)
-	cfg   Config
-	cfgAt time.Time // the config file's mtime when read
-	desk  desktop
+	ui      *UI
+	win     *window
+	music   *music
+	track   *Track
+	posts   chan func(*app)
+	cfg     Config
+	cfgAt   time.Time // the config file's mtime when read
+	desk    desktop
+	started time.Time
+}
+
+// Status is what `ember doctor` reports about the running island.
+type Status struct {
+	Pid         int     `json:"pid"`
+	Uptime      string  `json:"uptime"`
+	BarHeight   float32 `json:"barHeight"`
+	Blur        bool    `json:"blur"`
+	CursorShape bool    `json:"cursorShape"`
+	Niri        bool    `json:"niri"`
+	Music       bool    `json:"music"`
+	Track       string  `json:"track,omitempty"`
+	Volume      bool    `json:"volume"`
+	Backlight   bool    `json:"backlight"`
+	Battery     bool    `json:"battery"`
+	Sessions    int     `json:"sessions"`
+	Pending     int     `json:"pending"`
+	Config      string  `json:"config"`
+}
+
+func (a *app) status() Status {
+	st := Status{Pid: os.Getpid(), Uptime: time.Since(a.started).Round(time.Second).String(), BarHeight: a.ui.BarH,
+		Blur: a.win.blurMgr != 0, CursorShape: a.win.cursorMgr != 0, Niri: a.desk.live, Music: a.music != nil,
+		Volume: a.ui.vol.ok, Backlight: a.ui.light >= 0, Battery: a.ui.power != nil,
+		Sessions: len(a.ui.sessions), Pending: len(a.ui.cards), Config: "defaults"}
+	if a.track != nil {
+		st.Track = a.track.Title
+	}
+	if !mtime(ConfigPath()).IsZero() {
+		st.Config = ConfigPath()
+	}
+	return st
 }
 
 // reloadConfig applies ~/.config/ember/config.toml if it changed.
@@ -74,7 +107,7 @@ func Run() error {
 	if err != nil {
 		return err
 	}
-	a := &app{ui: NewUI(surfW, surfH, barHeight()), win: win, posts: posts}
+	a := &app{ui: NewUI(surfW, surfH, barHeight()), win: win, posts: posts, started: time.Now()}
 	a.ui.onKey = a.key
 	a.reloadConfig()
 	a.loadSessions()

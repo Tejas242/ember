@@ -1,18 +1,7 @@
 // Ember: a dynamic island for the top of the screen. Claude Code sessions,
-// permission requests and questions, music, the clock, and edge.
-//
-//	ember                     run the island (normally as a systemd user service)
-//	ember hook <Event>        Claude Code's hook (installed by `ember install`)
-//	ember allow|deny|always   answer the oldest permission request
-//	ember terminal            hand the oldest request back to Claude's prompt
-//	ember answer opt:2|submit answer the oldest question
-//	ember toggle              open / close the island's card
-//	ember open [page]         open the card (claude, music, edge, system)
-//	ember close               close it
-//	ember next|prev           show the next / previous activity in the pill
-//	ember play                play / pause the music
-//	ember edge '<json>'       a status or card from edge
-//	ember install             systemd service + Claude Code hooks
+// permission requests and questions, music, system moments (volume,
+// brightness, battery, devices, screenshots), the clock, and edge.
+// `ember help` lists the commands.
 package main
 
 import (
@@ -59,13 +48,47 @@ func main() {
 			fmt.Fprintln(os.Stderr, "ember:", err)
 			os.Exit(1)
 		}
+	case "uninstall":
+		if err := uninstall(); err != nil {
+			fmt.Fprintln(os.Stderr, "ember:", err)
+			os.Exit(1)
+		}
+	case "doctor":
+		doctor()
+	case "version", "--version", "-v":
+		fmt.Println("ember", versionString())
+	case "help", "--help", "-h":
+		fmt.Print(help)
 	default:
 		usage()
 	}
 }
 
+const help = `ember: a dynamic island for the top of your screen
+
+  ember                  run the island (the service does this)
+  ember install          systemd service, Claude Code hooks, default config
+  ember uninstall        remove the hooks and the service (the config stays)
+  ember doctor           check every piece and say what to fix
+  ember version
+
+  ember open [page]      open the card: claude, music, edge, system
+  ember close | toggle
+  ember next | prev      switch what the pill shows
+  ember play             play / pause
+
+  ember allow | deny | always   answer the oldest permission request
+  ember terminal                hand it back to Claude's own prompt
+  ember answer opt:N | submit   answer the oldest question
+
+  ember hook <Event>     Claude Code's hook (installed for you)
+  ember edge '<json>'    a status or card from edge
+
+Config: ~/.config/ember/config.toml (re-read on change)
+`
+
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: ember [run|hook <Event>|allow|deny|always|terminal|answer <key>|toggle|open [page]|close|next|prev|play|edge <json>|install]")
+	fmt.Fprint(os.Stderr, help)
 	os.Exit(2)
 }
 
