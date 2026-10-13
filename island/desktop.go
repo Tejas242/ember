@@ -120,7 +120,7 @@ func streamNiri(posts chan<- func(*app), sock string) {
 			}
 		case ev.WindowClosed != nil:
 			id := ev.WindowClosed.ID
-			posts <- func(a *app) { delete(a.desk.windows, id) }
+			posts <- func(a *app) { delete(a.desk.windows, id); a.quiet = true }
 		case ev.WindowFocusChanged != nil:
 			id := 0
 			if ev.WindowFocusChanged.ID != nil {
@@ -173,16 +173,18 @@ func (a *app) sessionWindow(pids []int) (deskWindow, bool) {
 // deskChanged: titles may have changed, and looking at a session's
 // terminal answers its "Done".
 func (a *app) deskChanged() {
+	changed := false // Claude's title spinner ticks every second: only a real change costs a frame
 	for _, s := range a.ui.sessions {
 		if w, ok := a.sessionWindow(s.Pids); ok {
-			if t := sessionTitle(w.Title); t != "" {
-				s.Title = t
+			if t := sessionTitle(w.Title); t != "" && t != s.Title {
+				s.Title, changed = t, true
 			}
 			if w.ID == a.desk.focused && a.ui.moment != nil && a.ui.moment.focus == s.ID {
-				a.ui.moment = nil
+				a.ui.moment, changed = nil, true
 			}
 		}
 	}
+	a.quiet = !changed
 }
 
 func (a *app) castsChanged(n int) {

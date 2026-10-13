@@ -33,6 +33,7 @@ type app struct {
 	cfgAt   time.Time // the config file's mtime when read
 	desk    desktop
 	started time.Time
+	quiet   bool // the current post changed nothing on screen
 }
 
 // Status is what `ember doctor` reports about the running island.
@@ -162,8 +163,11 @@ func Run() error {
 		case err := <-win.c.readErr:
 			return err
 		case f := <-posts:
+			a.quiet = false
 			f(a)
-			a.ui.Invalidate()
+			if !a.quiet { // a post that changed nothing visible says so
+				a.ui.Invalidate()
+			}
 			nPost++
 			saveDue = true
 		case <-housekeep.C:
