@@ -58,19 +58,26 @@ func (u *UI) brief() brief {
 	switch {
 	case len(ss) > 0 && ss[0].State == "wait":
 		s := ss[0]
-		b = brief{mode: "wait", s: s, mood: moodWait, head: s.Project + " is waiting for you",
-			sub: "It's asking in the terminal · " + ago(now.Sub(s.Seen))}
+		sub := "It's asking in the terminal · " + ago(now.Sub(s.Seen))
+		if t := s.task(); t != "" {
+			sub = t + " · " + ago(now.Sub(s.Seen))
+		}
+		b = brief{mode: "wait", s: s, mood: moodWait, head: s.Project + " needs you", sub: sub}
 	case len(working) > 0:
 		s := working[0]
 		label := s.Label
 		if label == "" {
 			label = "Thinking"
 		}
-		head := s.Project + " · " + label
-		if g, ok := gerund(label); ok {
-			head = s.Project + " is " + g
+		// the headline is the task, in words; the timeline below says how it's going
+		head, sub := s.task(), s.Project+" · "+turnFacts(s, now)
+		if head == "" {
+			head, sub = s.Project+" · "+label, turnFacts(s, now)
+			if g, ok := gerund(label); ok {
+				head = s.Project + " is " + g
+			}
 		}
-		b = brief{mode: "work", s: s, mood: moodWork, head: head, sub: turnFacts(s, now)}
+		b = brief{mode: "work", s: s, mood: moodWork, head: head, sub: strings.TrimSuffix(sub, " · ")}
 	default:
 		var last *Session
 		for _, s := range ss {
@@ -84,11 +91,16 @@ func (u *UI) brief() brief {
 			if r.Failures > 0 && strings.Contains(strings.ToLower(r.Summary), "fail") {
 				m = moodNudge
 			}
-			sub := "Finished " + ago(now.Sub(r.At))
+			sub := last.Project + " · done " + ago(now.Sub(r.At))
 			if r.Took > 0 {
 				sub += " · took " + mins(r.Took)
 			}
-			b = brief{mode: "recap", s: last, mood: m, head: last.Project + " is done", sub: sub}
+			head := last.task()
+			if head == "" {
+				head, sub = last.Project+" is done", strings.TrimPrefix(sub, last.Project+" · d")
+				sub = "D" + sub
+			}
+			b = brief{mode: "recap", s: last, mood: m, head: head, sub: sub}
 		} else {
 			b = brief{mode: "day", mood: moodIdle, head: greeting(now), sub: u.dayFacts()}
 		}

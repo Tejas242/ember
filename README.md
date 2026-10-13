@@ -6,11 +6,11 @@ playing, volume and brightness as you change them, the charger, your headphones,
 
 It is always one pill. When two things are going on, the second rides along as a small satellite at the pill's end,
 behind a hairline: a tiny flickering flame while Claude works, the spinning cover while a song plays. Click the
-satellite to swap it in. Hover the pill and a compact card drops down. It is a live stack, not a settings window.
+satellite to swap it in. Hover the pill and a card drops down. It's a brief on what your agents are doing, not a settings window.
 
 ![The pill's states](docs/pills.png)
 
-![The card: the live stack, a permission request, a question, a quiet desk](docs/cards.png)
+![The card: working, just finished, a quiet day, a request](docs/cards.png)
 
 It is one native Go binary. It talks the Wayland protocol directly and draws in software, with no toolkit and no
 GPU. It wakes only when something changes. Measured on a 2018 laptop, it uses about 9 MB of private memory and about 1%
@@ -42,24 +42,23 @@ previous, play/pause and next. Scroll on it to change the volume. The card takes
 - Screenshots, with a preview. Click it to open the file.
 - A dot while your screen is being shared or recorded.
 
-**System chips.** Volume, brightness and battery share one slim row at the bottom of the card. The volume and
-brightness chips are sliders too: drag or scroll them, or click the speaker to mute. The battery chip shows time to
-empty or full.
-
-**The clock**, when nothing else is going on. And [edge](https://github.com/Tejas242/edge)'s practice status, if
-you run it.
-
-**The card** has no tabs and no pages.
-- **The strip.** One line at the top says only what the rows don't ("3 idle · airspace finished 12m ago"), with the
-  time beside it.
-- **The rows.** One dense row per thing going on, most important first:
-  - **Sessions.** A session waiting on you comes first, then working sessions. The first gets two lines with a
-    sparkline of its last ten minutes of activity; any others get one line each.
-  - **Music and edge** follow, the one you reach for in this situation first.
-  - **System chips** close the stack.
-- **Controls appear where your pointer is.** Hover the music row and the controls cross-fade in where the equaliser
-  was. The song's progress runs along the row's foot and drags.
-- **Compact.** A typical card is about 160 px tall.
+**The card is a brief, not a window.** You glance at the island for two seconds and ask one of three things: does
+anything need me, what is it doing and is it going well, what happened while I wasn't looking. The card answers
+whichever is true right now, and nothing else. It has no tabs and no settings: volume and brightness speak up in the
+pill when they change, and that's enough.
+- **Headline.** The task in words: what you asked, if your prompt said something ("yes, do it" doesn't), else the
+  topic Claude gave the session. Under it, the facts: *kinvault · 4m in · 9 steps · 3 files +58 −12 · 1 failed*.
+  Click it to jump to that terminal.
+- **Working.** A live timeline of the turn, newest first, on a thin rail. The current step pulses and counts its
+  seconds. Earlier steps say what they changed (+15 −3) and when. A step that failed says so in red, because Claude
+  Code reports tool failures to Ember.
+- **Just finished.** A recap: Claude's most informative sentence, then what the turn amounted to (steps, files
+  changed, the diff, failures).
+- **Waiting.** Who's asking, about what, and a button that takes you there.
+- **Quiet.** A greeting that knows the time, your day in one line (*7 tasks done · 2h 14m with Claude · mostly
+  ember*), and the day hour by hour.
+- **Then one line each** for other sessions (what they're doing, or what they just did), the song with its controls
+  under your pointer, and edge when it has something for you.
 
 **Requests** use Claude's own words as the title ("Run the store tests with the race detector") and show the command
 once, syntax-tinted, with a line along the bottom that drains while the request waits. Questions have numbered
@@ -154,11 +153,11 @@ layer-rule {
 | --- | --- |
 | Hover the pill | Drops the card. Leave and it folds back |
 | Click the pill | Opens the card. On a request or a "Done", jumps to that terminal |
-| Click a moment | Screenshot: opens it. Volume, brightness, battery: opens the card |
+| Click a moment | Screenshot: opens it. Others open the card |
 | Click the satellite | Swaps the second activity (the cover, the little flame) into the pill |
 | Scroll on the pill | Switches what the pill shows |
-| Drag a slider or the seek bar | Follows your pointer, even past the island's edge. A seek happens on release |
-| Scroll on a chip or the music row | Changes that level (the player's own volume on the music row) |
+| Drag the song's progress line | Follows your pointer, even past the island's edge. The seek happens on release |
+| Scroll on the music row | Changes the player's volume |
 | Middle-click | Play / pause |
 | Right-click | Dismisses a moment or the card |
 

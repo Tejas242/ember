@@ -42,7 +42,7 @@ func TestBriefWhileWorking(t *testing.T) {
 	hookAt(a, "PreToolUse", "s", "ember", map[string]any{"tool_name": "Read", "tool_input": map[string]any{"file_path": "/x/store.go"}})
 
 	b := a.ui.brief()
-	if b.mode != "work" || b.head != "ember · Reading store.go" && b.head != "ember is reading store.go" {
+	if b.mode != "work" || b.head != "ember is reading store.go" { // no informative prompt: the step speaks
 		t.Fatalf("mode %s, head %q", b.mode, b.head)
 	}
 	for _, want := range []string{"2m in", "3 steps", "1 file +3 −1", "1 failed"} {
@@ -81,7 +81,7 @@ func TestBriefRecapThenDay(t *testing.T) {
 	clock = clock.Add(9 * time.Minute)
 	hookAt(a, "Stop", "s", "kinvault", map[string]any{"last_assistant_message": "Let me summarise.\nFixed the race in store.go; all 42 tests pass."})
 	b := a.ui.brief()
-	if b.mode != "recap" || b.head != "kinvault is done" || !strings.Contains(b.sub, "took 9m") {
+	if b.mode != "recap" || b.head != "kinvault is done" || b.sub != "Done just now · took 9m" {
 		t.Fatalf("%+v", b)
 	}
 	r := a.ui.sessions["s"].Recap
@@ -95,6 +95,22 @@ func TestBriefRecapThenDay(t *testing.T) {
 	}
 	if a.ui.day.Hours[15] != 1 {
 		t.Fatalf("the 3 pm hour saw one call: %v", a.ui.day.Hours)
+	}
+}
+
+// What you asked is the headline, when it says something.
+func TestBriefHeadlineIsTheTask(t *testing.T) {
+	clock := time.Date(2026, 10, 13, 15, 0, 0, 0, time.Local)
+	a := newTestApp(&clock)
+	hookAt(a, "UserPromptSubmit", "s", "kinvault", map[string]any{"prompt": "fix the race in compaction. then run the tests"})
+	hookAt(a, "PreToolUse", "s", "kinvault", map[string]any{"tool_name": "Read", "tool_input": map[string]any{"file_path": "/x/a.go"}})
+	if b := a.ui.brief(); b.head != "Fix the race in compaction" || !strings.HasPrefix(b.sub, "kinvault · ") {
+		t.Fatalf("%q / %q", b.head, b.sub)
+	}
+	hookAt(a, "UserPromptSubmit", "s", "kinvault", map[string]any{"prompt": "yes do it"})
+	a.ui.sessions["s"].Title = "Compaction race"
+	if b := a.ui.brief(); b.head != "Compaction race" {
+		t.Fatalf("a terse prompt yields to Claude's topic: %q", b.head)
 	}
 }
 

@@ -48,7 +48,8 @@ type hookInput struct {
 	Suggestions json.RawMessage `json:"permission_suggestions"`
 	NotifyType  string          `json:"notification_type"`
 	LastMessage string          `json:"last_assistant_message"`
-	Error       string          `json:"error"` // StopFailure
+	Error       string          `json:"error"`  // StopFailure
+	Prompt      string          `json:"prompt"` // UserPromptSubmit
 }
 
 type server struct {

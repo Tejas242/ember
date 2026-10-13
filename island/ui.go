@@ -45,6 +45,7 @@ type Card struct {
 type Session struct {
 	ID, Project, State, Label string // State: work | wait | idle
 	Title                     string // the topic Claude put in its terminal's title
+	Prompt                    string // what you asked this turn, first line
 	Plus, Minus               int
 	Agents                    int // subagents running
 	Since, Seen               time.Time

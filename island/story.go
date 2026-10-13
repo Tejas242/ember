@@ -231,3 +231,17 @@ func gerund(label string) (string, bool) {
 	}
 	return g + " " + rest, true
 }
+
+// task is what a session is about, in words, for the headline: what you
+// asked this turn if that says something ("yes", "go on" don't), else the
+// topic Claude gave the session, else nothing.
+func (s *Session) task() string {
+	p := strings.Join(strings.Fields(s.Prompt), " ")
+	if words := strings.Fields(p); len(words) >= 4 && len(p) >= 18 && !strings.HasPrefix(p, "/") {
+		if i := strings.IndexAny(p, ".?!"); i >= 18 { // the first sentence is enough
+			p = p[:i]
+		}
+		return strings.ToUpper(p[:1]) + p[1:]
+	}
+	return s.Title
+}
