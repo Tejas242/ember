@@ -316,6 +316,15 @@ func (a *app) command(cmd, arg string) {
 	case "toggle":
 		a.ui.pinned, a.ui.suppress = !a.ui.pinned, false
 		return
+	case "open": // open the card, on a page if one is named
+		a.ui.pinned, a.ui.suppress = true, false
+		if arg != "" {
+			a.ui.page = arg
+		}
+		return
+	case "close":
+		a.ui.pinned, a.ui.suppress = false, a.ui.hover // only while the pointer is on it
+		return
 	case "next", "prev":
 		dir := 1
 		if cmd == "prev" {

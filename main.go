@@ -7,6 +7,10 @@
 //	ember terminal            hand the oldest request back to Claude's prompt
 //	ember answer opt:2|submit answer the oldest question
 //	ember toggle              open / close the island's card
+//	ember open [page]         open the card (claude, music, edge, system)
+//	ember close               close it
+//	ember next|prev           show the next / previous activity in the pill
+//	ember play                play / pause the music
 //	ember edge '<json>'       a status or card from edge
 //	ember install             systemd service + Claude Code hooks
 package main
@@ -32,8 +36,14 @@ func main() {
 		}
 	case "hook":
 		hook()
-	case "allow", "deny", "always", "terminal", "toggle":
+	case "allow", "deny", "always", "terminal", "toggle", "close", "next", "prev", "play":
 		cmdOrFail(island.Cmd(cmd, ""))
+	case "open":
+		page := ""
+		if len(os.Args) > 2 {
+			page = os.Args[2]
+		}
+		cmdOrFail(island.Cmd("open", page))
 	case "answer":
 		if len(os.Args) != 3 {
 			usage()
@@ -55,7 +65,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: ember [run|hook <Event>|allow|deny|always|terminal|answer <key>|toggle|edge <json>|install]")
+	fmt.Fprintln(os.Stderr, "usage: ember [run|hook <Event>|allow|deny|always|terminal|answer <key>|toggle|open [page]|close|next|prev|play|edge <json>|install]")
 	os.Exit(2)
 }
 
