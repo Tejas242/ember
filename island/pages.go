@@ -5,143 +5,23 @@ import (
 	"image"
 	"image/color"
 	"math"
-	"sort"
 	"strings"
 	"time"
 )
 
-// The card that drops from the pill is a live stack, not a window: a line
-// of narrative on top (only what the rows don't already say), then one
-// dense row per thing that's going on, most important first. Rows never
-// change height; controls fade in where the pointer is. Then the decision
-// cards: permission requests, questions, edge's nudges.
+// Rows of the open card (music, edge), buttons, and the decision cards:
+// permission requests, questions, edge's nudges. The card's brief (headline
+// and story) is in brief.go.
 
 const (
-	cardW     = 360
-	expW      = 360
-	stripH    = 28
-	sessH     = 40
-	miniH     = 26 // a second or third session: one line
+	cardW     = 380
+	expW      = 380
 	musicRowH = 44
 	edgeRowH  = 40
-	sysRowH   = 28
-	rowGapX   = 5
+	rowGapX   = 6
 	btnH      = 26
 	optH      = 30
 )
-
-// row is one live activity in the open card.
-type row struct {
-	kind string // session | music | edge | system
-	s    *Session
-	h    float32
-}
-
-// rows lists what's going on, in the order it matters: someone waiting on
-// you, then work in progress, then music and edge (the one you reach for
-// in this situation first), then the system strip.
-func (u *UI) rows() []row {
-	var out []row
-	if u.cfg.Claude {
-		n := 0
-		for _, s := range u.sessionList() { // waiting first, then working, most recent first
-			if s.State == "idle" || n == 3 {
-				continue
-			}
-			r := row{kind: "session", s: s, h: sessH}
-			if n > 0 && s.State != "wait" { // the first gets two lines; the rest, one
-				r.kind, r.h = "mini", miniH
-			}
-			out = append(out, r)
-			n++
-		}
-	}
-	var mid []row
-	if u.track != nil && u.cfg.Music {
-		mid = append(mid, row{kind: "music", h: musicRowH})
-	}
-	if e := u.edge; e != nil && u.cfg.Edge && (e.Task != "" || e.Closed) {
-		mid = append(mid, row{kind: "edge", h: edgeRowH})
-	}
-	if pref := u.habits.predict(u.habitContext(), []string{"music", "edge"}); pref != "" {
-		sort.SliceStable(mid, func(i, j int) bool { return mid[i].kind == pref && mid[j].kind != pref })
-	} else {
-		now := u.now()
-		sort.SliceStable(mid, func(i, j int) bool { return u.salience(mid[i].kind, now) > u.salience(mid[j].kind, now) })
-	}
-	out = append(out, mid...)
-	if u.vol.ok || u.light >= 0 || u.power != nil {
-		out = append(out, row{kind: "system", h: sysRowH})
-	}
-	return out
-}
-
-func (u *UI) expandedHeight() int {
-	h := float32(stripH)
-	for _, r := range u.rows() {
-		h += r.h + rowGapX
-	}
-	return int(math.Min(float64(h+6), float64(u.H-14)))
-}
-
-// narrative is the strip's one line: what the rows below don't say.
-func (u *UI) narrative() string {
-	now := u.now()
-	var parts []string
-	idle := 0
-	for _, s := range u.sessions {
-		if s.State == "idle" {
-			idle++
-		}
-	}
-	busy := len(u.sessions) - idle
-	if idle > 0 && busy == 0 {
-		parts = append(parts, fmt.Sprintf("Claude · %d idle", idle))
-	} else if idle > 0 {
-		parts = append(parts, fmt.Sprintf("%d idle", idle))
-	}
-	if d := u.lastDone; d.project != "" && now.Sub(d.at) < 3*time.Hour {
-		parts = append(parts, d.project+" finished "+ago(now.Sub(d.at)))
-	}
-	if len(parts) == 0 {
-		if len(u.sessions) == 0 && u.track == nil {
-			return "All quiet · " + now.Format("Monday, 2 January")
-		}
-		return now.Format("Monday, 2 January")
-	}
-	return strings.Join(parts, " · ")
-}
-
-func (u *UI) drawExpanded(x, w float32) {
-	p := u.pal
-	rows := u.rows()
-	// the strip: Ember, the narrative, the time
-	m := moodIdle
-	if len(rows) > 0 && rows[0].kind == "session" {
-		m = map[string]mood{"work": moodWork, "wait": moodWait}[rows[0].s.State]
-	}
-	u.spot = emberSpot{x: x + pad + 6, y: 14, s: 14, mood: m, show: true}
-	tm := u.now().Format(u.TimeFmt)
-	tw := measure(fNum(), tm)
-	u.dc.text(fNum(), tm, x+w-pad-tw, 18.5, p.fg)
-	u.dc.text(fCaption(), ellipsize(fCaption(), u.narrative(), w-2*pad-22-tw-12), x+pad+20, 18, p.muted)
-	y := float32(stripH)
-	for _, r := range rows {
-		switch r.kind {
-		case "session":
-			u.sessionRow(r.s, x, w, y)
-		case "mini":
-			u.miniRow(r.s, x, w, y)
-		case "music":
-			u.musicRow(x, w, y)
-		case "edge":
-			u.edgeRow(x, w, y)
-		case "system":
-			u.systemRow(x, w, y)
-		}
-		y += r.h + rowGapX
-	}
-}
 
 // rowBox draws a row's rounded background and reports how much the
 // pointer is on it (eased, 0..1).
@@ -157,85 +37,6 @@ func (u *UI) rowBox(key string, x, w, y, h float32, tint color.NRGBA, strength f
 	k := u.tw("row:"+key, on, 0)
 	u.dc.roundRect(x+pad-6, y, w-2*pad+12, h, 13, alpha(tint, strength+0.04*k))
 	return k
-}
-
-// ---- a Claude session ----
-
-func (u *UI) sessionRow(s *Session, x, w, y float32) {
-	p, now := u.pal, u.now()
-	key := "focus:" + s.ID
-	tint, str := p.fg, 0.045
-	orb, step, stepCol := p.green, s.Label, mix(p.fg, p.bg, 0.22)
-	if step == "" {
-		step = "Thinking"
-	}
-	if s.State == "wait" {
-		tint, str, orb, step, stepCol = p.blue, 0.12, p.blue, "Waiting for you", p.blue
-	}
-	u.rowBox(key, x, w, y, sessH, tint, str)
-	u.hits = append(u.hits, hit{image.Rect(int(x+pad-6), int(y), int(x+w-pad+6), int(y+sessH)), key})
-	ox, oy := x+pad+5, y+sessH/2
-	u.dc.circle(ox, oy, 3.5, orb)
-	u.lives = append(u.lives, live{image.Rect(int(ox-10), int(oy-10), int(ox+11), int(oy+11)), func(c *canvas, t float64) {
-		k := math.Mod(t/1.6, 1) // a slow halo: alive, not alarming
-		c.frame(ox-3.5-6*float32(k), oy-3.5-6*float32(k), 7+12*float32(k), 7+12*float32(k), 3.5+6*float32(k), 1.2, alpha(orb, 0.5*(1-k)))
-	}})
-	tx, right := x+pad+18, x+w-pad
-	el := ""
-	if !s.Since.IsZero() {
-		el = mins(now.Sub(s.Since))
-	}
-	ew := measure(fCaption(), el)
-	u.dc.text(fCaption(), el, right-ew, y+16, p.faint)
-	pw := u.dc.text(fBody(), ellipsize(fBody(), s.Project, 110), tx, y+16, p.fg)
-	if s.Title != "" {
-		u.dc.text(fCaption(), ellipsize(fCaption(), s.Title, right-ew-10-(tx+pw+7)), tx+pw+7, y+16, p.muted)
-	}
-	l2 := right - 52 - tx
-	diff := ""
-	if s.State == "work" && (s.Plus > 0 || s.Minus > 0) {
-		diff = diffText(s.Plus, s.Minus)
-		l2 -= measure(fCaption(), diff) + 7
-	}
-	if s.Agents > 0 {
-		step += " · " + agentsText(s.Agents)
-	}
-	sw := u.dc.text(fCaption(), ellipsize(fCaption(), step, l2), tx, y+30.5, stepCol)
-	if diff != "" {
-		dx := tx + sw + 7
-		if s.Plus > 0 {
-			dx += u.dc.text(fCaption(), fmt.Sprintf("+%d", s.Plus), dx, y+30.5, p.green) + 4
-		}
-		if s.Minus > 0 {
-			u.dc.text(fCaption(), fmt.Sprintf("−%d", s.Minus), dx, y+30.5, p.red)
-		}
-	}
-	if act := s.activity(now); hasActivity(act) {
-		u.dc.spark(right-44, y+21, 44, 10, act, alpha(orb, 0.9))
-	}
-}
-
-// miniRow is a further session in one line: dot, project, step, time.
-func (u *UI) miniRow(s *Session, x, w, y float32) {
-	p, now := u.pal, u.now()
-	key := "focus:" + s.ID
-	u.rowBox(key, x, w, y, miniH, p.fg, 0.03)
-	u.hits = append(u.hits, hit{image.Rect(int(x+pad-6), int(y), int(x+w-pad+6), int(y+miniH)), key})
-	cy := y + miniH/2
-	u.dc.circle(x+pad+5, cy, 3, p.green)
-	tx, right := x+pad+18, x+w-pad
-	el := ""
-	if !s.Since.IsZero() {
-		el = mins(now.Sub(s.Since))
-	}
-	ew := measure(fCaption(), el)
-	u.dc.text(fCaption(), el, right-ew, cy+4, p.faint)
-	pw := u.dc.text(fBody(), ellipsize(fBody(), s.Project, 100), tx, cy+4.5, p.fg)
-	step := s.Label
-	if step == "" {
-		step = "Thinking"
-	}
-	u.dc.text(fCaption(), ellipsize(fCaption(), step, right-ew-10-(tx+pw+7)), tx+pw+7, cy+4, mix(p.fg, p.bg, 0.3))
 }
 
 // ---- music ----
@@ -331,92 +132,6 @@ func (u *UI) edgeRow(x, w, y float32) {
 	}
 	u.dc.text(fBody(), ellipsize(fBody(), task, right-tx), tx, y+16, p.fg)
 	u.dc.text(fCaption(), ellipsize(fCaption(), sub, right-tx), tx, y+30.5, p.muted)
-}
-
-// ---- the system strip: volume, brightness, battery as chips ----
-
-// chip is a small capsule that is also a slider: its fill is the level,
-// faint at rest, solid under the pointer, and it drags and scrolls.
-func (u *UI) chip(key, icon, iconKey string, v float64, tint color.NRGBA, value string, x, y, w float32) {
-	p := u.pal
-	const h = sysRowH
-	on := u.hl(key)
-	if iconKey != "" {
-		on = math.Max(on, u.hl(iconKey))
-	}
-	u.dc.roundRect(x, y, w, h, h/2, alpha(p.fg, 0.06))
-	fw := h + (w-h)*float32(math.Max(0, math.Min(1, v)))
-	u.dc.roundRect(x, y, fw, h, h/2, alpha(tint, 0.2+0.7*on))
-	u.dc.icon(icon, x+h/2, y+h/2, 14, mix(p.fg, p.ink, on))
-	vx := x + w - 11
-	col := p.fg
-	if on > 0.5 && x+fw > vx-tabWidth(fNum(), value)-3 {
-		col = p.ink
-	}
-	u.rollText(u.dc, "chip:"+key, value, fNum(), vx, y+h/2+4.5, col)
-	u.sliders[key] = image.Rect(int(x+h/2), int(y), int(x+w-h/2), int(y+h))
-	u.hits = append(u.hits, hit{image.Rect(int(x), int(y), int(x+w), int(y+h)), key})
-	if iconKey != "" {
-		u.hits = append(u.hits, hit{image.Rect(int(x), int(y), int(x+h), int(y+h)), iconKey})
-	}
-}
-
-func (u *UI) systemRow(x, w, y float32) {
-	p := u.pal
-	left, right := x+pad-6, x+w-pad+6
-	// the battery takes what its words need; the two sliders share the rest
-	if pw := u.power; pw != nil {
-		txt := pctText(pw.pct)
-		sub := powerText(pw)
-		bw := 12 + 9*1.9 + 9 + measure(fNum(), txt) + 12
-		if sub != "" {
-			bw += 6 + measure(fCaption(), sub)
-		}
-		bx := right - bw
-		fill := p.fg
-		switch {
-		case charging(pw.state):
-			fill = p.green
-		case pw.pct <= 10:
-			fill = p.red
-		case pw.pct <= 20:
-			fill = p.yellow
-		}
-		u.dc.roundRect(bx, y, bw, sysRowH, sysRowH/2, alpha(p.fg, 0.06))
-		u.dc.battery(bx+12, y+sysRowH/2, 9, float32(pw.pct/100), alpha(p.fg, 0.45), fill)
-		tx := bx + 12 + 9*1.9 + 9
-		tx += u.rollText(u.dc, "batt", txt, fNum(), tx+tabWidth(fNum(), txt), y+sysRowH/2+4.5, p.fg)
-		if sub != "" {
-			u.dc.text(fCaption(), sub, tx+6, y+sysRowH/2+4, p.muted)
-		}
-		right = bx - rowGapX
-	}
-	n := 0
-	if u.vol.ok {
-		n++
-	}
-	if u.light >= 0 {
-		n++
-	}
-	if n == 0 {
-		return
-	}
-	cw := (right - left - float32(n-1)*rowGapX) / float32(n)
-	cx := left
-	if v := u.vol; v.ok {
-		icon, tint, val := "volume", mix(p.fg, p.bg, 0.12), fmt.Sprint(int(v.v*100+0.5))
-		switch {
-		case v.muted:
-			icon, tint, val = "mute", p.muted, "Off"
-		case v.v < 0.4:
-			icon = "volume-low"
-		}
-		u.chip("sys:vol", icon, "sys:mute", v.v, tint, val, cx, y, cw)
-		cx += cw + rowGapX
-	}
-	if u.light >= 0 {
-		u.chip("sys:light", "sun", "", u.light, p.yellow, fmt.Sprint(int(u.light*100+0.5)), cx, y, cw)
-	}
 }
 
 func ago(d time.Duration) string {

@@ -25,8 +25,8 @@ func TestPatchSettingsOnRealCopy(t *testing.T) {
 		t.Fatal("not idempotent")
 	}
 	s := string(out)
-	if n := strings.Count(s, exe+" hook "); n != 14 || strings.Contains(s, "ember/hook'") {
-		t.Fatalf("want exactly 14 Ember entries and no old plugin ones, got %d", n)
+	if n := strings.Count(s, exe+" hook "); n != 15 || strings.Contains(s, "ember/hook'") {
+		t.Fatalf("want exactly 15 Ember entries and no old plugin ones, got %d", n)
 	}
 	if !strings.Contains(s, "edge hook") {
 		t.Fatal("must keep edge's gate hooks")

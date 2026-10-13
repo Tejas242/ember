@@ -203,7 +203,7 @@ func (u *UI) key(k string) {
 
 // ---- dragging: sliders and the seek bar ----
 
-func draggable(k string) bool { return k == "sys:vol" || k == "sys:light" || k == "music:seek" }
+func draggable(k string) bool { return k == "music:seek" }
 
 // dragFrac is where the pointer is along the dragged control, 0..1.
 func (u *UI) dragFrac() (float64, bool) {

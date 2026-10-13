@@ -50,6 +50,8 @@ type Session struct {
 	Since, Seen               time.Time
 	StepAt                    time.Time // when the current step (Label) began
 	Pids                      []int
+	Turn                      Turn       // what this prompt has led to so far
+	Recap                     *Recap     // the last finished turn
 	Bins                      [30]int64  // activity: 30 bins of 20 s (bin numbers)
 	Counts                    [30]uint16 // tool calls in each bin
 }
@@ -213,6 +215,7 @@ type UI struct {
 	slideDir    float64 // pages slide sideways: -1 back, 1 forward
 	lastPage    string
 	mind        *mind
+	day         *Day
 	watching    map[string]bool // sessions whose terminal has your focus
 	habits      *habits
 	openCtx     string // the desk when the card opened
@@ -257,6 +260,8 @@ func NewUI(w, h int, barH float32) *UI {
 	u.sliders = map[string]image.Rectangle{}
 	u.tweens, u.rolls, u.watching = map[string]*tween{}, map[string]*roll{}, map[string]bool{}
 	u.mind = newMind(u.now())
+	u.day = &Day{}
+	u.day.roll(u.now())
 	u.habits = &habits{Counts: map[string]map[string]float64{}}
 	u.start, u.lastBlink, u.glanceAt = u.now(), u.now(), u.now()
 	c := u.pal.muted

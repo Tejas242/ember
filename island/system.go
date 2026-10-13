@@ -60,7 +60,7 @@ func watchShell(posts chan<- func(*app)) {
 		go func() {
 			for _, d := range []time.Duration{1500 * time.Millisecond, 3 * time.Second} { // the bar maps a moment after the names
 				time.Sleep(d)
-				posts <- func(a *app) { a.raise() }
+				posts <- func(a *app) { a.raise("the shell restarted") }
 			}
 		}()
 	}
@@ -370,6 +370,7 @@ func watchFiles(posts chan<- func(*app)) {
 	type watch struct {
 		dir   string
 		light bool
+		shell bool // Noctalia's settings and config: a change can rebuild the bar
 	}
 	wds := map[int32]watch{}
 	for _, d := range backlights() {
@@ -387,10 +388,17 @@ func watchFiles(posts chan<- func(*app)) {
 			wds[int32(wd)] = watch{dir: d}
 		}
 	}
+	h, _ := os.UserHomeDir()
+	for _, d := range []string{filepath.Join(h, ".config", "noctalia"), filepath.Join(h, ".local", "state", "noctalia")} {
+		if wd, err := unix.InotifyAddWatch(fd, d, unix.IN_CLOSE_WRITE|unix.IN_MOVED_TO); err == nil {
+			wds[int32(wd)] = watch{dir: d, shell: true}
+		}
+	}
 	if len(wds) == 0 {
 		unix.Close(fd)
 		return
 	}
+	var raiseAt time.Time
 	for _, d := range backlights() { // the starting level, quietly
 		if cur, top := readInt(filepath.Join(d, "brightness")), readInt(filepath.Join(d, "max_brightness")); top > 0 {
 			v := float64(cur) / float64(top)
@@ -420,6 +428,19 @@ func watchFiles(posts chan<- func(*app)) {
 			off += unix.SizeofInotifyEvent + int(ev.Len)
 			w, ok := wds[ev.Wd]
 			if !ok {
+				continue
+			}
+			if w.shell {
+				// the settings window or a config edit: the bar may be rebuilt on top of us
+				if (name == "settings.toml" || strings.HasSuffix(name, ".toml") && strings.Contains(w.dir, ".config")) && time.Since(raiseAt) > 2*time.Second {
+					raiseAt = time.Now()
+					go func() {
+						for _, d := range []time.Duration{700 * time.Millisecond, 2 * time.Second} { // the bar rebuilds a moment later
+							time.Sleep(d)
+							posts <- func(a *app) { a.raise("the shell's settings changed") }
+						}
+					}()
+				}
 				continue
 			}
 			if w.light {
@@ -513,8 +534,8 @@ func scaleThumb(src image.Image, w, h int) *image.RGBA {
 	return dst
 }
 
-// onSystemPage: the open card shows the system chips, so no OSD on top.
-func (u *UI) onSystemPage() bool { return u.lastView == vExpanded }
+// onSystemPage: nothing in the card shows levels any more; the pill says it.
+func (u *UI) onSystemPage() bool { return false }
 
 // ---- controls (the System page) ----
 

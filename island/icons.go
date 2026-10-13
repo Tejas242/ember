@@ -147,6 +147,28 @@ func (c *canvas) icon(name string, cx, cy, s float32, col color.NRGBA) {
 		c.frame(cx-7.2*u, cy-4.6*u, 14.4*u, 10.2*u, 2.2*u, 1.4*u, col)
 		c.roundRect(cx-3*u, cy-6.6*u, 6*u, 2.6*u, 1*u, col)
 		c.frame(cx-3*u, cy-2.5*u, 6*u, 6*u, 3*u, 1.4*u, col)
+	case "read": // a page
+		c.frame(cx-4.5*u, cy-6.5*u, 9*u, 13*u, 1.6*u, 1.3*u, col)
+		c.line(P(6, 6), P(10, 6), 1.1*u, col)
+		c.line(P(6, 8.5), P(10, 8.5), 1.1*u, col)
+	case "edit": // a pencil
+		c.line(P(3.5, 12.5), P(11.5, 4.5), 2.6*u, col)
+		c.poly(col, P(2.2, 13.8), P(2.8, 11.2), P(4.8, 13.2))
+	case "run": // a prompt: >_
+		c.line(P(3, 4.5), P(7, 8), 1.5*u, col)
+		c.line(P(7, 8), P(3, 11.5), 1.5*u, col)
+		c.line(P(8.5, 12), P(13, 12), 1.5*u, col)
+	case "search": // a lens
+		c.frame(cx-6*u, cy-6*u, 9*u, 9*u, 4.5*u, 1.4*u, col)
+		c.line(P(9.6, 9.6), P(13, 13), 1.6*u, col)
+	case "web": // a globe
+		c.frame(cx-6*u, cy-6*u, 12*u, 12*u, 6*u, 1.3*u, col)
+		c.line(P(2.5, 8), P(13.5, 8), 1.1*u, col)
+		c.frame(cx-2.6*u, cy-6*u, 5.2*u, 12*u, 2.6*u, 1.1*u, col)
+	case "agent": // a spark
+		c.poly(col, P(8, 2), P(9.4, 6.6), P(14, 8), P(9.4, 9.4), P(8, 14), P(6.6, 9.4), P(2, 8), P(6.6, 6.6))
+	case "other":
+		c.circle(cx, cy, 2.2*u, col)
 	case "check":
 		c.line(P(3, 8.5), P(6.6, 12), 1.8*u, col)
 		c.line(P(6.6, 12), P(13, 4.5), 1.8*u, col)

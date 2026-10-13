@@ -42,6 +42,7 @@ type window struct {
 	onFrame                            func()
 	onIdle                             func(idle bool)
 	layerKind                          uint32
+	retire                             func() // the surface a raise replaced, to destroy once the new one shows
 	marginTop                          int
 	idleMgr, idleVer                   uint32
 	lastInput                          image.Rectangle
@@ -152,17 +153,22 @@ func (win *window) createSurface() {
 
 // raise puts the island back on top of its layer. Layer-shell has no
 // "raise": the newest surface of a layer is drawn above the older ones, so
-// when the bar is re-created (the shell restarted) it covers us. Making our
-// surface again puts it above. The buffers survive; everything is redrawn.
+// when the bar is re-created (the shell restarted, or a bar setting
+// changed) it covers us. Making our surface again puts it above. The old
+// one stays up until the new one has shown its first frame: no blink.
 func (win *window) raise() {
 	c := win.c
-	if win.blurSurf != 0 {
-		c.send(win.blurSurf, 0) // ext_background_effect_surface_v1.destroy
-		win.blurSurf, win.lastBlur = 0, nil
+	oldLayer, oldSurf, oldBlur := win.layer, win.surface, win.blurSurf
+	win.retire = func() {
+		if oldBlur != 0 {
+			c.send(oldBlur, 0) // ext_background_effect_surface_v1.destroy
+		}
+		c.send(oldLayer, 7) // zwlr_layer_surface_v1.destroy
+		c.send(oldSurf, 0)  // wl_surface.destroy
 	}
-	c.send(win.layer, 7)   // zwlr_layer_surface_v1.destroy
-	c.send(win.surface, 0) // wl_surface.destroy
+	win.blurSurf, win.lastBlur = 0, nil
 	win.configured, win.framePending, win.lastShape = false, false, 0
+	win.lastInput = image.Rect(-1, -1, -1, -1) // the new surface needs its input region
 	for _, b := range win.bufs {
 		b.stale = image.Rect(0, 0, win.w, win.h)
 	}
@@ -317,6 +323,10 @@ func (win *window) present(img *image.RGBA, input, damage image.Rectangle, wantF
 	}
 	win.c.send(win.surface, 6) // commit
 	b.busy = true
+	if win.retire != nil { // a raise: the new surface is up, the old one can go
+		win.retire()
+		win.retire = nil
+	}
 	if err := win.c.flush(); err != nil {
 		log.Println("island: flush:", err)
 	}

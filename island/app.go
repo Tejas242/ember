@@ -70,8 +70,8 @@ func (a *app) status() Status {
 }
 
 // raise puts the island back above a bar that was just re-created.
-func (a *app) raise() {
-	log.Println("the shell restarted: raising the island above its new bar")
+func (a *app) raise(why string) {
+	log.Println(why + ": raising the island above the bar")
 	a.win.raise()
 	a.ui.Invalidate()
 }
@@ -119,6 +119,7 @@ func Run() error {
 	a := &app{ui: NewUI(surfW, surfH, barHeight()), win: win, posts: posts, started: time.Now()}
 	a.ui.onKey = a.key
 	a.ui.habits = loadHabits()
+	a.ui.day = loadDay(time.Now())
 	win.onIdle = func(idle bool) { a.presence(idle); a.ui.Invalidate() }
 	a.reloadConfig()
 	a.loadSessions()
@@ -189,6 +190,7 @@ func Run() error {
 				saveDue = false
 			}
 			a.ui.habits.save()
+			a.ui.day.save()
 			if p := loadPalette(); p != a.ui.pal { // the wallpaper palette changed
 				a.ui.pal = p
 				a.ui.Invalidate()
@@ -548,6 +550,7 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		s.Agents = 0
 	case "UserPromptSubmit":
 		s.State, s.Label, s.Plus, s.Minus, s.Since, s.StepAt = "work", "Thinking", 0, 0, now, now
+		s.Turn = Turn{}
 		a.ui.mind.kick(now, 0.25, 0.05)
 		a.ui.mind.novel["claude"] = now
 	case "SubagentStart":
@@ -589,11 +592,17 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 			s.StepAt = now
 		}
 		s.bump(now)
+		s.Turn.step(now, in.Tool, tin)
+		a.ui.day.call(now)
 		a.ui.mind.toolCall(now)
 	case "PostToolUse":
 		if s.State == "wait" {
 			s.State = "work"
 		}
+		s.Turn.finish(false)
+	case "PostToolUseFailure":
+		s.Turn.finish(true)
+		a.ui.mind.kick(now, 0.1, -0.12) // a small wince
 	case "PermissionRequest":
 		if answer == nil {
 			return ""
@@ -609,6 +618,14 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 	case "Stop":
 		s.State, s.Label = "idle", ""
 		a.ui.lastDone.project, a.ui.lastDone.at = s.Project, now
+		s.Turn.finish(false)
+		took := now.Sub(s.Since)
+		if s.Since.IsZero() {
+			took = 0
+		}
+		s.Recap = &Recap{Summary: summarize(in.LastMessage), At: now, Took: took, Steps: s.Turn.Count,
+			Files: len(s.Turn.Files), Plus: s.Turn.Plus, Minus: s.Turn.Minus, Failures: s.Turn.Failures}
+		a.ui.day.done(now, s.Project, took)
 		a.ui.mind.kick(now, 0.2, 0.35) // pleased
 		if a.ui.mind.away {            // tell them when they're back
 			a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"done", s.Project, s.ID})

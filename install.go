@@ -158,6 +158,7 @@ func patchSettings(raw []byte, exe string, add bool) ([]byte, error) {
 	}
 	put("PreToolUse", "*", "PreToolUse", 5, true)
 	put("PostToolUse", "*", "PostToolUse", 5, true)
+	put("PostToolUseFailure", "*", "PostToolUseFailure", 5, true)
 	cfg["hooks"] = hooks
 	if len(hooks) == 0 {
 		delete(cfg, "hooks")

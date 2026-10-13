@@ -141,36 +141,6 @@ func TestPrimaryPriority(t *testing.T) {
 	}
 }
 
-// Rows come in the order they matter, idle sessions fold into the strip's
-// narrative, and the system chips close the stack.
-func TestRowsOrder(t *testing.T) {
-	clock := time.Now()
-	u := NewUI(440, 280, 22)
-	u.now = func() time.Time { return clock }
-	u.track = &Track{Player: "p", Title: "T", Playing: true, PosAt: clock}
-	u.vol = level{v: 0.5, ok: true}
-	u.sessions["w"] = &Session{ID: "w", Project: "edge", State: "work", Seen: clock}
-	u.sessions["q"] = &Session{ID: "q", Project: "kv", State: "wait", Seen: clock}
-	u.sessions["i"] = &Session{ID: "i", Project: "old", State: "idle", Seen: clock}
-	var kinds []string
-	for _, r := range u.rows() {
-		k := r.kind
-		if r.s != nil {
-			k += ":" + r.s.ID
-		}
-		kinds = append(kinds, k)
-	}
-	if strings.Join(kinds, " ") != "session:q mini:w music system" {
-		t.Fatalf("rows %v", kinds)
-	}
-	if !strings.Contains(u.narrative(), "1 idle") {
-		t.Fatalf("idle sessions go in the narrative: %q", u.narrative())
-	}
-	if h := u.expandedHeight(); h > 195 {
-		t.Fatalf("two sessions, music and the chips should stay compact, got %d px", h)
-	}
-}
-
 // A volume OSD over a "Done" note doesn't lose the note.
 func TestOSDKeepsNote(t *testing.T) {
 	clock := time.Now()
