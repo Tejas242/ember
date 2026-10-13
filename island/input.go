@@ -70,7 +70,7 @@ func (u *UI) pointer(e pointerEvent) (redraw, hand bool) {
 		u.hoverKey = k
 		redraw = true
 	}
-	for _, pre := range []string{"btn:", "opt:", "focus:", "close:", "music:", "tab:", "bubble", "sys:"} {
+	for _, pre := range []string{"btn:", "opt:", "focus:", "close:", "music:", "trail", "sys:"} {
 		hand = hand || strings.HasPrefix(k, pre)
 	}
 	return redraw, hand
@@ -87,22 +87,13 @@ func (u *UI) scroll(steps float64) {
 	case vCompact:
 		u.cycle(dir)
 	case vExpanded:
-		if u.pageFor() == "music" && strings.HasPrefix(u.hitAt(u.mx, u.my), "music:") {
-			u.key(fmt.Sprintf("music:volume:%d", -dir))
-			return
-		}
-		if k := u.hitAt(u.mx, u.my); k == "sys:vol" || k == "sys:light" || k == "sys:mute" {
+		k := u.hitAt(u.mx, u.my)
+		switch {
+		case k == "sys:vol" || k == "sys:light" || k == "sys:mute":
 			u.key(fmt.Sprintf("%s:nudge:%d", strings.TrimSuffix(k, ":mute"), -dir))
-			return
-		}
-		acts := u.pages()
-		cur := u.pageFor()
-		for i, a := range acts {
-			if a == cur && len(acts) > 0 {
-				u.page = acts[(i+dir+len(acts))%len(acts)]
-				u.chosen = u.page
-				return
-			}
+		case strings.HasPrefix(k, "music:") || u.tweens["row:music"] != nil && u.tweens["row:music"].x > 0.5:
+			u.key(fmt.Sprintf("music:volume:%d", -dir)) // on the music row: the player's own volume
+			u.used("music")
 		}
 	}
 }
@@ -154,13 +145,10 @@ func (u *UI) press(k string, button int) {
 		u.pinned, u.suppress = true, false
 	case k == "panel": // the card's background closes it
 		u.pinned, u.suppress = false, true
-	case k == "bubble": // bring the bubble's activity to the front
+	case k == "trail": // the satellite at the pill's end: swap it in
 		if s := u.secondary(u.primary()); s != "" {
 			u.focus, u.focusAt = s, u.now()
 		}
-	case strings.HasPrefix(k, "tab:"):
-		u.page = strings.TrimPrefix(k, "tab:")
-		u.chosen = u.page
 	case k == "sys:mute":
 		u.vol.muted = !u.vol.muted
 		u.key(k)
@@ -185,6 +173,11 @@ func (u *UI) press(k string, button int) {
 		}
 	case strings.HasPrefix(k, "btn:edge:"), strings.HasPrefix(k, "music:"), strings.HasPrefix(k, "focus:"):
 		u.key(k)
+		if strings.HasPrefix(k, "music:") {
+			u.used("music")
+		} else if strings.HasPrefix(k, "btn:edge:") {
+			u.used("edge")
+		}
 	case strings.HasPrefix(k, "btn:") && c != nil:
 		var picked []int
 		for i := range c.Options {

@@ -35,7 +35,7 @@ func TestPreviewMoments(t *testing.T) {
 				img.Set(x, y, color.NRGBA{uint8(120 + x*2), uint8(40 + y), uint8(160 - x), 255})
 			}
 		}
-		u.art = &albumArt{small: scaleSquare(img, 18), large: scaleSquare(img, 60)}
+		u.art = &albumArt{small: scaleSquare(img, 18), large: scaleSquare(img, 60), row: scaleSquare(img, 30)}
 		u.art.accent = accentOf(u.art.large)
 	}
 	states := []state{

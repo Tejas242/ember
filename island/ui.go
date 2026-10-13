@@ -38,6 +38,7 @@ type Card struct {
 	OnPick   func(key string, picked []int)
 	OnExpire func()
 	Born     time.Time // when it appeared: the countdown line starts here
+	Shell    bool      // Code is a shell command: tint it
 
 	picked map[int]bool
 }
@@ -203,24 +204,28 @@ type UI struct {
 	sliders                 map[string]image.Rectangle // System page: sys:vol, sys:light
 
 	// animation
-	sw, sh, bub        spring
-	meter              spring // a moment's level bar
-	meterKey           string
-	tweens             map[string]*tween
-	rolls              map[string]*roll
-	frame              int     // full frames drawn: tweens step once per frame
-	dt                 float64 // this frame's time step
-	tweening           bool    // a tween or roll is still moving
-	slideDir           float64 // pages slide sideways: -1 back, 1 forward
-	lastPage           string
-	mind               *mind
-	watching           map[string]bool // sessions whose terminal has your focus
-	habits             *habits
-	openCtx            string // the desk when the card opened
-	openAt             time.Time
-	chosen             string // the page you switched to while it was open
-	lastChip           string
-	bubbleOn           bool
+	sw, sh, bub spring
+	meter       spring // a moment's level bar
+	meterKey    string
+	tweens      map[string]*tween
+	rolls       map[string]*roll
+	frame       int     // full frames drawn: tweens step once per frame
+	dt          float64 // this frame's time step
+	tweening    bool    // a tween or roll is still moving
+	slideDir    float64 // pages slide sideways: -1 back, 1 forward
+	lastPage    string
+	mind        *mind
+	watching    map[string]bool // sessions whose terminal has your focus
+	habits      *habits
+	openCtx     string // the desk when the card opened
+	openAt      time.Time
+	chosen      string // the page you switched to while it was open
+	lastChip    string
+	trailOn     bool
+	lastDone    struct {
+		project string
+		at      time.Time
+	}
 	ex, ey, es         spring // Ember's position and size, shared by every view
 	look               spring
 	emberCol           [3]float64
@@ -516,14 +521,11 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 	}
 	u.sw.step(tw, dt)
 	u.sh.step(th, dt)
-	bt := 0.0
-	if v == vCompact && u.secondary(u.primary()) != "" {
-		bt = 1
-	}
-	if on := bt == 1; on != u.bubbleOn {
-		u.bubbleOn = on
+	bt := 0.0 // (the old bubble beside the pill: gone, the pill has a trailing slot)
+	if on := v == vCompact && u.secondary(u.primary()) != ""; on != u.trailOn {
+		u.trailOn = on
 		if on {
-			u.mind.notice(now, 1) // something new beside the pill: Ember looks
+			u.mind.notice(now, 1) // something new at the pill's end: Ember looks
 		}
 	}
 	u.bub.step(bt, dt)
@@ -566,7 +568,6 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 		u.shape = notch{x: x, w: w, h: h, rb: rb, ear: 6}
 		u.cv.clear(u.cv.img.Rect)
 		u.cv.drawNotch(u.pal, u.shape, 1, int(u.BarH))
-		u.drawBubble(t)
 		// the content, laid out at its final size, revealed by the growing shape
 		u.content.clear(u.content.img.Rect)
 		fx := (float32(u.W) - float32(tw)) / 2
@@ -580,15 +581,10 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 			u.hits = append(u.hits, hit{u.shape.bounds(), "panel"})
 			u.drawExpanded(fx, float32(tw))
 		}
-		// pages slide sideways as they cross-fade; everything else just fades
-		off := float32(0)
-		if v == vExpanded && u.slideDir != 0 {
-			off = float32(u.slideDir) * 26
-		}
 		if u.prevAlive && p < 1 {
-			composite(u.cv, u.prev, u.shape, 1-math.Min(1, p/0.45), int(-off*float32(p)))
+			composite(u.cv, u.prev, u.shape, 1-math.Min(1, p/0.45), 0)
 		}
-		composite(u.cv, u.content.img, u.shape, p, int(off*float32(1-p)))
+		composite(u.cv, u.content.img, u.shape, p, 0)
 		copy(u.base.Pix, u.cv.img.Pix)
 		u.stepEmber(dt, now)
 		b := u.shape.bounds().Union(u.bubble).Inset(-10)
@@ -625,44 +621,22 @@ func (u *UI) moving(settled bool, p float64, sliding, flashing bool) bool {
 	return !settled || p < 1 || sliding || flashing || u.tweening || u.mind.blinking(u.now()) || u.bouncing() || !u.emberSettled()
 }
 
-// transition: the view is about to change. The card learns which page you
-// wanted, pages slide in the direction you moved, and a fresh open gets the
-// page you usually pick in this situation.
+// transition: the view is about to change. Opening the card notes the
+// situation, so what you do in it can be learned for next time.
 func (u *UI) transition(v view, key string, now time.Time) {
 	switch {
-	case v == vExpanded && u.lastView == vExpanded: // a page change
-		u.slideDir = 0
-		pages := u.pages()
-		from, to := -1, -1
-		for i, pg := range pages {
-			if "exp:"+pg == u.lastKey {
-				from = i
-			}
-			if "exp:"+pg == key {
-				to = i
-			}
-		}
-		if from >= 0 && to >= 0 && from != to {
-			u.slideDir = float64(sign(to - from))
-		}
-	case v == vExpanded:
-		u.slideDir, u.openCtx, u.openAt, u.chosen = 0, u.habitContext(), now, ""
-		if u.page == "" {
-			if pg := u.habits.predict(u.openCtx, u.pages()); pg != "" {
-				u.page = pg
-			}
-		}
-	case u.lastView == vExpanded:
-		if now.Sub(u.openAt) > 900*time.Millisecond && u.openCtx != "" { // a real look, not a pass-by
-			pg := u.chosen
-			if pg == "" {
-				pg = u.lastPage
-			}
-			if pg != "" {
-				u.habits.learn(u.openCtx, pg)
-			}
-		}
-		u.page, u.slideDir = "", 0 // the next open follows the pill again
+	case v == vExpanded && u.lastView != vExpanded:
+		u.openCtx, u.openAt = u.habitContext(), now
+	case u.lastView == vExpanded && v != vExpanded:
+		u.page = ""
+	}
+}
+
+// used: you did something with a row in the open card; in this situation
+// that row is the one you reach for.
+func (u *UI) used(kind string) {
+	if u.lastView == vExpanded && u.openCtx != "" && (kind == "music" || kind == "edge") {
+		u.habits.learn(u.openCtx, kind)
 	}
 }
 
@@ -847,7 +821,7 @@ func (u *UI) viewKey(v view) string {
 			return fmt.Sprint("card:", c.ID, c.Title)
 		}
 	case vExpanded:
-		return "exp:" + u.pageFor()
+		return "exp"
 	}
 	return "pill:" + u.compactLine().key
 }

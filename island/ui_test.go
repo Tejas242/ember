@@ -15,19 +15,30 @@ func settle(u *UI, clock *time.Time) {
 	}
 }
 
-// Buttons inside the open card must win over the card's own click area.
+// The open card is a stack of rows; the music controls appear under the
+// pointer and win over the row; a session row focuses its terminal.
 func TestExpandedButtonsWinHits(t *testing.T) {
 	clock := time.Now()
 	u := NewUI(440, 280, 22)
 	u.now = func() time.Time { return clock }
 	u.track = &Track{Player: "p", Title: "T", Artist: "A", Playing: true, Length: time.Minute, PosAt: clock}
-	u.sessions["s"] = &Session{ID: "s", Project: "edge", State: "work", Label: "x", Since: clock}
+	u.sessions["s"] = &Session{ID: "s", Project: "edge", State: "work", Label: "x", Since: clock, Seen: clock}
 	var got []string
 	u.onKey = func(k string) { got = append(got, k) }
 	u.pinned = true
-	u.page = "music"
 	settle(u, &clock)
-	for _, want := range []string{"music:toggle", "music:next", "tab:claude"} {
+	for _, h := range u.hits {
+		if h.key == "music:toggle" {
+			t.Fatal("controls only under the pointer")
+		}
+	}
+	// point at the music row: the right end of the row under the seek line
+	r := u.seekRect
+	if redraw, _ := u.pointer(pointerEvent{kind: "enter", x: float64(r.Max.X - 20), y: float64(r.Min.Y - 16)}); redraw {
+		u.Invalidate() // as the app does
+	}
+	settle(u, &clock)
+	for _, want := range []string{"music:toggle", "music:next"} {
 		found := false
 		for _, h := range u.hits {
 			if h.key == want {
@@ -42,10 +53,6 @@ func TestExpandedButtonsWinHits(t *testing.T) {
 		if !found {
 			t.Fatalf("no hit area for %s", want)
 		}
-	}
-	settle(u, &clock) // now on the Claude page
-	if u.pageFor() != "claude" {
-		t.Fatalf("tab should switch page, on %s", u.pageFor())
 	}
 	for _, h := range u.hits {
 		if h.key == "focus:s" {
@@ -86,7 +93,7 @@ func TestNoBlankWhileOpening(t *testing.T) {
 		t.Fatalf("expected to be mid-morph, height %.0f", u.sh.x)
 	}
 	bright := 0
-	for y := 26; y < int(u.sh.x)-4; y++ {
+	for y := 6; y < int(u.sh.x)-4; y++ {
 		for x := int(u.shape.x) + 8; x < int(u.shape.x+u.shape.w)-8; x++ {
 			i := y*u.cv.img.Stride + x*4
 			if u.cv.img.Pix[i] > 70 && u.cv.img.Pix[i+1] > 70 { // text at ~half opacity, mid-fade
@@ -134,31 +141,33 @@ func TestPrimaryPriority(t *testing.T) {
 	}
 }
 
-// Scrolling over the open card switches pages; tabs exist for each activity.
-func TestPagesAndTabs(t *testing.T) {
+// Rows come in the order they matter, idle sessions fold into the strip's
+// narrative, and the system chips close the stack.
+func TestRowsOrder(t *testing.T) {
 	clock := time.Now()
 	u := NewUI(440, 280, 22)
 	u.now = func() time.Time { return clock }
 	u.track = &Track{Player: "p", Title: "T", Playing: true, PosAt: clock}
-	u.sessions["a"] = &Session{ID: "a", Project: "edge", State: "work", Seen: clock}
-	u.pinned = true
-	settle(u, &clock)
-	if u.pageFor() != "claude" {
-		t.Fatalf("opens on what the pill showed, got %s", u.pageFor())
-	}
-	tabs := 0
-	for _, h := range u.hits {
-		if strings.HasPrefix(h.key, "tab:") {
-			tabs++
+	u.vol = level{v: 0.5, ok: true}
+	u.sessions["w"] = &Session{ID: "w", Project: "edge", State: "work", Seen: clock}
+	u.sessions["q"] = &Session{ID: "q", Project: "kv", State: "wait", Seen: clock}
+	u.sessions["i"] = &Session{ID: "i", Project: "old", State: "idle", Seen: clock}
+	var kinds []string
+	for _, r := range u.rows() {
+		k := r.kind
+		if r.s != nil {
+			k += ":" + r.s.ID
 		}
+		kinds = append(kinds, k)
 	}
-	if tabs != 2 {
-		t.Fatalf("want 2 tabs, got %d", tabs)
+	if strings.Join(kinds, " ") != "session:q mini:w music system" {
+		t.Fatalf("rows %v", kinds)
 	}
-	u.mx, u.my = 220, 120
-	u.scroll(1)
-	if u.pageFor() != "music" {
-		t.Fatalf("scroll should go to music, got %s", u.pageFor())
+	if !strings.Contains(u.narrative(), "1 idle") {
+		t.Fatalf("idle sessions go in the narrative: %q", u.narrative())
+	}
+	if h := u.expandedHeight(); h > 195 {
+		t.Fatalf("two sessions, music and the chips should stay compact, got %d px", h)
 	}
 }
 

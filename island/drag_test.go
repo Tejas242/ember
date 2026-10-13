@@ -13,7 +13,7 @@ func TestDragSlider(t *testing.T) {
 	u.vol, u.light = level{v: 0.2, ok: true}, 0.5
 	var keys []string
 	u.onKey = func(k string) { keys = append(keys, k) }
-	u.pinned, u.page = true, "system"
+	u.pinned = true
 	settle(u, &clock)
 	r := u.sliders["sys:vol"]
 	if r.Dx() == 0 {
@@ -22,14 +22,14 @@ func TestDragSlider(t *testing.T) {
 	y := float64(r.Min.Y+r.Max.Y) / 2
 	at := func(f float64) float64 { return float64(r.Min.X) + f*float64(r.Dx()) }
 
-	u.pointer(pointerEvent{kind: "enter", x: at(0.1), y: y})
-	u.pointer(pointerEvent{kind: "press", x: at(0.1), y: y, button: 1})
+	u.pointer(pointerEvent{kind: "enter", x: at(0.3), y: y}) // (the chip's first 30 px are its mute button)
+	u.pointer(pointerEvent{kind: "press", x: at(0.3), y: y, button: 1})
 	if u.drag != "sys:vol" || len(keys) != 1 {
 		t.Fatalf("press starts a drag and sets the level: drag=%q keys=%v", u.drag, keys)
 	}
 	for i := 1; i <= 10; i++ { // 10 moves in 100 ms: throttled to every 50 ms
 		clock = clock.Add(10 * time.Millisecond)
-		u.pointer(pointerEvent{kind: "motion", x: at(0.1 + float64(i)*0.05), y: y})
+		u.pointer(pointerEvent{kind: "motion", x: at(0.3 + float64(i)*0.05), y: y})
 	}
 	if len(keys) > 4 {
 		t.Fatalf("too many updates while dragging: %v", keys)
@@ -49,7 +49,7 @@ func TestDragSeekOnlyOnRelease(t *testing.T) {
 	u.track = &Track{Player: "p", Title: "T", Playing: true, Length: 4 * time.Minute, PosAt: clock}
 	var keys []string
 	u.onKey = func(k string) { keys = append(keys, k) }
-	u.pinned, u.page = true, "music"
+	u.pinned = true
 	settle(u, &clock)
 	r := u.seekRect
 	y := float64(r.Min.Y+r.Max.Y) / 2

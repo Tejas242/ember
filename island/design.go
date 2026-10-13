@@ -5,8 +5,6 @@ import (
 	"image/color"
 	"math"
 	"time"
-
-	"golang.org/x/image/vector"
 )
 
 // The design system: spacing, type, motion. Every interactive thing eases
@@ -203,69 +201,6 @@ func (u *UI) shimmerLive(f fontFace, s string, x, base float32, col color.NRGBA)
 			}
 		}
 	}})
-}
-
-// ---- the page switcher ----
-
-// segmented draws icon tabs right-aligned at rx with an indicator that
-// glides to the current page.
-func (u *UI) segmented(pages []string, cur string, rx, y float32) {
-	p := u.pal
-	const sw, sh, gap = 30, 24, 2
-	n := float32(len(pages))
-	w := n*sw + (n-1)*gap + 4
-	x := rx - w
-	u.dc.roundRect(x, y, w, sh+4, 12, alpha(p.fg, 0.06))
-	idx := 0
-	for i, pg := range pages {
-		if pg == cur {
-			idx = i
-		}
-	}
-	target := float64(x + 2 + float32(idx)*(sw+gap))
-	ix := float32(u.tw("seg:x", target, target))
-	u.dc.roundRect(ix, y+2, sw, sh, 10, alpha(p.fg, 0.13))
-	for i, pg := range pages {
-		sx := x + 2 + float32(i)*(sw+gap)
-		key := "tab:" + pg
-		on := 1 - math.Min(1, math.Abs(float64(ix-sx))/(sw+gap)) // brightens as the indicator arrives
-		h := u.hl(key)
-		col := mix(p.muted, p.fg, math.Max(on, h*0.6))
-		u.tabIcon(pg, sx+sw/2, y+2+sh/2, col)
-		u.hits = append(u.hits, hit{image.Rect(int(sx), int(y), int(sx+sw), int(y+sh+4)), key})
-	}
-}
-
-// tabIcon is each page's glyph: a flame, a note, a target, sliders.
-func (u *UI) tabIcon(page string, cx, cy float32, col color.NRGBA) {
-	c := u.dc
-	switch page {
-	case "claude":
-		c.fillPath(cx-6, cy-8, cx+6, cy+7, col, func(r *vector.Rasterizer, ox, oy float32) {
-			x, y := cx-ox, cy-oy
-			r.MoveTo(x+1, y-7)
-			r.CubeTo(x+1.5, y-3, x+5.5, y-2.5, x+5.2, y+1.8)
-			r.CubeTo(x+5, y+5, x+2.5, y+6.5, x, y+6.5)
-			r.CubeTo(x-2.8, y+6.5, x-5.2, y+4.6, x-5.2, y+1.6)
-			r.CubeTo(x-5.2, y-0.8, x-4, y-2.2, x-3.2, y-3)
-			r.CubeTo(x-3, y-1.2, x-2.2, y-0.2, x-1.2, y+0.2)
-			r.CubeTo(x-1.8, y-3, x-0.6, y-5.4, x+1, y-7)
-			r.ClosePath()
-		})
-	case "music":
-		c.circle(cx-3.2, cy+4, 2.7, col)
-		c.roundRect(cx-1.2, cy-6.5, 1.6, 11, 0.8, col)
-		c.poly(col, pt{cx - 0.4, cy - 6.5}, pt{cx + 5, cy - 4.4}, pt{cx + 5, cy - 2.2}, pt{cx - 0.4, cy - 4.2})
-	case "edge":
-		c.frame(cx-6.5, cy-6.5, 13, 13, 6.5, 1.4, col)
-		c.circle(cx, cy, 2.4, col)
-	case "system":
-		for i, k := range []float32{0.3, 0.7} {
-			yy := cy - 3.5 + float32(i)*7
-			c.roundRect(cx-6.5, yy-0.8, 13, 1.6, 0.8, alpha(col, 0.55))
-			c.circle(cx-6.5+13*k, yy, 2.4, col)
-		}
-	}
 }
 
 // ---- syntax tint for commands ----

@@ -604,6 +604,7 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		}
 	case "Stop":
 		s.State, s.Label = "idle", ""
+		a.ui.lastDone.project, a.ui.lastDone.at = s.Project, now
 		a.ui.mind.kick(now, 0.2, 0.35) // pleased
 		if a.ui.mind.away {            // tell them when they're back
 			a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"done", s.Project, s.ID})
@@ -687,25 +688,28 @@ func (a *app) permission(s *Session, in hookInput, tin map[string]any, answer ch
 	c := &Card{ID: "perm:" + s.ID + ":" + fmt.Sprint(time.Now().UnixNano()), Kind: "perm", Mood: moodWait,
 		Meta: s.Project, Priority: 10, Footer: "In terminal", Expires: a.ui.now().Add(AskTimeout - 5*time.Second)}
 	switch in.Tool {
-	case "Bash":
-		c.Title, c.Body, c.Code = "Run this command?", str("description"), str("command")
+	case "Bash": // Claude says what it wants in words: that's the title; the command is the detail
+		c.Title, c.Code, c.Shell = str("description"), str("command"), true
+		if c.Title == "" {
+			c.Title = "Run a command"
+		}
 	case "Edit", "MultiEdit", "Write":
 		verb := map[string]string{"Write": "Create"}[in.Tool]
 		if verb == "" {
 			verb = "Edit"
 		}
 		_, p, m := activity(in.Tool, tin)
-		c.Title = verb + " " + filepath.Base(str("file_path")) + "?"
+		c.Title = verb + " " + filepath.Base(str("file_path"))
 		c.Body = fmt.Sprintf("%s  ·  %s", where(str("file_path")), diffText(max(p, 0), m))
 		if p == 0 && m == 0 {
 			c.Body = where(str("file_path"))
 		}
 	case "WebFetch":
 		u, _ := url.Parse(str("url"))
-		c.Title, c.Code = "Fetch "+u.Host+"?", str("url")
+		c.Title, c.Code = "Fetch "+u.Host, str("url")
 	default:
 		label, _, _ := activity(in.Tool, tin)
-		c.Title = label + "?"
+		c.Title = label
 		if b, err := json.Marshal(tin); err == nil && len(b) > 2 {
 			c.Code = string(b)
 		}

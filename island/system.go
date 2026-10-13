@@ -481,7 +481,8 @@ func scaleThumb(src image.Image, w, h int) *image.RGBA {
 	return dst
 }
 
-func (u *UI) onSystemPage() bool { return u.lastView == vExpanded && u.pageFor() == "system" }
+// onSystemPage: the open card shows the system chips, so no OSD on top.
+func (u *UI) onSystemPage() bool { return u.lastView == vExpanded }
 
 // ---- controls (the System page) ----
 

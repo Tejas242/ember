@@ -64,12 +64,22 @@ type line struct {
 	lock        bool
 	music       bool
 	work        bool    // Claude is working: the label shimmers
+	trail       string  // the second activity, as a satellite at the pill's end
 	m           *moment // a system moment: icon, meter, value, battery
 }
 
 const meterW = 86
 
 func (u *UI) compactLine() line {
+	l := u.mainLine()
+	l.trail = u.secondary(u.primary())
+	return l
+}
+
+// trailW is the satellite's room: gap, hairline, gap, glyph.
+const trailW = 8 + 1 + 7 + 18
+
+func (u *UI) mainLine() line {
 	p, now := u.pal, u.now()
 	ss := u.sessionList()
 	switch u.primary() {
@@ -196,6 +206,9 @@ func (u *UI) compactWidth(l line) float64 {
 	if u.casting {
 		w += 12
 	}
+	if l.trail != "" {
+		w += trailW
+	}
 	lo := 70.0
 	if l.m != nil && l.m.meter {
 		lo = 168 // the bar shouldn't jump as the number changes
@@ -244,8 +257,14 @@ func (u *UI) drawCompact(x, w, h float32) {
 	tx := ix + 22 + l.thumbW()
 	base := cy + 4.5
 
-	// the right end, laid out first: privacy dot, battery, value, meter, lock, chip
+	// the right end, laid out first: the satellite, privacy dot, battery,
+	// value, meter, lock, chip
 	rx := x + w - 12
+	if l.trail != "" {
+		u.drawTrail(l.trail, rx-18, cy, h)
+		u.dc.roundRect(rx-18-7-1, cy-6, 1, 12, 0.5, alpha(p.fg, 0.14))
+		rx -= trailW
+	}
 	if u.casting { // someone can see your screen
 		u.dc.circle(rx-3, cy, 3.2, mix(p.red, p.yellow, 0.35))
 		rx -= 12
@@ -356,6 +375,44 @@ func (u *UI) accent(fallback color.NRGBA) color.NRGBA {
 	return fallback
 }
 
+// drawTrail draws the second activity as a small satellite glyph in an 18 px
+// slot at x: the cover (or an equaliser), a tiny flickering flame, a timer.
+// Clicking it swaps it with the pill's main line.
+func (u *UI) drawTrail(act string, x, cy, h float32) {
+	p := u.pal
+	u.hits = append(u.hits, hit{image.Rect(int(x-9), 0, int(x+20), int(h)), "trail"})
+	k := float32(u.hl("trail"))
+	switch act {
+	case "music":
+		if u.art != nil {
+			u.dc.drawArt(u.art.small, int(x), int(cy-9), 9, 1) // a round disc
+			if u.track != nil && u.track.Playing {
+				u.lives = append(u.lives, live{image.Rect(int(x)-2, int(cy-11), int(x+20), int(cy+11)), func(c *canvas, t float64) {
+					a := t * 2.2 // a dot orbiting the disc: it's spinning
+					c.circle(x+9+7.2*float32(math.Cos(a)), cy+7.2*float32(math.Sin(a)), 1.3, alpha(colorWhite, 0.85))
+				}})
+			}
+		} else {
+			u.eqLive(x+1, cy+5, 10, u.accent(p.green), u.track != nil && u.track.Playing)
+		}
+	case "claude":
+		m := moodWork
+		if ss := u.sessionList(); len(ss) > 0 && ss[0].State == "wait" {
+			m = moodWait
+		}
+		col := p.moodColor(m)
+		u.lives = append(u.lives, live{image.Rect(int(x), 0, int(x+19), int(h)), func(c *canvas, t float64) {
+			c.ember(p, x+9, cy+1, 11+k, m, t, 0, 0, col, 1, 0)
+		}})
+	case "edge":
+		if e := u.edge; e != nil {
+			txt := mins(u.now().Sub(time.UnixMilli(e.StartedMs)))
+			f := face(fSemiBold, 10)
+			u.dc.text(f, txt, x+9-measure(f, txt)/2, cy+3.5, p.green)
+		}
+	}
+}
+
 // eqLive registers the little equaliser at (x, y) (bottom-left), height h.
 func (u *UI) eqLive(x, y, h float32, col color.NRGBA, playing bool) {
 	r := image.Rect(int(x)-1, int(y-h)-1, int(x+16)+1, int(y)+1)
@@ -391,48 +448,8 @@ func (u *UI) progressLive(x, y, w, th float32, col color.NRGBA, knob float32) {
 	}})
 }
 
-func (u *UI) drawBubble(t float64) {
-	u.bubble = image.Rectangle{}
-	k := float32(u.bub.x)
-	if k < 0.02 {
-		return
-	}
-	act := u.secondary(u.primary())
-	size := u.BarH * k
-	cx := u.shape.x + u.shape.w + 8 + size/2
-	n := notch{x: cx - size/2, w: size, h: u.BarH * (0.6 + 0.4*k), rb: size / 2}
-	u.cv.drawNotch(u.pal, n, float64(k), 0)
-	u.bubble = n.bounds()
-	cy := n.h / 2
-	if k > 0.85 {
-		switch act {
-		case "music":
-			if u.art != nil {
-				u.cv.drawArt(u.art.small, int(cx-9), int(cy-9), 9, float64(k))
-			} else {
-				u.eqLive(cx-7.5, cy+5, 10, u.accent(u.pal.green), true)
-			}
-		case "claude":
-			m := moodWork
-			if ss := u.sessionList(); len(ss) > 0 && ss[0].State == "wait" {
-				m = moodWait
-			}
-			u.lives = append(u.lives, live{image.Rect(int(cx-9), 0, int(cx+9), int(n.h)), func(c *canvas, t float64) {
-				c.ember(u.pal, cx, cy+1, 11, m, t, 0, 0, u.pal.moodColor(m), 1, 0)
-			}})
-		case "edge":
-			if e := u.edge; e != nil {
-				txt := mins(u.now().Sub(time.UnixMilli(e.StartedMs)))
-				f := face(fSemiBold, 9.5)
-				u.cv.text(f, txt, cx-measure(f, txt)/2, cy+3.5, u.pal.green)
-			}
-		}
-	}
-	u.hits = append(u.hits, hit{n.bounds(), "bubble"})
-}
-
-// mediaGlyph draws prev / play-pause / next centred at (cx, cy).
-func (u *UI) mediaGlyph(kind string, cx, cy float32, playing bool, col color.NRGBA) {
+// mediaGlyph draws prev / play-pause / next centred at (cx, cy), scaled by k.
+func (u *UI) mediaGlyph(kind string, cx, cy float32, playing bool, col color.NRGBA, k float32) {
 	tri := func(x0, y0, x1, y1, x2, y2 float32) {
 		u.dc.fillPath(min(x0, x1, x2), min(y0, y1, y2), max(x0, x1, x2), max(y0, y1, y2), col, func(r *vector.Rasterizer, ox, oy float32) {
 			r.MoveTo(x0-ox, y0-oy)
@@ -444,17 +461,17 @@ func (u *UI) mediaGlyph(kind string, cx, cy float32, playing bool, col color.NRG
 	switch kind {
 	case "toggle":
 		if playing {
-			u.dc.roundRect(cx-5.5, cy-7.5, 4, 15, 1.5, col)
-			u.dc.roundRect(cx+1.5, cy-7.5, 4, 15, 1.5, col)
+			u.dc.roundRect(cx-5.5*k, cy-7.5*k, 4*k, 15*k, 1.5*k, col)
+			u.dc.roundRect(cx+1.5*k, cy-7.5*k, 4*k, 15*k, 1.5*k, col)
 		} else {
-			tri(cx-4.5, cy-8, cx-4.5, cy+8, cx+8.5, cy)
+			tri(cx-4.5*k, cy-8*k, cx-4.5*k, cy+8*k, cx+8.5*k, cy)
 		}
 	case "prev":
-		u.dc.roundRect(cx-7, cy-5.5, 2.4, 11, 1, col)
-		tri(cx+5, cy-5.5, cx+5, cy+5.5, cx-4, cy)
+		u.dc.roundRect(cx-7*k, cy-5.5*k, 2.4*k, 11*k, 1*k, col)
+		tri(cx+5*k, cy-5.5*k, cx+5*k, cy+5.5*k, cx-4*k, cy)
 	case "next":
-		u.dc.roundRect(cx+4.6, cy-5.5, 2.4, 11, 1, col)
-		tri(cx-5, cy-5.5, cx-5, cy+5.5, cx+4, cy)
+		u.dc.roundRect(cx+4.6*k, cy-5.5*k, 2.4*k, 11*k, 1*k, col)
+		tri(cx-5*k, cy-5.5*k, cx-5*k, cy+5.5*k, cx+4*k, cy)
 	}
 }
 
