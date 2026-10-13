@@ -93,12 +93,13 @@ func (a *app) powerChanged(prev, p power) {
 	now := a.ui.now()
 	switch {
 	case charging(p.state) && !charging(prev.state):
-		a.ui.Moment(moment{key: "power", icon: "bolt", tint: a.ui.pal.green, text: "Charging", right: pctText(p.pct),
+		text := map[uint32]string{1: "Charging", 4: "Fully charged", 5: "Plugged in"}[p.state]
+		a.ui.Moment(moment{key: "power", icon: "bolt", tint: a.ui.pal.green, text: text, right: pctText(p.pct),
 			batt: true, pct: p.pct / 100, until: now.Add(3500 * time.Millisecond)})
 	case !charging(p.state) && charging(prev.state):
 		a.ui.Moment(moment{key: "power", icon: "battery", tint: a.ui.pal.fg, text: "On battery", right: pctText(p.pct),
 			batt: true, pct: p.pct / 100, until: now.Add(2500 * time.Millisecond)})
-	case p.state == 4 && prev.state != 4:
+	case p.state == 4 && prev.state == 1:
 		a.ui.Moment(moment{key: "power", icon: "check", tint: a.ui.pal.green, text: "Fully charged", right: pctText(p.pct),
 			batt: true, pct: 1, until: now.Add(4 * time.Second)})
 	case p.state == 2:

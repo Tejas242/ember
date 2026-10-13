@@ -149,6 +149,7 @@ type UI struct {
 	track    *Track
 	art      *albumArt
 	moment   *moment
+	under    *moment // a note waiting under an OSD
 	power    *power  // the battery, if there is one
 	casting  bool    // the screen is being shared
 	vol      level   // the default output
@@ -258,12 +259,23 @@ func (u *UI) expire() bool {
 	u.cards = kept
 	if u.moment != nil && now.After(u.moment.until) {
 		u.moment, changed = nil, true
+		if m := u.under; m != nil {
+			u.under = nil
+			if m.until.Sub(now) < 2*time.Second {
+				m.until = now.Add(2 * time.Second) // long enough to read
+			}
+			u.moment = m
+		}
 	}
 	return changed
 }
 
-// Moment shows a short-lived line in the pill.
+// Moment shows a short-lived line in the pill. A key press (osd) doesn't
+// cost you a note: the note comes back when the OSD is done.
 func (u *UI) Moment(m moment) {
+	if cur := u.moment; m.osd && cur != nil && !cur.osd && cur.until.After(u.now()) {
+		u.under = cur
+	}
 	u.moment = &m
 	if m.mood == moodHappy {
 		u.Bounce()

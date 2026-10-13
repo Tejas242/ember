@@ -135,7 +135,7 @@ binds {
 
 ## Config
 
-`~/.config/ember/config.toml`. Changes apply within a few seconds, with no restart.
+`~/.config/ember/config.toml`. Changes apply within ten seconds, with no restart.
 
 ```toml
 clock          = "12h"   # 12h | 24h

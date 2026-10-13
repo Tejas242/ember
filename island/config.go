@@ -40,7 +40,7 @@ func ConfigPath() string {
 }
 
 // DefaultConfigText is what `ember install` writes when there's no config yet.
-const DefaultConfigText = `# Ember: changes apply within a few seconds, no restart needed.
+const DefaultConfigText = `# Ember: changes apply within ten seconds, no restart needed.
 
 clock          = "12h"   # 12h | 24h
 hover_delay_ms = 240     # how long the pointer rests on the pill before the card drops

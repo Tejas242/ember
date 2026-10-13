@@ -159,3 +159,25 @@ func TestPagesAndTabs(t *testing.T) {
 		t.Fatalf("scroll should go to music, got %s", u.pageFor())
 	}
 }
+
+// A volume OSD over a "Done" note doesn't lose the note.
+func TestOSDKeepsNote(t *testing.T) {
+	clock := time.Now()
+	u := NewUI(440, 280, 22)
+	u.now = func() time.Time { return clock }
+	u.Moment(moment{key: "done", text: "Done · ember", until: clock.Add(6 * time.Second)})
+	u.Moment(moment{key: "osd:volume", osd: true, meter: true, level: 0.5, until: clock.Add(1600 * time.Millisecond)})
+	if u.moment.key != "osd:volume" || u.primary() != "moment" {
+		t.Fatal("the OSD shows first")
+	}
+	clock = clock.Add(2 * time.Second)
+	u.expire()
+	if u.moment == nil || u.moment.key != "done" {
+		t.Fatalf("the note should come back, got %+v", u.moment)
+	}
+	clock = clock.Add(7 * time.Second)
+	u.expire()
+	if u.moment != nil {
+		t.Fatal("and then go")
+	}
+}
