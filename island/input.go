@@ -23,18 +23,42 @@ func (u *UI) pointer(e pointerEvent) (redraw, hand bool) {
 	switch e.kind {
 	case "enter", "motion":
 		u.mx, u.my = e.x, e.y
+		if u.drag != "" { // the pointer may be far outside the island: the grab keeps it ours
+			u.dragTo(false)
+			return true, true
+		}
 		if !u.hover {
 			u.hover, u.hoverAt = true, u.now()
 			redraw = true
 		}
 	case "leave":
+		if u.drag != "" {
+			return false, true // released outside: the release still comes to us
+		}
 		u.hover, u.pinned, u.suppress = false, false, false
 		u.leftAt = u.now()
 		u.hoverKey = ""
 		return true, false
 	case "press":
 		u.mx, u.my = e.x, e.y
-		u.press(u.hitAt(e.x, e.y), e.button)
+		k := u.hitAt(e.x, e.y)
+		if e.button == 1 && draggable(k) {
+			u.drag, u.dragSent = k, time.Time{}
+			u.flash(k)
+			u.dragTo(false)
+			return true, true
+		}
+		u.press(k, e.button)
+		return true, false
+	case "release":
+		u.mx, u.my = e.x, e.y
+		if u.drag != "" {
+			u.dragTo(true)
+			u.drag = ""
+			if k := u.hitAt(e.x, e.y); k == "" { // let go outside the island
+				u.hover, u.hoverKey, u.leftAt = false, "", u.now()
+			}
+		}
 		return true, false
 	case "scroll":
 		u.scroll(e.steps)
@@ -134,23 +158,6 @@ func (u *UI) press(k string, button int) {
 		}
 	case strings.HasPrefix(k, "tab:"):
 		u.page = strings.TrimPrefix(k, "tab:")
-	case k == "music:seek" && u.track != nil && u.track.Length > 0 && u.seekRect.Dx() > 0:
-		frac := (u.mx - float64(u.seekRect.Min.X)) / float64(u.seekRect.Dx())
-		target := time.Duration(frac * float64(u.track.Length))
-		delta := target - u.track.pos(u.now())
-		u.track.Position, u.track.PosAt = target, u.now() // move now; the player catches up
-		u.key(fmt.Sprintf("music:seek:%d", delta))
-	case k == "sys:vol" || k == "sys:light":
-		r := u.sliders[k]
-		if r.Dx() > 0 {
-			frac := math.Max(0, math.Min(1, (u.mx-float64(r.Min.X))/float64(r.Dx())))
-			if k == "sys:vol" {
-				u.vol.v = frac // move now; the sound server confirms
-			} else {
-				u.light = frac
-			}
-			u.key(fmt.Sprintf("%s:%.3f", k, frac))
-		}
 	case k == "sys:mute":
 		u.vol.muted = !u.vol.muted
 		u.key(k)
@@ -195,5 +202,52 @@ func (u *UI) flash(k string) { u.pressKey, u.pressAt = k, u.now() }
 func (u *UI) key(k string) {
 	if u.onKey != nil {
 		u.onKey(k)
+	}
+}
+
+// ---- dragging: sliders and the seek bar ----
+
+func draggable(k string) bool { return k == "sys:vol" || k == "sys:light" || k == "music:seek" }
+
+// dragFrac is where the pointer is along the dragged control, 0..1.
+func (u *UI) dragFrac() (float64, bool) {
+	r := u.sliders[u.drag]
+	if u.drag == "music:seek" {
+		r = u.seekRect
+	}
+	if r.Dx() <= 0 {
+		return 0, false
+	}
+	return math.Max(0, math.Min(1, (u.mx-float64(r.Min.X))/float64(r.Dx()))), true
+}
+
+// dragTo follows the pointer: the control moves every frame, the system
+// hears about it at most every 50 ms (a process per change would pile up),
+// and once more, exactly, on release. A seek happens only on release: the
+// playhead previews until then.
+func (u *UI) dragTo(final bool) {
+	frac, ok := u.dragFrac()
+	if !ok {
+		return
+	}
+	now := u.now()
+	switch u.drag {
+	case "sys:vol":
+		u.vol.v = frac
+	case "sys:light":
+		u.light = frac
+	case "music:seek":
+		u.seekPreview = frac
+		if final && u.track != nil && u.track.Length > 0 {
+			target := time.Duration(frac * float64(u.track.Length))
+			delta := target - u.track.pos(now)
+			u.track.Position, u.track.PosAt = target, now // move now; the player catches up
+			u.key(fmt.Sprintf("music:seek:%d", delta))
+		}
+		return
+	}
+	if final || now.Sub(u.dragSent) >= 50*time.Millisecond {
+		u.dragSent = now
+		u.key(fmt.Sprintf("%s:%.3f", u.drag, frac))
 	}
 }

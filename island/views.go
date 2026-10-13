@@ -377,6 +377,9 @@ func (u *UI) progressLive(x, y, w, th float32, col color.NRGBA) {
 	r := image.Rect(int(x)-6, int(y-th)-6, int(x+w)+7, int(y+th)+7)
 	u.lives = append(u.lives, live{r, func(c *canvas, _ float64) {
 		k := float32(math.Min(1, float64(t.pos(u.now()))/float64(t.Length)))
+		if u.drag == "music:seek" {
+			k = float32(u.seekPreview)
+		}
 		c.roundRect(x, y-th/2, w, th, th/2, alpha(u.pal.line, 0.9))
 		c.roundRect(x, y-th/2, max(w*k, th), th, th/2, alpha(col, 0.9))
 		if th > 2 { // a knob on the big bar
@@ -537,7 +540,11 @@ func (u *UI) musicPage(x, w, y float32) {
 		tr := image.Rect(int(x+padX)-3, int(ty-12), int(x+w-padX)+3, int(ty+5)) // glyphs reach a pixel past their box
 		u.lives = append(u.lives, live{tr, func(c *canvas, _ float64) {
 			f := face(fRegular, 10.5)
-			el, tot := clock(t.pos(u.now())), clock(t.Length)
+			pos := t.pos(u.now())
+			if u.drag == "music:seek" {
+				pos = time.Duration(u.seekPreview * float64(t.Length))
+			}
+			el, tot := clock(pos), clock(t.Length)
 			c.text(f, el, x+padX, ty, p.faint)
 			c.text(f, tot, x+w-padX-measure(f, tot), ty, p.faint)
 		}})

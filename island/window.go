@@ -16,7 +16,7 @@ const (
 )
 
 type pointerEvent struct {
-	kind   string // enter | motion | leave | press | scroll
+	kind   string // enter | motion | leave | press | release | scroll
 	x, y   float64
 	button int     // press: 1 left, 2 middle, 3 right
 	steps  float64 // scroll: wheel notches, positive = down
@@ -153,11 +153,13 @@ func (win *window) onPointerEv(op uint16, d *dec) {
 		d.u32()
 		d.u32()
 		btn, state := d.u32(), d.u32()
-		if state == 1 {
-			b := map[uint32]int{0x110: 1, 0x112: 2, 0x111: 3}[btn]
-			if b != 0 {
-				win.emit(pointerEvent{kind: "press", x: win.px, y: win.py, button: b})
-			}
+		b := map[uint32]int{0x110: 1, 0x112: 2, 0x111: 3}[btn]
+		switch {
+		case b == 0:
+		case state == 1:
+			win.emit(pointerEvent{kind: "press", x: win.px, y: win.py, button: b})
+		default: // the compositor grabs the pointer for us between press and release
+			win.emit(pointerEvent{kind: "release", x: win.px, y: win.py, button: b})
 		}
 	case 4: // axis: vertical wheel / touchpad, ~15 units per notch
 		d.u32()

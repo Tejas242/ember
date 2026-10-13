@@ -260,6 +260,9 @@ func watchVolume(posts chan<- func(*app)) {
 }
 
 func (a *app) volumeChanged(l level) {
+	if a.ui.drag == "sys:vol" {
+		l.v = a.ui.vol.v // your hand wins over the echo of an older position
+	}
 	a.ui.vol = l
 	if !a.cfg.OSD || a.ui.onSystemPage() {
 		return
@@ -415,6 +418,9 @@ func watchFiles(posts chan<- func(*app)) {
 }
 
 func (a *app) brightnessChanged(v float64) {
+	if a.ui.drag == "sys:light" {
+		return
+	}
 	a.ui.light = v
 	if !a.cfg.OSD || a.ui.onSystemPage() {
 		return

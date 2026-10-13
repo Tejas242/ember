@@ -167,6 +167,9 @@ type UI struct {
 	focusAt                 time.Time
 	page                    string // expanded card page
 	seekRect                image.Rectangle
+	seekPreview             float64                    // where a dragged playhead is, 0..1
+	drag                    string                     // the control being dragged: sys:vol, sys:light, music:seek
+	dragSent                time.Time                  // when the system last heard about the drag
 	sliders                 map[string]image.Rectangle // System page: sys:vol, sys:light
 
 	// animation
@@ -399,7 +402,7 @@ func (u *UI) currentView() view {
 	if u.top() != nil {
 		return vCard
 	}
-	if u.pinned || (u.hover && !u.suppress && u.now().Sub(u.hoverAt) >= u.cfg.HoverDelay) ||
+	if u.pinned || u.drag != "" || (u.hover && !u.suppress && u.now().Sub(u.hoverAt) >= u.cfg.HoverDelay) ||
 		(!u.hover && u.lastView == vExpanded && u.now().Sub(u.leftAt) < 300*time.Millisecond) {
 		return vExpanded
 	}
