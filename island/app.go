@@ -43,6 +43,7 @@ type Status struct {
 	BarHeight   float32 `json:"barHeight"`
 	Blur        bool    `json:"blur"`
 	CursorShape bool    `json:"cursorShape"`
+	Presence    bool    `json:"presence"`
 	Niri        bool    `json:"niri"`
 	Music       bool    `json:"music"`
 	Track       string  `json:"track,omitempty"`
@@ -56,7 +57,7 @@ type Status struct {
 
 func (a *app) status() Status {
 	st := Status{Pid: os.Getpid(), Uptime: time.Since(a.started).Round(time.Second).String(), BarHeight: a.ui.BarH,
-		Blur: a.win.blurMgr != 0, CursorShape: a.win.cursorMgr != 0, Niri: a.desk.live, Music: a.music != nil,
+		Blur: a.win.blurMgr != 0, CursorShape: a.win.cursorMgr != 0, Presence: a.win.idleMgr != 0, Niri: a.desk.live, Music: a.music != nil,
 		Volume: a.ui.vol.ok, Backlight: a.ui.light >= 0, Battery: a.ui.power != nil,
 		Sessions: len(a.ui.sessions), Pending: len(a.ui.cards), Config: "defaults"}
 	if a.track != nil {
@@ -664,6 +665,7 @@ func (a *app) welcomeBack(now time.Time) {
 // presence: the compositor says you've stopped (or started) using the machine.
 func (a *app) presence(idle bool) {
 	m, now := a.ui.mind, a.ui.now()
+	log.Printf("presence: away=%v (%d note(s) waiting)", idle, len(m.missed))
 	if idle {
 		m.away, m.awaySince = true, now
 		return

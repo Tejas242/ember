@@ -4,6 +4,7 @@ import (
 	"image"
 	"log"
 	"math"
+	"os"
 	"time"
 )
 
@@ -92,7 +93,11 @@ func openWindow(w, h, marginTop int, layer uint32) (*window, error) {
 	if err := c.roundtrip(); err != nil { // seat capabilities
 		return nil, err
 	}
-	win.watchIdle(2 * time.Minute)
+	away := 2 * time.Minute
+	if v, err := time.ParseDuration(os.Getenv("EMBER_AWAY_AFTER")); err == nil && v > 0 { // for testing
+		away = v
+	}
+	win.watchIdle(away)
 
 	win.surface = c.newID(nil)
 	c.send(win.compositor, 0, win.surface)

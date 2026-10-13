@@ -249,7 +249,7 @@ func (u *UI) salience(act string, now time.Time) float64 {
 		}
 		s := 0.85 + 0.15*nov()
 		if u.watching[ss[0].ID] { // its terminal has your focus: you can see it there
-			s = 0.3
+			s = 0.15
 		}
 		return s
 	case "music":

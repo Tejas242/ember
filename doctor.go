@@ -71,6 +71,8 @@ func doctor() {
 	if up {
 		line(st.Blur, "blur", map[bool]string{true: "ext-background-effect-v1", false: "compositor has no ext-background-effect-v1; the island is drawn without blur"}[st.Blur], "")
 		line(st.CursorShape, "cursor", map[bool]string{true: "wp-cursor-shape-v1", false: "no wp-cursor-shape-v1: no hand cursor over buttons"}[st.CursorShape], "")
+		line(st.Presence, "presence", map[bool]string{true: "ext-idle-notify-v1: knows when you're away",
+			false: "no ext-idle-notify-v1: no \"while you were away\""}[st.Presence], "")
 		line(st.Niri, "niri", map[bool]string{true: "event stream: focus, terminal titles, screen sharing",
 			false: "no niri event stream: Done notes can't tell where you're looking"}[st.Niri], "")
 		line(st.Music, "music", map[bool]string{true: "MPRIS on the session bus" + map[bool]string{true: " · " + st.Track, false: ""}[st.Track != ""],

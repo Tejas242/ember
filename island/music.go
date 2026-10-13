@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -209,11 +210,22 @@ func (m *music) nudgeVolume(player string, d float64) {
 	}()
 }
 
-// playerName is the friendly name of a bus name ("org.mpris.MediaPlayer2.YoutubeMusic" -> "YoutubeMusic").
+// playerName is the friendly name of a bus name
+// ("org.mpris.MediaPlayer2.YoutubeMusic" → "YouTube Music", "spotify" → "Spotify").
 func playerName(bus string) string {
 	n := strings.TrimPrefix(bus, mprisPrefix)
 	if i := strings.IndexByte(n, '.'); i > 0 {
 		n = n[:i]
 	}
-	return n
+	var b strings.Builder
+	for i, r := range n { // split CamelCase, capitalise
+		if i > 0 && unicode.IsUpper(r) && !unicode.IsUpper(rune(n[i-1])) {
+			b.WriteByte(' ')
+		}
+		if i == 0 {
+			r = unicode.ToUpper(r)
+		}
+		b.WriteRune(r)
+	}
+	return strings.NewReplacer("Youtube", "YouTube", "Vlc", "VLC", "Mpv", "mpv").Replace(b.String())
 }
