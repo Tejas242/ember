@@ -68,11 +68,7 @@ func loadConfig(path string) Config {
 	section := ""
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
-		ln := sc.Text()
-		if i := strings.IndexByte(ln, '#'); i >= 0 && !strings.Contains(ln[:i], `"`) {
-			ln = ln[:i]
-		}
-		ln = strings.TrimSpace(ln)
+		ln := strings.TrimSpace(stripComment(sc.Text()))
 		if strings.HasPrefix(ln, "[") {
 			section = strings.Trim(ln, "[] ")
 			continue
@@ -111,6 +107,22 @@ func loadConfig(path string) Config {
 		}
 	}
 	return c
+}
+
+// stripComment cuts a # comment that isn't inside quotes.
+func stripComment(ln string) string {
+	quote := rune(0)
+	for i, c := range ln {
+		switch {
+		case quote != 0 && c == quote:
+			quote = 0
+		case quote == 0 && (c == '"' || c == '\''):
+			quote = c
+		case quote == 0 && c == '#':
+			return ln[:i]
+		}
+	}
+	return ln
 }
 
 func (c Config) timeFormat() string {
