@@ -69,6 +69,13 @@ func (a *app) status() Status {
 	return st
 }
 
+// raise puts the island back above a bar that was just re-created.
+func (a *app) raise() {
+	log.Println("the shell restarted: raising the island above its new bar")
+	a.win.raise()
+	a.ui.Invalidate()
+}
+
 // reloadConfig applies ~/.config/ember/config.toml if it changed.
 func (a *app) reloadConfig() bool {
 	at := mtime(ConfigPath())

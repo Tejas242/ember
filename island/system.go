@@ -32,6 +32,38 @@ func startSystem(posts chan<- func(*app)) {
 	go watchBluetooth(posts)
 	go watchVolume(posts)
 	go watchFiles(posts)
+	go watchShell(posts)
+}
+
+// watchShell notices the desktop shell (Noctalia) starting again: its new
+// bar is a newer surface on our layer and would cover the island, so the
+// island raises itself once the bar is up. Event-driven: the shell's D-Bus
+// names change owner when it restarts.
+func watchShell(posts chan<- func(*app)) {
+	bus, err := dbus.ConnectSessionBus()
+	if err != nil {
+		return
+	}
+	bus.AddMatchSignal(dbus.WithMatchInterface("org.freedesktop.DBus"), dbus.WithMatchMember("NameOwnerChanged"),
+		dbus.WithMatchArg0Namespace("dev.noctalia"))
+	sig := make(chan *dbus.Signal, 8)
+	bus.Signal(sig)
+	var last time.Time
+	for s := range sig {
+		if len(s.Body) < 3 {
+			continue
+		}
+		if owner, _ := s.Body[2].(string); owner == "" || time.Since(last) < 5*time.Second {
+			continue // a name going away, or the same restart's other names
+		}
+		last = time.Now()
+		go func() {
+			for _, d := range []time.Duration{1500 * time.Millisecond, 3 * time.Second} { // the bar maps a moment after the names
+				time.Sleep(d)
+				posts <- func(a *app) { a.raise() }
+			}
+		}()
+	}
 }
 
 // ---- battery (UPower) ----

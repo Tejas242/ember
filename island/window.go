@@ -41,6 +41,8 @@ type window struct {
 	onPointer                          func(pointerEvent)
 	onFrame                            func()
 	onIdle                             func(idle bool)
+	layerKind                          uint32
+	marginTop                          int
 	idleMgr, idleVer                   uint32
 	lastInput                          image.Rectangle
 	lastShape                          uint32
@@ -99,17 +101,8 @@ func openWindow(w, h, marginTop int, layer uint32) (*window, error) {
 	}
 	win.watchIdle(away)
 
-	win.surface = c.newID(nil)
-	c.send(win.compositor, 0, win.surface)
-	win.layer = c.newID(win.onLayer)
-	c.send(win.layerShell, 0, win.layer, win.surface, uint32(0), layer, "ember")
-	c.send(win.layer, 0, uint32(w), uint32(h))      // set_size
-	c.send(win.layer, 1, uint32(anchorTop))         // set_anchor
-	c.send(win.layer, 2, int32(-1))                 // set_exclusive_zone -1: sit on top of the bar, reserve nothing
-	c.send(win.layer, 3, int32(marginTop), 0, 0, 0) // set_margin
-	c.send(win.layer, 4, uint32(0))                 // keyboard: none, never steal focus
-	win.setInput(image.Rectangle{})
-	c.send(win.surface, 6) // commit
+	win.layerKind, win.marginTop = layer, marginTop
+	win.createSurface()
 	if err := c.roundtrip(); err != nil {
 		return nil, err
 	}
@@ -138,6 +131,43 @@ func (win *window) watchIdle(d time.Duration) {
 		op = 2 // get_input_idle_notification
 	}
 	win.c.send(win.idleMgr, op, id, uint32(d.Milliseconds()), win.seat)
+}
+
+// createSurface makes the island's surface and its layer role; the
+// compositor answers with a configure before the first buffer may go up.
+func (win *window) createSurface() {
+	c := win.c
+	win.surface = c.newID(nil)
+	c.send(win.compositor, 0, win.surface)
+	win.layer = c.newID(win.onLayer)
+	c.send(win.layerShell, 0, win.layer, win.surface, uint32(0), win.layerKind, "ember")
+	c.send(win.layer, 0, uint32(win.w), uint32(win.h))  // set_size
+	c.send(win.layer, 1, uint32(anchorTop))             // set_anchor
+	c.send(win.layer, 2, int32(-1))                     // set_exclusive_zone -1: sit on top of the bar, reserve nothing
+	c.send(win.layer, 3, int32(win.marginTop), 0, 0, 0) // set_margin
+	c.send(win.layer, 4, uint32(0))                     // keyboard: none, never steal focus
+	win.setInput(image.Rectangle{})
+	c.send(win.surface, 6) // commit
+}
+
+// raise puts the island back on top of its layer. Layer-shell has no
+// "raise": the newest surface of a layer is drawn above the older ones, so
+// when the bar is re-created (the shell restarted) it covers us. Making our
+// surface again puts it above. The buffers survive; everything is redrawn.
+func (win *window) raise() {
+	c := win.c
+	if win.blurSurf != 0 {
+		c.send(win.blurSurf, 0) // ext_background_effect_surface_v1.destroy
+		win.blurSurf, win.lastBlur = 0, nil
+	}
+	c.send(win.layer, 7)   // zwlr_layer_surface_v1.destroy
+	c.send(win.surface, 0) // wl_surface.destroy
+	win.configured, win.framePending, win.lastShape = false, false, 0
+	for _, b := range win.bufs {
+		b.stale = image.Rect(0, 0, win.w, win.h)
+	}
+	win.createSurface()
+	c.flush()
 }
 
 func (win *window) onSeat(op uint16, d *dec) {
