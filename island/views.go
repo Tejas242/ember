@@ -423,12 +423,13 @@ func (u *UI) musicPage(x, w, y float32) {
 	if t.Length > 0 {
 		u.progressLive(x+padX, y, bw, 3)
 		u.hits = append(u.hits, hit{u.seekRect, "music:seek"})
-		tr := image.Rect(int(x+padX)-3, int(y+5), int(x+w-padX)+3, int(y+22)) // glyphs reach a pixel past their box
+		ty := y + 17 // y moves on below; the closure must not see that
+		tr := image.Rect(int(x+padX)-3, int(ty-12), int(x+w-padX)+3, int(ty+5)) // glyphs reach a pixel past their box
 		u.lives = append(u.lives, live{tr, func(c *canvas, _ float64) {
 			f := face(fRegular, 10.5)
 			el, tot := clock(t.pos(u.now())), clock(t.Length)
-			c.text(f, el, x+padX, y+17, p.faint)
-			c.text(f, tot, x+w-padX-measure(f, tot), y+17, p.faint)
+			c.text(f, el, x+padX, ty, p.faint)
+			c.text(f, tot, x+w-padX-measure(f, tot), ty, p.faint)
 		}})
 	}
 	y += 20

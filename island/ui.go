@@ -466,7 +466,7 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 		damage = b.Union(u.lastBounds).Intersect(u.cv.img.Rect)
 		u.lastBounds = b
 		for _, l := range u.lives {
-			if u.shape.contains(l.r) || u.bubble.Inset(-2).Intersect(l.r) == l.r { // appear once the shape reaches them
+			if settled || u.shape.contains(l.r) || u.bubble.Inset(-2).Intersect(l.r) == l.r { // appear once the shape reaches them
 				l.draw(u.cv, t)
 			}
 		}
