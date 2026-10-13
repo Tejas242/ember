@@ -267,6 +267,21 @@ func (a *app) key(k string) {
 		if s := a.ui.sessions[strings.TrimPrefix(k, "focus:")]; s != nil {
 			a.focusSession(s.Pids)
 		}
+	case k == "sys:mute":
+		go toggleMute()
+	case strings.HasPrefix(k, "sys:vol:nudge:"), strings.HasPrefix(k, "sys:light:nudge:"):
+		dir, _ := strconv.Atoi(k[strings.LastIndexByte(k, ':')+1:])
+		if strings.HasPrefix(k, "sys:vol") {
+			go nudgeVolume(dir)
+		} else {
+			go nudgeBrightness(dir)
+		}
+	case strings.HasPrefix(k, "sys:vol:"):
+		f, _ := strconv.ParseFloat(strings.TrimPrefix(k, "sys:vol:"), 64)
+		go setVolume(f)
+	case strings.HasPrefix(k, "sys:light:"):
+		f, _ := strconv.ParseFloat(strings.TrimPrefix(k, "sys:light:"), 64)
+		go setBrightness(f)
 	case strings.HasPrefix(k, "open:"):
 		go exec.Command("xdg-open", strings.TrimPrefix(k, "open:")).Run()
 	case strings.HasPrefix(k, "music:seek:") && a.track != nil:

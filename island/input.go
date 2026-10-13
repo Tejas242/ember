@@ -3,6 +3,7 @@ package island
 import (
 	"fmt"
 	"image"
+	"math"
 	"strings"
 	"time"
 )
@@ -44,7 +45,7 @@ func (u *UI) pointer(e pointerEvent) (redraw, hand bool) {
 		u.hoverKey = k
 		redraw = true
 	}
-	for _, pre := range []string{"btn:", "opt:", "focus:", "close:", "music:", "tab:", "bubble"} {
+	for _, pre := range []string{"btn:", "opt:", "focus:", "close:", "music:", "tab:", "bubble", "sys:"} {
 		hand = hand || strings.HasPrefix(k, pre)
 	}
 	return redraw, hand
@@ -65,7 +66,11 @@ func (u *UI) scroll(steps float64) {
 			u.key(fmt.Sprintf("music:volume:%d", -dir))
 			return
 		}
-		acts := u.acts()
+		if k := u.hitAt(u.mx, u.my); k == "sys:vol" || k == "sys:light" || k == "sys:mute" {
+			u.key(fmt.Sprintf("%s:nudge:%d", strings.TrimSuffix(k, ":mute"), -dir))
+			return
+		}
+		acts := u.pages()
 		cur := u.pageFor()
 		for i, a := range acts {
 			if a == cur && len(acts) > 0 {
@@ -126,6 +131,20 @@ func (u *UI) press(k string, button int) {
 		delta := target - u.track.pos(u.now())
 		u.track.Position, u.track.PosAt = target, u.now() // move now; the player catches up
 		u.key(fmt.Sprintf("music:seek:%d", delta))
+	case k == "sys:vol" || k == "sys:light":
+		r := u.sliders[k]
+		if r.Dx() > 0 {
+			frac := math.Max(0, math.Min(1, (u.mx-float64(r.Min.X))/float64(r.Dx())))
+			if k == "sys:vol" {
+				u.vol.v = frac // move now; the sound server confirms
+			} else {
+				u.light = frac
+			}
+			u.key(fmt.Sprintf("%s:%.3f", k, frac))
+		}
+	case k == "sys:mute":
+		u.vol.muted = !u.vol.muted
+		u.key(k)
 	case strings.HasPrefix(k, "close:") && c != nil:
 		u.RemoveCard(c.ID)
 		if c.OnPick != nil {

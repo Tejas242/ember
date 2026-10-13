@@ -37,9 +37,10 @@ func startSystem(posts chan<- func(*app)) {
 // ---- battery (UPower) ----
 
 type power struct {
-	pct     float64
-	state   uint32 // 1 charging, 2 discharging, 4 full, 5 pending charge
-	present bool
+	pct      float64
+	state    uint32 // 1 charging, 2 discharging, 4 full, 5 pending charge
+	present  bool
+	tte, ttf int64 // seconds to empty / to full, 0 if unknown
 }
 
 func readPower(bus *dbus.Conn) (power, bool) {
@@ -52,6 +53,8 @@ func readPower(bus *dbus.Conn) (power, bool) {
 	p.pct, _ = props["Percentage"].Value().(float64)
 	p.state, _ = props["State"].Value().(uint32)
 	p.present, _ = props["IsPresent"].Value().(bool)
+	p.tte, _ = props["TimeToEmpty"].Value().(int64)
+	p.ttf, _ = props["TimeToFull"].Value().(int64)
 	return p, p.present
 }
 
@@ -217,6 +220,8 @@ func watchVolume(posts chan<- func(*app)) {
 			return
 		}
 		sink, src := readLevel("@DEFAULT_AUDIO_SINK@"), readLevel("@DEFAULT_AUDIO_SOURCE@")
+		first := sink
+		posts <- func(a *app) { a.ui.vol = first }
 		events := make(chan struct{}, 1)
 		go func() {
 			sc := bufio.NewScanner(out)
@@ -254,7 +259,8 @@ func watchVolume(posts chan<- func(*app)) {
 }
 
 func (a *app) volumeChanged(l level) {
-	if !a.cfg.OSD {
+	a.ui.vol = l
+	if !a.cfg.OSD || a.ui.onSystemPage() {
 		return
 	}
 	icon, tint := "volume", a.ui.pal.fg
@@ -349,6 +355,13 @@ func watchFiles(posts chan<- func(*app)) {
 		unix.Close(fd)
 		return
 	}
+	for _, d := range backlights() { // the starting level, quietly
+		if cur, top := readInt(filepath.Join(d, "brightness")), readInt(filepath.Join(d, "max_brightness")); top > 0 {
+			v := float64(cur) / float64(top)
+			posts <- func(a *app) { a.ui.light = v }
+			break
+		}
+	}
 	var mu sync.Mutex
 	lightDue := false
 	buf := make([]byte, 64<<10)
@@ -401,7 +414,8 @@ func watchFiles(posts chan<- func(*app)) {
 }
 
 func (a *app) brightnessChanged(v float64) {
-	if !a.cfg.OSD {
+	a.ui.light = v
+	if !a.cfg.OSD || a.ui.onSystemPage() {
 		return
 	}
 	a.ui.Moment(moment{key: "osd:brightness", icon: "sun", tint: a.ui.pal.yellow, meter: true, level: v,
@@ -458,4 +472,54 @@ func scaleThumb(src image.Image, w, h int) *image.RGBA {
 		}
 	}
 	return dst
+}
+
+func (u *UI) onSystemPage() bool { return u.lastView == vExpanded && u.pageFor() == "system" }
+
+// ---- controls (the System page) ----
+
+func setVolume(frac float64) {
+	exec.Command("wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", strconv.FormatFloat(max(0, min(1, frac)), 'f', 3, 64)).Run()
+}
+
+func nudgeVolume(dir int) {
+	step := "5%+"
+	if dir < 0 {
+		step = "5%-"
+	}
+	exec.Command("wpctl", "set-volume", "-l", "1", "@DEFAULT_AUDIO_SINK@", step).Run()
+}
+
+func toggleMute() { exec.Command("wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle").Run() }
+
+// setBrightness goes through logind, which lets the seat's user set it
+// without root. Never fully dark: the screen must stay readable.
+func setBrightness(frac float64) {
+	ds := backlights()
+	if len(ds) == 0 {
+		return
+	}
+	top := readInt(filepath.Join(ds[0], "max_brightness"))
+	if top <= 0 {
+		return
+	}
+	v := uint32(max(0.03, min(1, frac)) * float64(top))
+	bus, err := dbus.ConnectSystemBus()
+	if err != nil {
+		return
+	}
+	defer bus.Close()
+	bus.Object("org.freedesktop.login1", "/org/freedesktop/login1/session/auto").
+		Call("org.freedesktop.login1.Session.SetBrightness", 0, "backlight", filepath.Base(ds[0]), v)
+}
+
+func nudgeBrightness(dir int) {
+	ds := backlights()
+	if len(ds) == 0 {
+		return
+	}
+	cur, top := readInt(filepath.Join(ds[0], "brightness")), readInt(filepath.Join(ds[0], "max_brightness"))
+	if top > 0 {
+		setBrightness(float64(cur)/float64(top) + float64(dir)*0.05)
+	}
 }

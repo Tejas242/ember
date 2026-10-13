@@ -3,10 +3,12 @@ package island
 import (
 	"bytes"
 	"image"
+	"image/color"
 	"image/draw"
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -20,6 +22,7 @@ import (
 type albumArt struct {
 	url          string
 	small, large *image.RGBA // 18 px (pill), 46 px (card)
+	accent       color.NRGBA // the cover's colour, lifted to read on the dark island; zero if it's grey
 }
 
 var artClient = &http.Client{Timeout: 8 * time.Second}
@@ -52,6 +55,7 @@ func loadArt(raw string, done func(*albumArt)) {
 			return
 		}
 		art := &albumArt{url: raw, small: scaleSquare(src, 18), large: scaleSquare(src, 46)}
+		art.accent = accentOf(art.large)
 		src, data = nil, nil
 		debug.FreeOSMemory() // a decoded cover can be tens of MB; give it back now
 		done(art)
@@ -100,4 +104,97 @@ func roundMask(n int, rad float32, alpha float64) *image.Alpha {
 	}
 	roundMasks[k] = m
 	return m
+}
+
+// accentOf finds a cover's most prominent vivid hue (by saturation-weighted
+// area) and brings it to a lightness that reads on the dark island.
+func accentOf(img *image.RGBA) color.NRGBA {
+	const buckets = 24
+	var weight [buckets]float64
+	var sum [buckets][3]float64
+	for i := 0; i+3 < len(img.Pix); i += 4 {
+		r, g, b := float64(img.Pix[i])/255, float64(img.Pix[i+1])/255, float64(img.Pix[i+2])/255
+		h, s, v := rgbToHSV(r, g, b)
+		if s < 0.25 || v < 0.22 {
+			continue // greys, near-black
+		}
+		k := int(h*buckets) % buckets
+		w := s * s * v
+		weight[k] += w
+		sum[k][0] += r * w
+		sum[k][1] += g * w
+		sum[k][2] += b * w
+	}
+	best, total := 0, 0.0
+	for k := range weight {
+		// a hue's neighbours count a little: covers are rarely one flat colour
+		w := weight[k] + 0.5*(weight[(k+1)%buckets]+weight[(k+buckets-1)%buckets])
+		if w > total {
+			best, total = k, w
+		}
+	}
+	if total < 0.02*float64(len(img.Pix)/4) {
+		return color.NRGBA{}
+	}
+	r, g, b := sum[best][0]/weight[best], sum[best][1]/weight[best], sum[best][2]/weight[best]
+	h, s, l := rgbToHSL(r, g, b)
+	s = math.Min(math.Max(s, 0.5), 0.85)
+	l = math.Min(math.Max(l, 0.64), 0.76)
+	r, g, b = hslToRGB(h, s, l)
+	return color.NRGBA{uint8(r*255 + 0.5), uint8(g*255 + 0.5), uint8(b*255 + 0.5), 255}
+}
+
+func rgbToHSV(r, g, b float64) (h, s, v float64) {
+	mx, mn := math.Max(r, math.Max(g, b)), math.Min(r, math.Min(g, b))
+	v = mx
+	if mx == 0 {
+		return 0, 0, 0
+	}
+	s = (mx - mn) / mx
+	h, _, _ = rgbToHSL(r, g, b)
+	return h, s, v
+}
+
+func rgbToHSL(r, g, b float64) (h, s, l float64) {
+	mx, mn := math.Max(r, math.Max(g, b)), math.Min(r, math.Min(g, b))
+	l = (mx + mn) / 2
+	d := mx - mn
+	if d == 0 {
+		return 0, 0, l
+	}
+	s = d / (1 - math.Abs(2*l-1))
+	switch mx {
+	case r:
+		h = math.Mod((g-b)/d, 6)
+	case g:
+		h = (b-r)/d + 2
+	default:
+		h = (r-g)/d + 4
+	}
+	h /= 6
+	if h < 0 {
+		h++
+	}
+	return h, s, l
+}
+
+func hslToRGB(h, s, l float64) (r, g, b float64) {
+	c := (1 - math.Abs(2*l-1)) * s
+	x := c * (1 - math.Abs(math.Mod(h*6, 2)-1))
+	m := l - c/2
+	switch int(h*6) % 6 {
+	case 0:
+		r, g, b = c, x, 0
+	case 1:
+		r, g, b = x, c, 0
+	case 2:
+		r, g, b = 0, c, x
+	case 3:
+		r, g, b = 0, x, c
+	case 4:
+		r, g, b = x, 0, c
+	default:
+		r, g, b = c, 0, x
+	}
+	return r + m, g + m, b + m
 }

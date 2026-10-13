@@ -35,6 +35,7 @@ func TestPreview(t *testing.T) {
 			}
 		}
 		u.art = &albumArt{small: scaleSquare(img, 18), large: scaleSquare(img, 46)}
+		u.art.accent = accentOf(u.art.large)
 	}
 	save := func(name string, u *UI) {
 		for i := 0; i < 150; i++ {
@@ -93,6 +94,16 @@ func TestPreview(t *testing.T) {
 	u.edge.StartedMs = clock.Add(-23 * time.Minute).UnixMilli()
 	u.edge.Pending = false
 	save("6c-expanded-edge", u)
+
+	u = mk()
+	u.vol = level{v: 0.38, ok: true}
+	u.light = 0.7
+	u.power = &power{pct: 66, state: 2, present: true, tte: 2*3600 + 41*60}
+	u.sessions["c"] = &Session{ID: "c", Project: "ember", State: "idle", Title: "Ember end-to-end product", Since: clock.Add(-2 * time.Hour)}
+	u.pinned, u.page = true, "system"
+	save("6d-expanded-system", u)
+	u.page = "claude"
+	save("6e-expanded-claude-titles", u)
 
 	u = mk()
 	u.AddCard(&Card{ID: "p", Kind: "perm", Mood: moodWait, Title: "Run this command?", Meta: "kinvault",

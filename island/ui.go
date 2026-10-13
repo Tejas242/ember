@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"slices"
 	"sort"
 	"time"
 )
@@ -148,8 +149,10 @@ type UI struct {
 	track    *Track
 	art      *albumArt
 	moment   *moment
-	power    *power // the battery, if there is one
-	casting  bool   // the screen is being shared
+	power    *power  // the battery, if there is one
+	casting  bool    // the screen is being shared
+	vol      level   // the default output
+	light    float64 // screen brightness 0..1, -1 if there's no backlight
 
 	// interaction
 	hover, pinned, suppress bool
@@ -163,6 +166,7 @@ type UI struct {
 	focusAt                 time.Time
 	page                    string // expanded card page
 	seekRect                image.Rectangle
+	sliders                 map[string]image.Rectangle // System page: sys:vol, sys:light
 
 	// animation
 	sw, sh, bub        spring
@@ -198,6 +202,8 @@ func NewUI(w, h int, barH float32) *UI {
 		prev: image.NewRGBA(image.Rect(0, 0, w, h)), pal: loadPalette(), cfg: DefaultConfig(), sessions: map[string]*Session{},
 		now: time.Now, dirty: true, base: image.NewRGBA(image.Rect(0, 0, w, h))}
 	u.dc = u.content
+	u.light = -1
+	u.sliders = map[string]image.Rectangle{}
 	u.start, u.lastBlink, u.glanceAt = u.now(), u.now(), u.now()
 	c := u.pal.muted
 	u.emberCol = [3]float64{float64(c.R), float64(c.G), float64(c.B)}
@@ -296,6 +302,15 @@ func (u *UI) acts() []string {
 	return out
 }
 
+// pages are what the open card can show: the activities, then System.
+func (u *UI) pages() []string {
+	ps := u.acts()
+	if u.power != nil || u.vol.ok || u.light >= 0 {
+		ps = append(ps, "system")
+	}
+	return ps
+}
+
 func (u *UI) has(act string) bool {
 	for _, a := range u.acts() {
 		if a == act {
@@ -381,7 +396,7 @@ func (u *UI) currentView() view {
 
 // pageFor picks the expanded card's page: the one you chose, else the pill's.
 func (u *UI) pageFor() string {
-	if u.page != "" && u.has(u.page) {
+	if u.page != "" && slices.Contains(u.pages(), u.page) {
 		return u.page
 	}
 	switch p := u.primary(); p {
@@ -392,7 +407,7 @@ func (u *UI) pageFor() string {
 			return u.moment.act
 		}
 	}
-	if a := u.acts(); len(a) > 0 {
+	if a := u.pages(); len(a) > 0 {
 		return a[0]
 	}
 	return ""
