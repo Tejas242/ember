@@ -72,7 +72,7 @@ const help = `ember: a dynamic island for the top of your screen
   ember doctor           check every piece and say what to fix
   ember version
 
-  ember open [page]      open the card: claude, music, edge, system
+  ember open             open the card
   ember close | toggle
   ember next | prev      switch what the pill shows
   ember play             play / pause

@@ -4,11 +4,13 @@ A dynamic island for the top of a Wayland desktop. It sits over the centre of yo
 in it, and morphs to show what is going on: what Claude Code is doing and what it needs from you, the song that's
 playing, volume and brightness as you change them, the charger, your headphones, a screenshot you just took.
 
-Hover it and a card drops down with the details and the controls.
+It is always one pill. When two things are going on, the second rides along as a small satellite at the pill's end,
+behind a hairline: a tiny flickering flame while Claude works, the spinning cover while a song plays. Click the
+satellite to swap it in. Hover the pill and a compact card drops down. It is a live stack, not a settings window.
 
 ![The pill's states](docs/pills.png)
 
-![The card: music, system, a permission request, a question](docs/cards.png)
+![The card: the live stack, a permission request, a question, a quiet desk](docs/cards.png)
 
 It is one native Go binary. It talks the Wayland protocol directly and draws in software, with no toolkit and no
 GPU. It wakes only when something changes. Measured on a 2018 laptop, it uses about 9 MB of private memory and about 1%
@@ -40,18 +42,32 @@ previous, play/pause and next. Scroll on it to change the volume. The card takes
 - Screenshots, with a preview. Click it to open the file.
 - A dot while your screen is being shared or recorded.
 
-**System page.** Volume and brightness as Control Centre-style capsules you can drag, click or scroll, mute, and
-the battery with time to empty or full.
+**System chips.** Volume, brightness and battery share one slim row at the bottom of the card. The volume and
+brightness chips are sliders too: drag or scroll them, or click the speaker to mute. The battery chip shows time to
+empty or full.
 
 **The clock**, when nothing else is going on. And [edge](https://github.com/Tejas242/edge)'s practice status, if
 you run it.
 
-**The card.** A header with Ember, the page's title and a live line of context ("2 working · 1 waiting"), and a
-switcher whose indicator glides between pages. Pages slide sideways and the card's height morphs. Hovers fade in on
-springs, and numbers roll when they change. Claude's sessions show a sparkline of the last ten minutes of activity. A
-request shows how long it will keep waiting as a line that drains along the card's bottom. Corners are continuous
-(superellipse) rather than circular arcs. Text in any script draws: styled Unicode letters fold to plain ones, and
-missing characters come from a system font found through fontconfig.
+**The card** has no tabs and no pages.
+- **The strip.** One line at the top says only what the rows don't ("3 idle · airspace finished 12m ago"), with the
+  time beside it.
+- **The rows.** One dense row per thing going on, most important first:
+  - **Sessions.** A session waiting on you comes first, then working sessions. The first gets two lines with a
+    sparkline of its last ten minutes of activity; any others get one line each.
+  - **Music and edge** follow, the one you reach for in this situation first.
+  - **System chips** close the stack.
+- **Controls appear where your pointer is.** Hover the music row and the controls cross-fade in where the equaliser
+  was. The song's progress runs along the row's foot and drags.
+- **Compact.** A typical card is about 160 px tall.
+
+**Requests** use Claude's own words as the title ("Run the store tests with the race detector") and show the command
+once, syntax-tinted, with a line along the bottom that drains while the request waits. Questions have numbered
+option rows, with "In terminal" tucked into the corner.
+
+Hovers fade in on springs, numbers roll when they change, and corners are continuous (superellipse) rather than
+circular arcs. Text in any script draws: styled Unicode letters fold to plain ones, and missing characters come from
+a system font found through fontconfig.
 
 ## Alive
 
@@ -63,7 +79,7 @@ Ember has a small mind. None of it is scripted animation. It is a handful of mod
   flame flickers, how fast it breathes and how open its eyes are. Mood tints its colour. It casts a soft light on the
   island, brighter when it's lively.
 - **Life.** Blinks come at random, about fifteen a minute, sometimes doubled. Glances are random too, and the eyes are
-  never perfectly still. Ember looks at things as they appear: a note, the bubble beside the pill. When the desk has
+  never perfectly still. Ember looks at things as they appear: a note, the satellite at the pill's end. When the desk has
   been quiet for a while it gets drowsy, then falls asleep (eyes shut, z's rising), and wakes when something happens
   or your pointer comes near.
 - **Presence.** Through the compositor's idle notifications it knows when you've stepped away. Sessions that finish or
@@ -71,10 +87,10 @@ Ember has a small mind. None of it is scripted animation. It is a handful of mod
   *While you were away: kinvault done · ember asked you*.
 - **Attention.** What the pill shows is scored, not hard-coded. A running session scores high. A new track scores
   high and then fades as you get used to it. If you're already looking at that session's terminal, the pill shows
-  something else and Claude moves to the bubble. A choice holds until a rival clearly beats it, so the pill never
+  something else and Claude moves to the satellite. A choice holds until a rival clearly beats it, so the pill never
   flickers between close calls. A request waiting on you, and anything you just pressed, always come first.
-- **Habits.** It learns which page you want when the card opens, per situation (Claude working with music on, say).
-  Older evidence fades, so a new habit takes over within a few opens.
+- **Habits.** It learns which row you reach for in each situation (music while Claude works, say) and puts it
+  higher. Older evidence fades, so a new habit takes over within a few uses.
 - **Judgement.** "Done" quotes the most informative sentence of Claude's reply (outcomes and numbers win over
   preamble). Notes that arrive together merge ("Done · edge, ember"). A volume change hands a pending note back when
   it's finished. A step running long shows its minutes. A session that went silent for half an hour (a killed Claude
@@ -138,18 +154,18 @@ layer-rule {
 | --- | --- |
 | Hover the pill | Drops the card. Leave and it folds back |
 | Click the pill | Opens the card. On a request or a "Done", jumps to that terminal |
-| Click a moment | Screenshot: opens it. Volume, brightness, battery: opens the System page |
-| Click the bubble | Brings what the bubble shows (music beside Claude, say) to the pill |
+| Click a moment | Screenshot: opens it. Volume, brightness, battery: opens the card |
+| Click the satellite | Swaps the second activity (the cover, the little flame) into the pill |
 | Scroll on the pill | Switches what the pill shows |
 | Drag a slider or the seek bar | Follows your pointer, even past the island's edge. A seek happens on release |
-| Scroll on the card | Switches pages. On a slider or the music controls, changes the level |
+| Scroll on a chip or the music row | Changes that level (the player's own volume on the music row) |
 | Middle-click | Play / pause |
 | Right-click | Dismisses a moment or the card |
 
 Commands, for keybindings or scripts:
 
 ```
-ember open [claude|music|edge|system]   open the card, on a page
+ember open                              open the card
 ember close | toggle
 ember next | prev                       switch what the pill shows
 ember play                              play / pause
