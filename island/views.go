@@ -889,8 +889,15 @@ func (u *UI) drawCard(c *Card, x, w float32) {
 	y := float32(14)
 	metaW := float32(0)
 	closable := c.Kind == "edge"
-	if c.Meta != "" {
-		meta := ellipsize(fSmall(), c.Meta, 130)
+	meta := c.Meta
+	if n := len(u.cards) - 1; n > 0 { // more requests are queued behind this one
+		meta = fmt.Sprintf("%s · %d more", meta, n)
+		if c.Meta == "" {
+			meta = fmt.Sprintf("%d more", n)
+		}
+	}
+	if meta != "" {
+		meta := ellipsize(fSmall(), meta, 150)
 		metaW = measure(fSmall(), meta)
 		mx := x + w - padX - metaW
 		if closable {

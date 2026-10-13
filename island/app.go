@@ -583,9 +583,9 @@ func (a *app) permission(s *Session, in hookInput, tin map[string]any, answer ch
 		}
 		_, p, m := activity(in.Tool, tin)
 		c.Title = verb + " " + filepath.Base(str("file_path")) + "?"
-		c.Body = fmt.Sprintf("%s  ·  %s", rel(str("file_path"), s), diffText(max(p, 0), m))
+		c.Body = fmt.Sprintf("%s  ·  %s", where(str("file_path")), diffText(max(p, 0), m))
 		if p == 0 && m == 0 {
-			c.Body = rel(str("file_path"), s)
+			c.Body = where(str("file_path"))
 		}
 	case "WebFetch":
 		u, _ := url.Parse(str("url"))
@@ -615,7 +615,7 @@ func (a *app) permission(s *Session, in hookInput, tin map[string]any, answer ch
 		case "always":
 			decide(map[string]any{"behavior": "allow", "updatedPermissions": in.Suggestions})
 		case "deny":
-			decide(map[string]any{"behavior": "deny", "message": "Denied from the edge island."})
+			decide(map[string]any{"behavior": "deny", "message": "Denied from Ember."})
 		default: // In terminal: no decision, Claude asks there
 			answer <- nil
 		}
@@ -625,11 +625,16 @@ func (a *app) permission(s *Session, in hookInput, tin map[string]any, answer ch
 	return c.ID
 }
 
-func rel(p string, s *Session) string {
+// where is a file's folder, short: "~/Gems/edge/store".
+func where(p string) string {
 	if p == "" {
 		return ""
 	}
-	return strings.TrimPrefix(p, filepath.Dir(p)+"/")
+	d := filepath.Dir(p)
+	if h, _ := os.UserHomeDir(); h != "" && strings.HasPrefix(d, h) {
+		d = "~" + strings.TrimPrefix(d, h)
+	}
+	return d
 }
 
 type question struct {

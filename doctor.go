@@ -42,17 +42,21 @@ func versionString() string {
 // whatever is missing.
 func doctor() {
 	bad := 0
+	green, red, yellow := "\033[32m✓\033[0m", "\033[31m✗\033[0m", "\033[33m·\033[0m"
+	if fi, err := os.Stdout.Stat(); err == nil && fi.Mode()&os.ModeCharDevice == 0 { // piped: plain marks
+		green, red, yellow = "✓", "✗", "·"
+	}
 	line := func(ok bool, what, detail, fix string) {
-		mark := "\033[32m✓\033[0m"
+		mark := green
 		if !ok {
-			mark, bad = "\033[31m✗\033[0m", bad+1
+			mark, bad = red, bad+1
 		}
 		fmt.Printf("%s %-14s %s\n", mark, what, detail)
 		if !ok && fix != "" {
 			fmt.Printf("  %-14s → %s\n", "", fix)
 		}
 	}
-	note := func(what, detail string) { fmt.Printf("\033[33m·\033[0m %-14s %s\n", what, detail) }
+	note := func(what, detail string) { fmt.Printf("%s %-14s %s\n", yellow, what, detail) }
 
 	exe, _ := os.Executable()
 	fmt.Printf("ember %s  %s\n\n", versionString(), exe)

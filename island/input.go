@@ -111,10 +111,19 @@ func (u *UI) press(k string, button int) {
 			u.key("focus:" + ss[0].ID)
 			return
 		}
-		if u.moment != nil && u.moment.focus != "" {
-			u.key("focus:" + u.moment.focus)
-			u.moment = nil
-			return
+		if m := u.moment; m != nil {
+			switch {
+			case m.focus != "":
+				u.key("focus:" + m.focus)
+				u.moment = nil
+				return
+			case m.open != "":
+				u.key("open:" + m.open)
+				u.moment = nil
+				return
+			case m.osd || m.batt || m.key == "power": // volume, brightness, battery: their controls
+				u.moment, u.page = nil, "system"
+			}
 		}
 		u.pinned, u.suppress = true, false
 	case k == "panel": // the card's background closes it
