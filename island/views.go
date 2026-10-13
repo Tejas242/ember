@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
 	"math"
 	"strings"
 	"time"
@@ -24,6 +25,7 @@ const (
 var (
 	fText  = func() fontFace { return face(fMedium, 12.5) }
 	fSmall = func() fontFace { return face(fRegular, 11.5) }
+	fValue = func() fontFace { return face(fSemiBold, 12) }
 )
 
 func short(task string) string {
@@ -69,7 +71,10 @@ type line struct {
 	chipCol     color.NRGBA
 	lock        bool
 	music       bool
+	m           *moment // a system moment: icon, meter, value, battery
 }
+
+const meterW = 86
 
 func (u *UI) compactLine() line {
 	p, now := u.pal, u.now()
@@ -77,7 +82,11 @@ func (u *UI) compactLine() line {
 	switch u.primary() {
 	case "moment":
 		m := u.moment
-		return line{key: "moment:" + m.key, mood: m.mood, text: m.text, sub: m.sub, textCol: p.fg}
+		l := line{key: "moment:" + m.key, mood: m.mood, text: m.text, sub: m.sub, textCol: p.fg}
+		if m.icon != "" || m.thumb != nil {
+			l.m = m
+		}
+		return l
 	case "claude":
 		if len(ss) == 0 {
 			break
@@ -96,6 +105,9 @@ func (u *UI) compactLine() line {
 			l := line{key: "claude:" + s.ID, mood: moodWork, text: s.Label, plus: s.Plus, minus: s.Minus, textCol: p.fg, more: busy - 1}
 			if l.text == "" {
 				l.text = "Thinking"
+			}
+			if s.Agents > 0 {
+				l.chip, l.chipCol = agentsText(s.Agents), p.muted
 			}
 			return l
 		}
@@ -132,8 +144,39 @@ func (u *UI) compactLine() line {
 	return l
 }
 
+func agentsText(n int) string {
+	if n == 1 {
+		return "1 agent"
+	}
+	return fmt.Sprintf("%d agents", n)
+}
+
+// thumbW is how much wider than Ember's slot a screenshot preview is.
+func (l line) thumbW() float32 {
+	if l.m != nil && l.m.thumb != nil {
+		return float32(l.m.thumb.Rect.Dx()) - 15
+	}
+	return 0
+}
+
+func battW() float32 { return 9 * 1.9 }
+
 func (u *UI) compactWidth(l line) float64 {
-	w := 12 + 15 + 8 + float64(measure(fText(), l.text))
+	w := 12 + 15 + 8 + float64(measure(fText(), l.text)) + float64(l.thumbW())
+	if m := l.m; m != nil {
+		if l.text == "" {
+			w -= 8
+		}
+		if m.meter {
+			w += 8 + meterW
+		}
+		if m.right != "" {
+			w += 10 + float64(measure(fValue(), m.right))
+		}
+		if m.batt {
+			w += 6 + float64(battW()) + 3
+		}
+	}
 	if l.sub != "" {
 		w += 8 + math.Min(150, float64(measure(fSmall(), l.sub)))
 	}
@@ -152,7 +195,14 @@ func (u *UI) compactWidth(l line) float64 {
 	if l.lock {
 		w += 15
 	}
-	return math.Min(maxComp, math.Max(70, w+12))
+	if u.casting {
+		w += 12
+	}
+	lo := 70.0
+	if l.m != nil && l.m.meter {
+		lo = 168 // the bar shouldn't jump as the number changes
+	}
+	return math.Min(maxComp, math.Max(lo, w+12))
 }
 
 func (u *UI) measure(v view) (float64, float64) {
@@ -176,21 +226,77 @@ func (u *UI) drawCompact(x, w, h float32) {
 	}
 	u.lineKey, u.lineText = l.key, l.text
 
-	if l.music && u.art != nil {
+	m := l.m
+	switch {
+	case m != nil && m.thumb != nil:
+		th := m.thumb.Rect
+		ty := int(cy+0.5) - th.Dy()/2
+		draw.Draw(u.dc.img, th.Add(image.Pt(int(ix-1), ty)), m.thumb, image.Point{}, draw.Over)
+		u.dc.frame(ix-1, float32(ty), float32(th.Dx()), float32(th.Dy()), 3.5, 1, alpha(p.fg, 0.22))
+		u.spot = emberSpot{x: ix + float32(th.Dx())/2, y: cy, s: 0, mood: moodIdle, show: true}
+	case m != nil:
+		u.dc.icon(m.icon, ix+7, cy, 15, m.tint)
+		u.spot = emberSpot{x: ix + 7, y: cy + 1, s: 0, mood: l.mood, show: true} // Ember tucks into the icon
+	case l.music && u.art != nil:
 		u.dc.drawArt(u.art.small, int(ix-1), int(cy-9), 5, 1)
 		u.spot = emberSpot{x: ix + 8, y: cy + 1, s: 0, mood: moodIdle, show: true} // Ember tucks into the cover
-	} else {
+	default:
 		u.spot = emberSpot{x: ix + 7, y: cy + 1, s: 14, mood: l.mood, show: true}
 	}
-	tx := ix + 22
+	tx := ix + 22 + l.thumbW()
 	base := cy + 4.5
-	avail := x + w - 12 - tx
+
+	// the right end, laid out first: privacy dot, battery, value, meter, lock, chip
+	rx := x + w - 12
+	if u.casting { // someone can see your screen
+		u.dc.circle(rx-3, cy, 3.2, mix(p.red, p.yellow, 0.35))
+		rx -= 12
+	}
+	if m != nil {
+		if m.batt {
+			bw := battW()
+			u.dc.battery(rx-bw-3, cy, 9, float32(m.pct), alpha(p.fg, 0.45), m.tint)
+			rx -= bw + 3 + 6
+		}
+		if m.right != "" {
+			vw := measure(fValue(), m.right)
+			col := p.fg
+			if m.tint == p.muted {
+				col = p.muted
+			}
+			u.dc.text(fValue(), m.right, rx-vw, base, col)
+			rx -= vw + 10
+		}
+		if m.meter {
+			mx := tx
+			if l.text != "" {
+				mx = rx - meterW
+			}
+			mw := rx - mx
+			k := float32(math.Max(0, math.Min(1, u.meter.x)))
+			u.dc.roundRect(mx, cy-2.5, mw, 5, 2.5, alpha(p.fg, 0.16))
+			if k > 0 {
+				u.dc.roundRect(mx, cy-2.5, max(mw*k, 5), 5, 2.5, m.tint)
+			}
+			rx = mx - 8
+		}
+	}
 	if l.lock {
-		avail -= 15
+		rx -= 11
+		u.dc.lock(rx, cy-6, 11, p.yellow)
+		rx -= 4
 	}
 	if l.chip != "" {
-		avail -= 14 + measure(fSmall(), l.chip)
+		cw := measure(fSmall(), l.chip)
+		u.dc.circle(rx-cw-7, cy, 1.5, p.faint)
+		u.dc.text(fSmall(), l.chip, rx-cw, base, l.chipCol)
+		rx -= cw + 14
 	}
+	if l.text == "" {
+		return
+	}
+
+	avail := rx - tx
 	if l.music {
 		avail -= 24
 	}
@@ -236,17 +342,6 @@ func (u *UI) drawCompact(x, w, h float32) {
 	if l.music && u.track != nil {
 		u.eqLive(tx+8, cy+5, 10, p.green, u.track.Playing)
 		u.progressLive(x+16, h-2.5, w-32, 1.5) // a hairline of the song under the pill
-	}
-	rx := x + w - 12
-	if l.lock {
-		rx -= 11
-		u.dc.lock(rx, cy-6, 11, p.yellow)
-		rx -= 4
-	}
-	if l.chip != "" {
-		cw := measure(fSmall(), l.chip)
-		u.dc.circle(rx-cw-7, cy, 1.5, p.faint)
-		u.dc.text(fSmall(), l.chip, rx-cw, base, l.chipCol)
 	}
 }
 

@@ -29,6 +29,26 @@ type app struct {
 	music *music
 	track *Track
 	posts chan func(*app)
+	cfg   Config
+	cfgAt time.Time // the config file's mtime when read
+	desk  desktop
+}
+
+// reloadConfig applies ~/.config/ember/config.toml if it changed.
+func (a *app) reloadConfig() bool {
+	at := mtime(ConfigPath())
+	if !a.cfgAt.IsZero() && at.Equal(a.cfgAt) {
+		return false
+	}
+	a.cfgAt = at
+	if at.IsZero() {
+		a.cfgAt = time.Unix(1, 0) // no file: defaults, and don't look again until one appears
+	}
+	a.cfg = loadConfig(ConfigPath())
+	a.ui.cfg = a.cfg
+	a.ui.TimeFmt = a.cfg.timeFormat()
+	a.ui.casting = a.desk.casts > 0 && a.cfg.Privacy
+	return true
 }
 
 // barHeight reads Noctalia's bar thickness so the pill matches it exactly.
@@ -56,8 +76,11 @@ func Run() error {
 	}
 	a := &app{ui: NewUI(surfW, surfH, barHeight()), win: win, posts: posts}
 	a.ui.onKey = a.key
+	a.reloadConfig()
 	a.loadSessions()
 	a.music = startMusic(posts)
+	startSystem(posts)
+	go watchNiri(posts)
 	frameDue := false
 	win.onPointer = func(e pointerEvent) {
 		redraw, hand := a.ui.pointer(e)
@@ -122,6 +145,9 @@ func Run() error {
 				a.ui.pal = p
 				a.ui.Invalidate()
 			}
+			if a.reloadConfig() {
+				a.ui.Invalidate()
+			}
 		case <-timer.C:
 			tick = true
 			if a.ui.expire() {
@@ -182,8 +208,8 @@ func (a *app) nextWake(animating bool) time.Duration {
 			next = minTime(next, c.Expires)
 		}
 	}
-	if u.hover && now.Sub(u.hoverAt) < hoverDelay {
-		next = minTime(next, u.hoverAt.Add(hoverDelay))
+	if u.hover && now.Sub(u.hoverAt) < u.cfg.HoverDelay {
+		next = minTime(next, u.hoverAt.Add(u.cfg.HoverDelay))
 	}
 	if !u.hover && now.Sub(u.leftAt) < 400*time.Millisecond {
 		next = minTime(next, u.leftAt.Add(330*time.Millisecond))
@@ -213,7 +239,7 @@ func (a *app) sweep() bool {
 func (a *app) setTrack(t *Track) {
 	prev := a.track
 	a.track, a.ui.track = t, t
-	if t != nil && t.Playing && (prev == nil || prev.Title != t.Title) && a.ui.primary() != "music" && a.ui.primary() != "moment" {
+	if t != nil && t.Playing && a.cfg.Music && (prev == nil || prev.Title != t.Title) && a.ui.primary() != "music" && a.ui.primary() != "moment" {
 		a.ui.Moment(moment{key: "track:" + t.Title, act: "music", mood: moodIdle, text: t.Title, sub: t.Artist,
 			until: a.ui.now().Add(4 * time.Second)})
 	}
@@ -239,8 +265,10 @@ func (a *app) key(k string) {
 	switch {
 	case strings.HasPrefix(k, "focus:"):
 		if s := a.ui.sessions[strings.TrimPrefix(k, "focus:")]; s != nil {
-			go focusTerminal(s.Pids)
+			a.focusSession(s.Pids)
 		}
+	case strings.HasPrefix(k, "open:"):
+		go exec.Command("xdg-open", strings.TrimPrefix(k, "open:")).Run()
 	case strings.HasPrefix(k, "music:seek:") && a.track != nil:
 		d, _ := strconv.ParseInt(strings.TrimPrefix(k, "music:seek:"), 10, 64)
 		a.music.seek(a.track.Player, time.Duration(d))
@@ -420,8 +448,28 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 	switch m.Event {
 	case "SessionEnd":
 		delete(a.ui.sessions, in.SessionID)
+	case "SessionStart":
+		s.Agents = 0
 	case "UserPromptSubmit":
 		s.State, s.Label, s.Plus, s.Minus, s.Since = "work", "Thinking", 0, 0, now
+	case "SubagentStart":
+		s.Agents++
+	case "SubagentStop":
+		s.Agents = max(s.Agents-1, 0)
+	case "PreCompact":
+		s.State, s.Label, s.Plus, s.Minus = "work", "Compacting the conversation", 0, 0
+	case "PostCompact":
+		if s.Label == "Compacting the conversation" {
+			s.Label = "Thinking"
+		}
+	case "StopFailure":
+		s.State, s.Label = "idle", ""
+		msg := in.Error
+		if msg == "" {
+			msg = "unknown error"
+		}
+		a.ui.Moment(moment{key: "fail:" + s.ID, act: "claude", mood: moodError, text: "Stopped · " + s.Project,
+			sub: strings.ReplaceAll(msg, "_", " "), until: now.Add(8 * time.Second), focus: s.ID})
 	case "AskUserQuestion":
 		if answer != nil {
 			s.State = "wait"
@@ -444,12 +492,14 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		s.State = "wait"
 		return a.permission(s, in, tin, answer)
 	case "Notification":
-		if in.NotifyType == "idle_prompt" {
+		// a prompt in the terminal (the island timed out, or a dialog it
+		// can't show). idle_prompt is just "Claude is done": not a request.
+		if in.NotifyType == "permission_prompt" || in.NotifyType == "elicitation_dialog" {
 			s.State = "wait"
 		}
 	case "Stop":
 		s.State, s.Label = "idle", ""
-		if slices.Contains(s.Pids, focusedPid()) {
+		if !a.cfg.Done || slices.Contains(s.Pids, a.focusedPid()) {
 			break // they're looking at it
 		}
 		body := strings.TrimSpace(in.LastMessage)

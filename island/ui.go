@@ -42,7 +42,9 @@ type Card struct {
 
 type Session struct {
 	ID, Project, State, Label string // State: work | wait | idle
+	Title                     string // the topic Claude put in its terminal's title
 	Plus, Minus               int
+	Agents                    int // subagents running
 	Since, Seen               time.Time
 	Pids                      []int
 }
@@ -59,7 +61,8 @@ type EdgeStatus struct {
 	Pending   bool   `json:"pending"`
 }
 
-// moment is a short-lived compact line: Claude finished, a new track.
+// moment is a short-lived compact line: Claude finished, a new track, the
+// volume, a charger plugged in, a screenshot.
 type moment struct {
 	key   string
 	act   string
@@ -68,6 +71,17 @@ type moment struct {
 	sub   string
 	until time.Time
 	focus string // session to jump to on click
+	open  string // file to open on click
+
+	icon  string      // drawn where Ember sits (Ember tucks away)
+	tint  color.NRGBA // the icon's colour
+	right string      // a value at the right end: "73%", "45"
+	meter bool        // a level bar
+	level float64     // 0..1
+	batt  bool        // a battery glyph
+	pct   float64     // its fill, 0..1
+	thumb *image.RGBA // a screenshot preview instead of the icon
+	osd   bool        // you just pressed a key: shows over everything but a card
 }
 
 type view int
@@ -112,10 +126,9 @@ type emberSpot struct {
 }
 
 const (
-	hoverDelay = 240 * time.Millisecond
-	fadeIn     = 230 * time.Millisecond
-	slideTime  = 260 * time.Millisecond
-	focusHold  = 90 * time.Second // a scroll-picked activity stays this long
+	fadeIn    = 230 * time.Millisecond
+	slideTime = 260 * time.Millisecond
+	focusHold = 90 * time.Second // a scroll-picked activity stays this long
 )
 
 // UI owns all state; only the main loop touches it.
@@ -128,12 +141,15 @@ type UI struct {
 	content  *canvas
 	prev     *image.RGBA // content of the view we're leaving
 	pal      palette
+	cfg      Config
 	sessions map[string]*Session
 	cards    []*Card
 	edge     *EdgeStatus
 	track    *Track
 	art      *albumArt
 	moment   *moment
+	power    *power // the battery, if there is one
+	casting  bool   // the screen is being shared
 
 	// interaction
 	hover, pinned, suppress bool
@@ -150,6 +166,8 @@ type UI struct {
 
 	// animation
 	sw, sh, bub        spring
+	meter              spring // a moment's level bar
+	meterKey           string
 	ex, ey, es         spring // Ember's position and size, shared by every view
 	look               spring
 	emberCol           [3]float64
@@ -177,7 +195,7 @@ type UI struct {
 
 func NewUI(w, h int, barH float32) *UI {
 	u := &UI{W: w, H: h, BarH: barH, TimeFmt: "3:04 PM", cv: newCanvas(w, h), content: newCanvas(w, h),
-		prev: image.NewRGBA(image.Rect(0, 0, w, h)), pal: loadPalette(), sessions: map[string]*Session{},
+		prev: image.NewRGBA(image.Rect(0, 0, w, h)), pal: loadPalette(), cfg: DefaultConfig(), sessions: map[string]*Session{},
 		now: time.Now, dirty: true, base: image.NewRGBA(image.Rect(0, 0, w, h))}
 	u.dc = u.content
 	u.start, u.lastBlink, u.glanceAt = u.now(), u.now(), u.now()
@@ -266,13 +284,13 @@ func (u *UI) sessionList() []*Session {
 // acts lists the activities that have something to say, in a stable order.
 func (u *UI) acts() []string {
 	var out []string
-	if len(u.sessions) > 0 {
+	if len(u.sessions) > 0 && u.cfg.Claude {
 		out = append(out, "claude")
 	}
-	if u.track != nil {
+	if u.track != nil && u.cfg.Music {
 		out = append(out, "music")
 	}
-	if e := u.edge; e != nil && (e.Task != "" || e.Closed || e.Need > 0) {
+	if e := u.edge; e != nil && u.cfg.Edge && (e.Task != "" || e.Closed || e.Need > 0) {
 		out = append(out, "edge")
 	}
 	return out
@@ -290,7 +308,13 @@ func (u *UI) has(act string) bool {
 // primary decides what the pill shows. A request waiting on you always wins,
 // then a moment, then what you picked, then whatever is live.
 func (u *UI) primary() string {
+	if u.moment != nil && u.moment.osd { // you're pressing a key: answer it
+		return "moment"
+	}
 	ss := u.sessionList()
+	if !u.cfg.Claude {
+		ss = nil
+	}
 	if len(ss) > 0 && ss[0].State == "wait" {
 		return "claude"
 	}
@@ -303,10 +327,10 @@ func (u *UI) primary() string {
 	if len(ss) > 0 && ss[0].State == "work" {
 		return "claude"
 	}
-	if u.track != nil && u.track.Playing {
+	if u.track != nil && u.track.Playing && u.cfg.Music {
 		return "music"
 	}
-	if e := u.edge; e != nil && (e.StartedMs > 0 || e.Closed) {
+	if e := u.edge; e != nil && u.cfg.Edge && (e.StartedMs > 0 || e.Closed) {
 		return "edge"
 	}
 	return "clock"
@@ -315,13 +339,13 @@ func (u *UI) primary() string {
 // secondary is what the bubble beside the pill shows, if anything.
 func (u *UI) secondary(primary string) string {
 	ss := u.sessionList()
-	working := len(ss) > 0 && (ss[0].State == "work" || ss[0].State == "wait")
+	working := u.cfg.Claude && len(ss) > 0 && (ss[0].State == "work" || ss[0].State == "wait")
 	switch {
-	case primary != "music" && u.track != nil && u.track.Playing:
+	case primary != "music" && u.track != nil && u.track.Playing && u.cfg.Music:
 		return "music"
 	case primary != "claude" && working:
 		return "claude"
-	case primary != "edge" && u.edge != nil && u.edge.StartedMs > 0:
+	case primary != "edge" && u.edge != nil && u.edge.StartedMs > 0 && u.cfg.Edge:
 		return "edge"
 	}
 	return ""
@@ -348,7 +372,7 @@ func (u *UI) currentView() view {
 	if u.top() != nil {
 		return vCard
 	}
-	if u.pinned || (u.hover && !u.suppress && u.now().Sub(u.hoverAt) >= hoverDelay) ||
+	if u.pinned || (u.hover && !u.suppress && u.now().Sub(u.hoverAt) >= u.cfg.HoverDelay) ||
 		(!u.hover && u.lastView == vExpanded && u.now().Sub(u.leftAt) < 300*time.Millisecond) {
 		return vExpanded
 	}
@@ -393,6 +417,9 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 	v := u.currentView()
 	key := u.viewKey(v)
 	if v != u.lastView || key != u.lastKey {
+		if u.lastView == vExpanded && v != vExpanded {
+			u.page = "" // the next open follows the pill again
+		}
 		// keep what's on screen to cross-fade it out while the new view grows in
 		copy(u.prev.Pix, u.content.img.Pix)
 		u.prevAlive = !u.trAt.IsZero()
@@ -415,9 +442,18 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 		bt = 1
 	}
 	u.bub.step(bt, dt)
-	settled := u.sw.settled(tw) && u.sh.settled(th) && u.bub.settled(bt)
+	mt := 0.0
+	if m := u.moment; m != nil && m.meter {
+		mt = m.level
+		if m.key != u.meterKey { // a new meter starts where it is; changes glide
+			u.meterKey, u.meter = m.key, spring{x: mt}
+		}
+	}
+	u.meter.stepK(mt, dt, 420, 40)
+	settled := u.sw.settled(tw) && u.sh.settled(th) && u.bub.settled(bt) && math.Abs(u.meter.x-mt) < 0.003
 	if settled {
 		u.sw.x, u.sh.x, u.sw.v, u.sh.v, u.bub.x, u.bub.v = tw, th, 0, 0, bt, 0
+		u.meter.x, u.meter.v = mt, 0
 	}
 	p := easeOut(float64(now.Sub(u.trAt)) / float64(fadeIn))
 	sliding := now.Sub(u.slideAt) < slideTime

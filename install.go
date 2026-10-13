@@ -116,7 +116,8 @@ func patchSettings(raw []byte, exe string) ([]byte, error) {
 	}
 	add("PermissionRequest", "*", "PermissionRequest", 100, false)
 	add("PreToolUse", "AskUserQuestion", "AskUserQuestion", 100, false)
-	for _, ev := range []string{"SessionStart", "UserPromptSubmit", "Notification", "Stop", "SessionEnd"} {
+	for _, ev := range []string{"SessionStart", "UserPromptSubmit", "Notification", "Stop", "StopFailure", "SessionEnd",
+		"SubagentStart", "SubagentStop", "PreCompact", "PostCompact"} {
 		add(ev, "", ev, 5, true)
 	}
 	add("PreToolUse", "*", "PreToolUse", 5, true)

@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -49,6 +48,7 @@ type hookInput struct {
 	Suggestions json.RawMessage `json:"permission_suggestions"`
 	NotifyType  string          `json:"notification_type"`
 	LastMessage string          `json:"last_assistant_message"`
+	Error       string          `json:"error"` // StopFailure
 }
 
 type server struct {
@@ -180,8 +180,27 @@ func activity(tool string, in map[string]any) (label string, plus, minus int) {
 		return "Delegating: " + str("description"), 0, 0
 	case "Skill":
 		return "Using " + str("skill"), 0, 0
-	case "TodoWrite":
+	case "TodoWrite", "EnterPlanMode":
 		return "Planning", 0, 0
+	case "ExitPlanMode":
+		return "Presenting a plan", 0, 0
+	case "NotebookEdit":
+		return "Editing " + filepath.Base(str("notebook_path")), 0, 0
+	case "ToolSearch":
+		return "Loading tools", 0, 0
+	case "Artifact":
+		return "Publishing a page", 0, 0
+	case "Monitor":
+		if d := str("description"); d != "" {
+			return "Watching " + d, 0, 0
+		}
+		return "Watching", 0, 0
+	case "ScheduleWakeup":
+		return "Scheduling a check-in", 0, 0
+	case "SendMessage":
+		return "Messaging an agent", 0, 0
+	case "LSP":
+		return "Asking the language server", 0, 0
 	}
 	if strings.HasPrefix(tool, "mcp__") {
 		parts := strings.Split(tool, "__")
@@ -191,38 +210,3 @@ func activity(tool string, in map[string]any) (label string, plus, minus int) {
 }
 
 func alive(pid int) bool { return pid > 0 && syscall.Kill(pid, 0) == nil }
-
-// focusTerminal raises the niri window that hosts one of pids (the hook's
-// ancestors: shell, claude, terminal).
-func focusTerminal(pids []int) {
-	out, err := exec.Command("niri", "msg", "-j", "windows").Output()
-	if err != nil {
-		return
-	}
-	var wins []struct {
-		ID  int `json:"id"`
-		Pid int `json:"pid"`
-	}
-	json.Unmarshal(out, &wins)
-	for _, p := range pids {
-		for _, w := range wins {
-			if w.Pid == p {
-				exec.Command("niri", "msg", "action", "focus-window", "--id", fmt.Sprint(w.ID)).Run()
-				return
-			}
-		}
-	}
-}
-
-// focusedPid is the pid of niri's focused window, 0 if unknown.
-func focusedPid() int {
-	out, err := exec.Command("niri", "msg", "-j", "focused-window").Output()
-	if err != nil {
-		return 0
-	}
-	var w struct {
-		Pid int `json:"pid"`
-	}
-	json.Unmarshal(out, &w)
-	return w.Pid
-}

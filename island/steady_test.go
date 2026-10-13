@@ -17,6 +17,14 @@ func TestSteadyFrameMatchesFull(t *testing.T) {
 		"music-pill": func(u *UI, clock time.Time) {
 			u.track = &Track{Player: "p", Title: "Veridis Quo", Artist: "Daft Punk", Playing: true, Length: 5 * time.Minute, Position: 2 * time.Minute, PosAt: clock}
 		},
+		"volume-casting": func(u *UI, clock time.Time) {
+			u.casting = true
+			u.Moment(moment{key: "osd:volume", icon: "volume", tint: u.pal.fg, meter: true, level: 0.5, right: "50", osd: true, until: clock.Add(time.Hour)})
+		},
+		"agents": func(u *UI, clock time.Time) {
+			working(u)
+			u.sessions["a"].Agents = 2
+		},
 		"claude-music": func(u *UI, clock time.Time) {
 			working(u)
 			u.track = &Track{Player: "p", Title: "Veridis Quo", Playing: true, Length: 5 * time.Minute, PosAt: clock}

@@ -62,7 +62,7 @@ func TestExpandedButtonsWinHits(t *testing.T) {
 	}
 	u.pointer(pointerEvent{kind: "leave"})
 	u.pointer(pointerEvent{kind: "enter"})
-	clock = clock.Add(hoverDelay + time.Millisecond)
+	clock = clock.Add(u.cfg.HoverDelay + time.Millisecond)
 	if u.currentView() != vExpanded {
 		t.Fatal("hover should open it again after the pointer left and came back")
 	}
