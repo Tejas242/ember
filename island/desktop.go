@@ -4,7 +4,10 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"net"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -31,25 +34,40 @@ type desktop struct {
 	casts   int
 }
 
-func watchNiri(posts chan<- func(*app)) {
-	if _, err := exec.LookPath("niri"); err != nil {
-		return
+// niriSocket is niri's IPC socket: $NIRI_SOCKET, else the one in the runtime dir.
+func niriSocket() string {
+	if s := os.Getenv("NIRI_SOCKET"); s != "" {
+		return s
 	}
+	ms, _ := filepath.Glob(filepath.Join(os.Getenv("XDG_RUNTIME_DIR"), "niri.*.sock"))
+	if len(ms) > 0 {
+		return ms[len(ms)-1]
+	}
+	return ""
+}
+
+func watchNiri(posts chan<- func(*app)) {
 	for {
-		streamNiri(posts)
-		posts <- func(a *app) { a.desk.live = false }
+		if sock := niriSocket(); sock != "" {
+			streamNiri(posts, sock)
+			posts <- func(a *app) { a.desk.live = false }
+		}
 		time.Sleep(5 * time.Second) // niri restarted, or isn't the compositor
 	}
 }
 
-func streamNiri(posts chan<- func(*app)) {
-	cmd := exec.Command("niri", "msg", "-j", "event-stream")
-	out, err := cmd.StdoutPipe()
-	if err != nil || cmd.Start() != nil {
+// streamNiri speaks niri's IPC directly (no `niri msg` process): ask for
+// the event stream, then read one JSON event per line.
+func streamNiri(posts chan<- func(*app), sock string) {
+	c, err := net.Dial("unix", sock)
+	if err != nil {
 		return
 	}
-	defer cmd.Wait()
-	sc := bufio.NewScanner(out)
+	defer c.Close()
+	if _, err := c.Write([]byte("\"EventStream\"\n")); err != nil {
+		return
+	}
+	sc := bufio.NewScanner(c)
 	sc.Buffer(make([]byte, 64<<10), 8<<20)
 	for sc.Scan() {
 		var ev struct {

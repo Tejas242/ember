@@ -28,7 +28,34 @@ func TestPreviewMoments(t *testing.T) {
 		name string
 		set  func(u *UI)
 	}
+	art := func(u *UI) {
+		img := image.NewRGBA(image.Rect(0, 0, 64, 64))
+		for y := 0; y < 64; y++ {
+			for x := 0; x < 64; x++ {
+				img.Set(x, y, color.NRGBA{uint8(120 + x*2), uint8(40 + y), uint8(160 - x), 255})
+			}
+		}
+		u.art = &albumArt{small: scaleSquare(img, 18), large: scaleSquare(img, 46)}
+		u.art.accent = accentOf(u.art.large)
+	}
 	states := []state{
+		{"clock", func(u *UI) {}},
+		{"claude", func(u *UI) { working(u) }},
+		{"claude-music", func(u *UI) {
+			working(u)
+			u.track = &Track{Player: "x", Title: "Veridis Quo", Artist: "Daft Punk", Playing: true, Length: 5 * time.Minute, PosAt: clock}
+			art(u)
+		}},
+		{"waiting", func(u *UI) {
+			u.sessions["b"] = &Session{ID: "b", Project: "kinvault", State: "wait"}
+		}},
+		{"done", func(u *UI) {
+			u.Moment(moment{key: "done", act: "claude", mood: moodHappy, text: "Done · kinvault", sub: "All 42 tests pass", until: clock.Add(time.Hour)})
+		}},
+		{"music", func(u *UI) {
+			u.track = &Track{Player: "x", Title: "Veridis Quo", Artist: "Daft Punk", Playing: true, Length: 5 * time.Minute, Position: 2 * time.Minute, PosAt: clock}
+			art(u)
+		}},
 		{"volume", func(u *UI) {
 			u.Moment(moment{key: "osd:volume", icon: "volume", tint: u.pal.fg, meter: true, level: 0.64, right: "64", osd: true, until: clock.Add(time.Hour)})
 		}},
@@ -53,15 +80,11 @@ func TestPreviewMoments(t *testing.T) {
 		{"screenshot", func(u *UI) {
 			u.Moment(moment{key: "shot", icon: "camera", tint: u.pal.fg, text: "Screenshot saved", thumb: scaleThumb(shot, 30, 20), until: clock.Add(time.Hour)})
 		}},
-		{"stopped", func(u *UI) {
-			u.Moment(moment{key: "fail", act: "claude", mood: moodError, text: "Stopped · ember", sub: "rate limit", until: clock.Add(time.Hour)})
-		}},
 		{"agents-casting", func(u *UI) {
 			working(u)
 			u.sessions["a"].Agents = 3
 			u.casting = true
 		}},
-		{"clock-casting", func(u *UI) { u.casting = true }},
 	}
 	const W, rowH = 520, 34
 	sheet := image.NewRGBA(image.Rect(0, 0, W, rowH*len(states)))

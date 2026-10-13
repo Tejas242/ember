@@ -1,95 +1,177 @@
 # Ember
 
-A live Claude Code island for your [Noctalia](https://noctalia.dev) bar. A small flame sits in the bar. When Claude
-works, the bar **morphs** into what it is doing (`Editing repair.go +5 −2`). When Claude needs you, it morphs into the
-question itself: **Deny · Always · Allow** right in the bar, or a panel of choices for `AskUserQuestion`.
+A dynamic island for the top of a Wayland desktop. It sits over the centre of your bar as a small pill with a flame
+in it, and morphs to show what is going on: what Claude Code is doing and what it needs from you, the song that's
+playing, volume and brightness as you change them, the charger, your headphones, a screenshot you just took.
 
-## Plugin
+Hover it and a card drops down with the details and the controls.
 
-| Field | Value |
-| --- | --- |
-| ID | `screenager/ember` |
-| Entries | Bar widget: `island`; panel: `card`; service: `core` |
+![The pill's states](docs/pills.png)
 
-## What it does
+![The card: music, system, a permission request, a question](docs/cards.png)
 
-- **Live activity.** Each tool call becomes a short label: reading, editing (with `+added −removed` lines), running a
-  command, searching, delegating. With several sessions, the busiest one shows and the rest count as `+N`.
-- **Approve from the bar.** A permission request turns the pill into the command and three buttons. Click the pill for
-  the full request in a panel. **Always** applies the rule Claude suggests.
-- **Answer questions.** `AskUserQuestion` opens a panel with the options (single or multi-select, several questions in a
-  row). "Reply in terminal" hands the question back to Claude's own prompt.
-- **Done.** When a session finishes and you aren't looking at its terminal, the pill says so for a few seconds. Click it
-  to jump to the terminal (niri, Hyprland, Sway).
-- **Ember.** A small flame drawn from your palette as SVG. It flickers while Claude works, looks up when it needs you,
-  and smiles when it's done. It follows your wallpaper theme.
-- **Never in the way.** Claude only waits on the bar for permissions and questions, at most 90 s. After that, or at once
-  when Noctalia or the plugin isn't running, Claude asks in the terminal as usual. If Claude cancels, the request leaves
-  the bar within a second.
+It is one native Go binary. It talks the Wayland protocol directly and draws in software, with no toolkit and no
+GPU. It wakes only when something changes. Measured on a 2018 laptop, it uses about 9 MB of private memory and about 1%
+of one core while Claude works and the flame is animating, and a fraction of that when idle.
 
-## Requirements
+## What it shows
 
-- Noctalia 5.2 or newer (plugin API 31).
-- Claude Code 2.1 or newer.
-- `sh`, plus `python3` for the one-time hook installer only.
-- Optional: `niri`, `hyprctl` or `swaymsg` to jump to a session's terminal.
+**Claude Code**
+- **Live activity.** Each tool call becomes a short label, such as `Editing quota.go +12 −3`, `Running the store tests`
+  or `Searching the web`. It also shows running subagents and context compaction. With several sessions, the busiest
+  one shows and the rest count as `+N`.
+- **Permission requests in the pill.** Deny, Always (applies the rule Claude suggests) or Allow, with the command or
+  file shown. Several requests queue up behind each other, and the card says how many more are waiting.
+- **Questions.** `AskUserQuestion` options show as rows, single or multi-select, one question after another.
+- **Done.** When a session finishes while you're looking elsewhere, the pill says so with the first line of Claude's
+  reply. Click it to jump to that terminal. If it stops on an error (a rate limit, say), you hear about that too.
+- **Never in the way.** Claude waits at most 90 s on the island, then asks in the terminal as usual. It asks in the
+  terminal at once if Ember isn't running. If Claude cancels, the request leaves the island within a second.
+- **Sessions by name.** The card lists sessions with the topic Claude gave each one (read from the terminal's
+  title), the current step, the diff so far and how long it has been running.
+
+**Music.** Any MPRIS player: title, artist and cover, a progress hairline under the pill, and a card with seek,
+previous, play/pause and next. Scroll on it to change the volume. The card takes its colour from the album cover.
+
+**System moments.** They appear for a moment, then step aside:
+- Volume, microphone mute and brightness, with a level bar. They replace Noctalia's OSD for those.
+- Charging, unplugged, fully charged, and battery low at 20, 10 and 5 %.
+- Bluetooth headphones connecting, with their battery, and disconnecting.
+- Screenshots, with a preview. Click it to open the file.
+- A dot while your screen is being shared or recorded.
+
+**System page.** Volume and brightness sliders (click or scroll), mute, and the battery with time to empty or full.
+
+**The clock**, when nothing else is going on. And [edge](https://github.com/Tejas242/edge)'s practice status, if
+you run it.
+
+Ember the flame has moods. It flickers while Claude works, looks up when it needs you, smiles and bounces when work is
+done, and breathes when idle. Its eyes follow your pointer. The colours follow Noctalia's wallpaper palette.
 
 ## Install
 
-1. Enable **Ember** in **Settings → Plugins**, then add the **island** widget to a bar. Bar center works best.
-2. Connect Claude Code:
+Requirements:
+- A wlroots-style compositor with `zwlr_layer_shell_v1`. niri is first-class: focus, terminal titles and screen
+  sharing come from its event stream. Hyprland and Sway can focus a session's terminal.
+- Go 1.27+ to build.
+- Optional: `wpctl` and `pactl` (PipeWire) for volume, UPower for the battery, BlueZ for headphones, Claude Code 2.1+.
 
-   ```sh
-   sh ~/.local/share/noctalia/plugins/ember/hook install
-   # community install path:
-   sh ~/.local/state/noctalia/plugins/materialized/community/ember/hook install
-   ```
+```sh
+git clone https://github.com/Tejas242/ember && cd ember
+make install
+```
 
-   This backs up `~/.claude/settings.json` to `settings.json.pre-ember`, adds Ember's hooks, and leaves your other
-   hooks alone. Running it again is safe. Restart running Claude sessions afterwards.
+`make install` puts the binary in `~/.local/bin` and runs `ember install`. That command:
+- writes and starts `ember.service` (a systemd user service that starts with your session);
+- adds Ember's hooks to `~/.claude/settings.json`, keeping a backup at `settings.json.pre-ember` and leaving your
+  other hooks alone;
+- writes a default config.
 
-## Keyboard
+Running it again is safe. Restart open Claude sessions afterwards.
 
-Answer the oldest request without touching the mouse, for example in niri:
+Then check everything:
+
+```sh
+ember doctor
+```
+
+It checks the service, the compositor protocols (blur, cursor shape), the niri stream, music, volume, brightness,
+battery, Claude's hooks and the config, and says what to run for anything missing.
+
+**Noctalia.** Leave the bar's centre empty and Ember sits there, matching the bar's height. To keep Noctalia from
+showing a second volume and brightness popup, add this to `~/.config/noctalia/services.toml`:
+
+```toml
+[osd.kinds]
+volume_output = false
+volume_input  = false
+brightness    = false
+media         = false
+```
+
+**Blur.** On niri, blur what's behind the island:
 
 ```kdl
-binds {
-    Mod+Shift+Y { spawn "noctalia" "msg" "plugin" "screenager/ember:core" "all" "allow"; }
-    Mod+Shift+N { spawn "noctalia" "msg" "plugin" "screenager/ember:core" "all" "deny"; }
-    Mod+Shift+C { spawn "noctalia" "msg" "panel-toggle" "screenager/ember:card"; }
+layer-rule {
+    match namespace="^ember$"
+    background-effect { blur true; }
 }
 ```
 
-IPC events on `screenager/ember:core`, all with target `all`:
-
-| Event | Payload | Does |
-| --- | --- | --- |
-| `allow` / `deny` / `always` / `terminal` | none | Answers the oldest permission request |
-| `answer` | `opt:N`, `submit`, `terminal`, `allow`, … | Answers the oldest request of either kind |
-| `panel` | none | Toggles the panel |
-| `edge` | JSON | Status and cards from [edge](#edge) |
-
-## Mouse
+## Using it
 
 | Gesture | Does |
 | --- | --- |
-| Click the pill | Opens the panel: the pending request, or sessions and their state |
-| Click a session in the panel | Focuses its terminal |
-| Right-click | Dismisses a "done" note |
+| Hover the pill | Drops the card. Leave and it folds back |
+| Click the pill | Opens the card. On a request or a "Done", jumps to that terminal |
+| Click a moment | Screenshot: opens it. Volume, brightness, battery: opens the System page |
+| Click the bubble | Brings what the bubble shows (music beside Claude, say) to the pill |
+| Scroll on the pill | Switches what the pill shows |
+| Scroll on the card | Switches pages. On a slider or the music controls, changes the level |
+| Middle-click | Play / pause |
+| Right-click | Dismisses a moment or the card |
 
-## edge
+Commands, for keybindings or scripts:
 
-[edge](https://github.com/Tejas242/edge) is a learning daemon that can lock Claude until you've practised. When it runs,
-Ember shows its day in the bar: today's problem with a **Start** button and a timer, hints as they unlock, verdicts, and
-a lock while practice is due. Without edge, none of this appears.
+```
+ember open [claude|music|edge|system]   open the card, on a page
+ember close | toggle
+ember next | prev                       switch what the pill shows
+ember play                              play / pause
+ember allow | deny | always             answer the oldest permission request
+ember terminal                          hand it back to Claude's own prompt
+ember answer opt:N | submit             answer the oldest question
+```
+
+For example, in niri:
+
+```kdl
+binds {
+    Mod+Shift+Y { spawn "ember" "allow"; }
+    Mod+Shift+N { spawn "ember" "deny"; }
+    Mod+Shift+C { spawn "ember" "toggle"; }
+}
+```
+
+## Config
+
+`~/.config/ember/config.toml`. Changes apply within a few seconds, with no restart.
+
+```toml
+clock          = "12h"   # 12h | 24h
+hover_delay_ms = 240
+
+[show]
+claude      = true  # sessions, permission requests, questions
+done        = true  # "Done · project" when a session finishes and you're elsewhere
+music       = true
+edge        = true
+osd         = true  # volume, microphone, brightness
+battery     = true  # charging, fully charged, battery low
+devices     = true  # Bluetooth audio
+screenshots = true
+privacy     = true  # the screen-sharing dot
+```
 
 ## How it works
 
-Claude Code runs `hook <Event>`, a POSIX `sh` script. The script writes the event to `$XDG_RUNTIME_DIR/ember/` and pokes
-the `core` service with `noctalia msg plugin … hook`. Reporting events don't wait. For a permission request or a
-question, the hook polls for an `.answer` file that the service writes when you click, and `core` drops the request as
-soon as the hook's process is gone. The bar widget renders `core`'s single published view, and skips frames that
-haven't changed.
+- **Claude Code** runs `ember hook <Event>`. Reporting events are sent to the island over
+  `$XDG_RUNTIME_DIR/ember.sock` and return at once. A permission request or a question holds the connection open
+  until you answer, or 90 s pass. If the hook process goes away because Claude cancelled, the island drops the card.
+- **The island** is one `zwlr_layer_shell_v1` surface on the top layer. It reserves no space, so it sits over the
+  bar, and takes input only inside its shape. It draws into shared memory with damage tracking. While nothing
+  moves, only Ember's few pixels and the live parts (equaliser, progress) are repainted.
+- **Everything else is event-driven.** MPRIS and UPower signals over D-Bus, BlueZ for devices, `pactl subscribe` for
+  volume, inotify for the backlight and the screenshots folder, and niri's IPC socket for windows and casts. Nothing
+  polls.
+
+## Uninstall
+
+```sh
+make uninstall    # or: ember uninstall
+```
+
+This removes Ember's hooks from Claude's settings and the service. Your config stays.
 
 ## License
 
