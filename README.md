@@ -40,13 +40,47 @@ previous, play/pause and next. Scroll on it to change the volume. The card takes
 - Screenshots, with a preview. Click it to open the file.
 - A dot while your screen is being shared or recorded.
 
-**System page.** Volume and brightness sliders (click or scroll), mute, and the battery with time to empty or full.
+**System page.** Volume and brightness as Control Centre-style capsules you can drag, click or scroll, mute, and
+the battery with time to empty or full.
 
 **The clock**, when nothing else is going on. And [edge](https://github.com/Tejas242/edge)'s practice status, if
 you run it.
 
-Ember the flame has moods. It flickers while Claude works, looks up when it needs you, smiles and bounces when work is
-done, and breathes when idle. Its eyes follow your pointer. The colours follow Noctalia's wallpaper palette.
+**The card.** A header with Ember, the page's title and a live line of context ("2 working · 1 waiting"), and a
+switcher whose indicator glides between pages. Pages slide sideways and the card's height morphs. Hovers fade in on
+springs, and numbers roll when they change. Claude's sessions show a sparkline of the last ten minutes of activity. A
+request shows how long it will keep waiting as a line that drains along the card's bottom. Corners are continuous
+(superellipse) rather than circular arcs. Text in any script draws: styled Unicode letters fold to plain ones, and
+missing characters come from a system font found through fontconfig.
+
+## Alive
+
+Ember has a small mind. None of it is scripted animation. It is a handful of models running on real time:
+
+- **Affect.** Ember has an energy and a mood that relax toward a baseline, set by the time of day (peaking
+  mid-afternoon, lowest around 3 am), by what's running, and by whether you're at the machine. Events nudge them:
+  a tool call a little, a finished task brightens the mood, an error darkens it for a while. Energy sets how hard the
+  flame flickers, how fast it breathes and how open its eyes are. Mood tints its colour. It casts a soft light on the
+  island, brighter when it's lively.
+- **Life.** Blinks come at random, about fifteen a minute, sometimes doubled. Glances are random too, and the eyes are
+  never perfectly still. Ember looks at things as they appear: a note, the bubble beside the pill. When the desk has
+  been quiet for a while it gets drowsy, then falls asleep (eyes shut, z's rising), and wakes when something happens
+  or your pointer comes near.
+- **Presence.** Through the compositor's idle notifications it knows when you've stepped away. Sessions that finish or
+  ask for you meanwhile aren't shown to an empty room. When you come back, one line tells you what happened:
+  *While you were away: kinvault done · ember asked you*.
+- **Attention.** What the pill shows is scored, not hard-coded. A running session scores high. A new track scores
+  high and then fades as you get used to it. If you're already looking at that session's terminal, the pill shows
+  something else and Claude moves to the bubble. A choice holds until a rival clearly beats it, so the pill never
+  flickers between close calls. A request waiting on you, and anything you just pressed, always come first.
+- **Habits.** It learns which page you want when the card opens, per situation (Claude working with music on, say).
+  Older evidence fades, so a new habit takes over within a few opens.
+- **Judgement.** "Done" quotes the most informative sentence of Claude's reply (outcomes and numbers win over
+  preamble). Notes that arrive together merge ("Done · edge, ember"). A volume change hands a pending note back when
+  it's finished. A step running long shows its minutes. A session that went silent for half an hour (a killed Claude
+  never says Stop) settles to idle.
+
+The colours follow Noctalia's wallpaper palette.
 
 ## Install
 
@@ -107,6 +141,7 @@ layer-rule {
 | Click a moment | Screenshot: opens it. Volume, brightness, battery: opens the System page |
 | Click the bubble | Brings what the bubble shows (music beside Claude, say) to the pill |
 | Scroll on the pill | Switches what the pill shows |
+| Drag a slider or the seek bar | Follows your pointer, even past the island's edge. A seek happens on release |
 | Scroll on the card | Switches pages. On a slider or the music controls, changes the level |
 | Middle-click | Play / pause |
 | Right-click | Dismisses a moment or the card |

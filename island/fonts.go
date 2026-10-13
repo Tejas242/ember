@@ -3,6 +3,7 @@ package island
 import (
 	"os"
 	"os/exec"
+	"strings"
 	"unicode"
 
 	"golang.org/x/image/font"
@@ -22,13 +23,35 @@ import (
 //     found once per Unicode block through fontconfig.
 
 // display returns s as it should be drawn. ASCII, the common case, is free.
+// Only "styled" characters fold; the ellipsis, the minus sign and the like
+// that Ember itself draws stay as they are.
 func display(s string) string {
+	ascii := true
 	for i := 0; i < len(s); i++ {
 		if s[i] >= 0x80 {
-			return norm.NFKC.String(s)
+			ascii = false
+			break
 		}
 	}
-	return s
+	if ascii {
+		return s
+	}
+	var b strings.Builder
+	for _, r := range s {
+		if styled(r) {
+			b.WriteString(norm.NFKC.String(string(r)))
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// styled: mathematical alphanumerics (𝙂𝘼𝙄𝙎𝙀), full-width forms, enclosed
+// letters (Ⓐ), letterlike symbols (ℍ), and the fi/fl ligatures.
+func styled(r rune) bool {
+	return (r >= 0x1D400 && r <= 0x1D7FF) || (r >= 0xFF01 && r <= 0xFF5E) || (r >= 0x2460 && r <= 0x24FF) ||
+		(r >= 0x2100 && r <= 0x214F) || (r >= 0xFB00 && r <= 0xFB06)
 }
 
 var (

@@ -9,6 +9,9 @@ func TestDisplayFoldsStyledLetters(t *testing.T) {
 	if display("plain") != "plain" {
 		t.Fatal("ASCII passes through")
 	}
+	if display("Slow… −3 · ½") != "Slow… −3 · ½" {
+		t.Fatal("ordinary typography stays")
+	}
 }
 
 func TestFallbackDrawsMissingScripts(t *testing.T) {
