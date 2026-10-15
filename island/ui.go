@@ -223,8 +223,16 @@ type UI struct {
 	swell       spring  // the pill's anticipation under the pointer, 0..1
 	prevK       float64 // how visible the view we're leaving was when we left it
 	prevAt      time.Time
-	haloAt      time.Time // the last frame something waited on you (the halo fades after)
-	meter       spring    // a moment's level bar
+	haloAt      time.Time  // the last frame something waited on you (the halo fades after)
+	meterBump   time.Time  // a key pressed past the meter's end
+	audio       *audio     // the song's levels, while one plays
+	eqShown     bool       // an equaliser is on screen (it listens, so frames come quicker)
+	eqLevel     [3]float64 // its bars, smoothed
+	gesture     string     // Ember's reaction to what just happened: nod | shake | wince
+	gestureAt   time.Time
+	sleepK      float64 // how asleep the pill looks, 0..1
+	wasAsleep   bool
+	meter       spring // a moment's level bar
 	meterKey    string
 	tweens      map[string]*tween
 	enterAt     map[string]time.Time // when each element of the current view began to arrive
@@ -295,7 +303,41 @@ func NewUI(w, h int, barH float32) *UI {
 }
 
 func (u *UI) Invalidate() { u.dirty = true }
-func (u *UI) Bounce()     { u.bounceAt = u.now() }
+
+// React: Ember answers what just happened with its body. It nods when you
+// allow, shakes its head when you deny, winces when a step fails.
+func (u *UI) React(g string) { u.gesture, u.gestureAt = g, u.now() }
+
+const gestureTime = 460 * time.Millisecond
+
+func (u *UI) gesturing() bool { return u.gesture != "" && u.now().Sub(u.gestureAt) < gestureTime }
+
+// gestureOffset is Ember's displacement and squash for the current reaction.
+func (u *UI) gestureOffset(now time.Time) (dx, dy, scale float32) {
+	scale = 1
+	if u.gesture == "" {
+		return
+	}
+	k := float64(now.Sub(u.gestureAt)) / float64(gestureTime)
+	if k >= 1 {
+		return
+	}
+	decay := float32(1 - k)
+	switch u.gesture {
+	case "nod": // two small dips, the second smaller
+		dy = 2.2 * float32(math.Sin(k*2*math.Pi*2)) * decay * decay
+		if dy < 0 {
+			dy *= 0.4
+		}
+	case "shake": // side to side, settling
+		dx = 2.4 * float32(math.Sin(k*2*math.Pi*3)) * decay
+	case "wince": // a quick flinch: smaller, a touch lower, then back
+		w := float32(math.Sin(math.Min(1, k*1.6) * math.Pi))
+		scale, dy = 1-0.16*w, 1.2*w
+	}
+	return
+}
+func (u *UI) Bounce() { u.bounceAt = u.now() }
 
 // ---- cards ----
 
@@ -369,6 +411,9 @@ func (u *UI) Moment(m moment) {
 		m.at = u.now()
 	} else {
 		m.at = u.moment.at
+		if m.meter && u.moment.level >= 0.999 && m.level >= 0.999 { // pressed again at the top
+			u.meterBump = u.now()
+		}
 	}
 	u.moment = &m
 	if m.mood == moodHappy {
@@ -571,6 +616,9 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 		}
 		u.lastView, u.lastKey, u.trAt, u.dirty = v, key, now, true
 	}
+	if u.mind.asleep != u.wasAsleep { // falling asleep or waking dims the pill or lights it
+		u.wasAsleep, u.dirty = u.mind.asleep, true
+	}
 	if v == vCompact { // a chip that counts minutes changes without any event
 		if c := u.compactLine().tick(); c != u.lastChip {
 			u.lastChip, u.dirty = c, true
@@ -653,6 +701,7 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 			u.gcTweens()
 		}
 		u.hits, u.lives = u.hits[:0], u.lives[:0]
+		u.eqShown = false
 		u.spot = emberSpot{}
 		// the shape, at its current (springing) size
 		w, h := float32(u.sw.x+8*u.swell.x), float32(u.sh.x+2*u.swell.x)
@@ -663,7 +712,11 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 		}
 		u.shape = notch{x: x, w: w, h: h, rb: rb, ear: 6}
 		u.cv.clear(u.cv.img.Rect)
-		u.cv.drawNotch(u.pal, u.shape, 1, int(u.BarH))
+		if v == vCard && len(u.cards) > 1 { // more requests wait: their edges peek out under this one
+			u.drawPeeks(u.shape, len(u.cards)-1)
+		}
+		u.sleepK = u.tw("sleep", map[bool]float64{true: 1}[u.mind.asleep && v == vCompact], 0)
+		u.cv.drawNotch(u.pal, u.shape, 1-0.16*u.sleepK, int(u.BarH)) // asleep, the pill dims
 		// the content, laid out at its final size, revealed by the growing shape
 		u.content.clear(u.content.img.Rect)
 		u.fadeK = p
@@ -719,8 +772,21 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 	return u.moving(settled, p, sliding, flashing), damage
 }
 
+// drawPeeks draws the edges of the requests waiting behind the one shown,
+// like a stack of cards: narrower, a little lower, a little lighter.
+func (u *UI) drawPeeks(n notch, behind int) {
+	for i := min(behind, 2); i >= 1; i-- {
+		drop := float32(u.tw(fmt.Sprint("peek:", i), 6*float64(i), 0))
+		inset := 14 * float32(i)
+		pk := notch{x: n.x + inset, w: n.w - 2*inset, h: n.h + drop, rb: n.rb, ear: 0}
+		top := int(n.h - n.rb)
+		u.cv.fillNotch(pk, 1, alpha(u.pal.line, 0.9-0.25*float64(i)), &pk, 0, top) // a rim, so it reads as a card
+		u.cv.fillNotch(pk, 0, alpha(mix(u.pal.island, u.pal.fg, 0.07+0.03*float64(i)), 0.95-0.2*float64(i)), nil, 0, top)
+	}
+}
+
 func (u *UI) moving(settled bool, p float64, sliding, flashing bool) bool {
-	return !settled || p < 1 || sliding || flashing || u.tweening || u.mind.blinking(u.now()) || u.bouncing() || !u.emberSettled()
+	return !settled || p < 1 || sliding || flashing || u.tweening || u.mind.blinking(u.now()) || u.bouncing() || u.gesturing() || !u.emberSettled()
 }
 
 // transition: the view is about to change. Opening the card notes the
@@ -864,7 +930,7 @@ func (u *UI) emberRect() image.Rectangle {
 		return image.Rectangle{}
 	}
 	x, y, s := float32(u.ex.x), float32(u.ey.x), float32(u.es.x)
-	g := s * 1.5
+	g := s*1.5 + 4 // room for a nod or a shake
 	r := image.Rect(int(x-g), int(y-g), int(x+g)+2, int(y+g)+2)
 	if u.mind.asleep {
 		r = r.Union(image.Rect(int(x), 0, int(x+s+10), int(y)))
@@ -883,6 +949,8 @@ func (u *UI) drawEmber(t float64, now time.Time) {
 	}
 	col := color.NRGBA{uint8(u.emberCol[0]), uint8(u.emberCol[1]), uint8(u.emberCol[2]), 255}
 	x, y, s := float32(u.ex.x), float32(u.ey.x), float32(u.es.x)
+	gdx, gdy, gs := u.gestureOffset(now)
+	x, y, s = x+gdx, y+gdy, s*gs
 	s *= 1 + 0.06*float32(m.arousal-0.5) // a touch bigger when lively
 	if s > 2 && !m.asleep {              // the light it casts on the island, brighter with energy
 		u.cv.glowInside(u.emberRect(), x, y-s*0.2, s*1.5, col, 0.08+0.16*m.arousal)

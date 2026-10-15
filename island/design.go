@@ -182,6 +182,10 @@ func (u *UI) rollText(c *canvas, key, s string, f fontFace, rx, base float32, co
 		defer func() { c.clipR = image.Rectangle{} }()
 	}
 	travel := float32(f.Metrics().Ascent.Ceil()) * 0.8
+	if k >= 1 { // at rest: the whole string, kerned, exactly as wide as it measures
+		c.text(f, s, rx-w, base, col)
+		return w
+	}
 	// align old and new from the right, character by character
 	newR, oldR := []rune(s), []rune(r.old)
 	x := rx
@@ -379,6 +383,9 @@ func (u *UI) enter(key string, i int, known bool) float64 {
 		}
 		if d := base.Add(time.Duration(min(i, enterMax)) * enterStep); u.now().Sub(base) < fadeIn {
 			at = d // part of an entrance: staggered
+		}
+		if at.Equal(u.now()) && strings.HasPrefix(key, "st:") { // a new step waits for the others to make room
+			at = at.Add(110 * time.Millisecond)
 		}
 		if known { // it was on screen a moment ago in another role: it's already half there
 			at = at.Add(-enterTime * 3 / 10)

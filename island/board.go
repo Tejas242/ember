@@ -97,7 +97,7 @@ func (u *UI) board(b brief) (rows []sessLayout, hidden int) {
 	if b.s == nil {
 		return nil, 0
 	}
-	budget := float32(u.H-14) - heroHeadH - cardFoot - u.footerH()
+	budget := float32(u.H-14) - u.headH(b) - cardFoot - u.footerH()
 	hero := sessLayout{s: b.s, hero: true, open: !u.allRows, mode: b.mode, agSteps: agentHist, openAg: map[string]bool{}}
 	if b.mode == "work" || b.mode == "wait" {
 		hero.agents = append(b.s.agentList(), reversed(b.s.Finished)...)
@@ -217,7 +217,7 @@ func transcript(s *Session, agents []*Agent, keep int) []Step {
 
 func (u *UI) expandedHeight() int {
 	b := u.brief()
-	h := float32(heroHeadH)
+	h := u.headH(b)
 	if b.mode == "day" {
 		h += dayH
 	}
@@ -274,9 +274,10 @@ func (u *UI) drawExpanded(x, w float32) {
 	if b.s != nil {
 		heroKey = "hero:" + b.s.ID
 	}
-	u.item(heroKey, i, x, w, 0, heroHeadH, func(y float32) { u.heroHead(b, x, w, y) })
+	hh := u.headH(b)
+	u.item(heroKey, i, x, w, 0, hh, func(y float32) { u.heroHead(b, x, w, y) })
 	i++
-	y := float32(heroHeadH)
+	y := hh
 	if b.mode == "day" {
 		u.item("day", i, x, w, y, dayH, func(y float32) { u.dayStory(x, w, y) })
 		y += dayH
@@ -338,14 +339,31 @@ func (u *UI) heroHead(b brief, x, w, y float32) {
 	if b.s != nil {
 		key := "focus:" + b.s.ID
 		k = u.hl(key)
-		u.hits = append(u.hits, hit{image.Rect(int(x+pad-6), int(y+6), int(x+w-pad+6), int(y+heroHeadH-4)), key})
+		u.hits = append(u.hits, hit{image.Rect(int(x+pad-6), int(y+6), int(x+w-pad+6), int(y+u.headH(b)-4)), key})
 	}
-	head := ellipsize(fTitle(), b.head, right-tmw-12-tx)
-	hw := u.dc.text(fTitle(), head, tx, y+23, p.fg)
+	lines := u.headLines(b)
+	hw := float32(0)
+	for j, ln := range lines {
+		hw = u.dc.text(fTitle(), ln, tx, y+23+float32(j)*headLineH, p.fg)
+	}
+	extra := float32(len(lines)-1) * headLineH
 	if k > 0.01 { // the way there shows itself under the pointer
-		u.arrow(tx+hw+6, y+19, alpha(p.muted, k))
+		u.arrow(tx+hw+6, y+19+extra, alpha(p.muted, k))
 	}
-	u.facts(b.sub, tx, y+39, right-tx, p.muted)
+	u.facts(b.sub, tx, y+39+extra, right-tx, p.muted)
+}
+
+const headLineH = 18
+
+// headLines is the headline, wrapped to two lines before it's cut short.
+func (u *UI) headLines(b brief) []string {
+	tmw := measure(fCaption(), u.now().Format(u.TimeFmt))
+	return wrap(fTitle(), b.head, expW-textX-pad-tmw-12, 2)
+}
+
+// headH is the hero's head: one line of headline, or two.
+func (u *UI) headH(b brief) float32 {
+	return heroHeadH + float32(len(u.headLines(b))-1)*headLineH
 }
 
 // facts draws "kinvault · 4m in · 3 files +58 −12 · 1 failed": quiet words,
@@ -372,6 +390,12 @@ func (u *UI) facts(s string, x, base, maxW float32, col color.NRGBA) float32 {
 				c = mix(p.red, col, 0.25)
 			case strings.HasPrefix(word, "failed") || (strings.HasSuffix(part, "failed") || strings.Contains(part, "failed step")) && word != "":
 				c = mix(p.red, col, 0.2)
+			}
+			if strings.ContainsAny(word, "0123456789") { // numbers roll when they change
+				ww := measure(f, word)
+				u.rollText(u.dc, fmt.Sprintf("facts:%.0f:%d:%d", x0, i, j), word, f, x+ww, base, c)
+				x += ww
+				continue
 			}
 			x += u.dc.text(f, word, x, base, c)
 		}
@@ -422,16 +446,46 @@ func (u *UI) heroBody(l *sessLayout, x, w, y float32, i *int) float32 {
 		*i++
 		return top + h
 	}
-	railTop := top - heroHeadH + 38 // just under Ember
+	railTop := float32(38) // just under Ember
 	if l.mode == "wait" {
 		railTop = y + 4
 	}
+	// the thread first, so the steps sit on it: from Ember down to the last
+	// step, or to where the last agent's branch leaves it
 	railEnd := float32(0)
+	if len(l.steps) > 0 {
+		railEnd = y + float32(len(l.steps)-1)*stepH + stepH/2
+	}
+	ay := y + float32(len(l.steps))*stepH
+	for _, ag := range l.agents {
+		railEnd = ay + agentH/2 - 7
+		ay += agentH
+		if l.openAg[ag.ID] {
+			ay += float32(min(len(ag.Hist), l.agSteps)) * agentStepH
+			if ag.Summary != "" {
+				ay += agentStepH
+			}
+		}
+	}
+	if railEnd > railTop+2 {
+		u.dc.roundRect(gx-0.5, railTop, 1, railEnd-railTop, 0.5, alpha(p.fg, 0.16))
+	}
+	if len(l.steps) > 0 && !l.steps[0].Done && s.State == "work" { // the live stretch, Ember to the step at hand
+		first := y + stepH/2
+		u.dc.roundRect(gx-0.75, railTop, 1.5, first-railTop, 0.75, alpha(p.green, 0.45))
+		// each new step: a bead of light runs down the thread from Ember into it
+		if k := float64(u.now().Sub(l.steps[0].At)) / float64(beadTime); k < 1 && first > railTop {
+			u.tweening = true
+			by := railTop + (first-railTop)*float32(easeInOut(k))
+			u.dc.circle(gx, by, 4, alpha(p.green, 0.18*(1-k)))
+			u.dc.circle(gx, by, 2, alpha(mix(p.green, colorWhite, 0.4), 1-k*k))
+		}
+	}
 	for j, st := range l.steps {
 		key := fmt.Sprintf("st:%s:%d", s.ID, st.At.UnixNano())
 		cy := y + stepH/2
 		u.item(key, *i, x, w, y, stepH, func(yy float32) { u.step(s, st, j == 0, gx, tx, right, yy+stepH/2) })
-		railEnd = cy
+		_ = cy
 		y += stepH
 		*i++
 	}
@@ -464,12 +518,8 @@ func (u *UI) heroBody(l *sessLayout, x, w, y float32, i *int) float32 {
 				u.dc.text(fCaption(), ellipsize(fCaption(), "→ "+ag.Summary, right-tx-14), tx+14, yy+agentStepH/2+3.5, p.muted)
 			}
 		})
-		railEnd = y + agentH/2 - 7 // the branch leaves the rail here
 		y += h
 		*i++
-	}
-	if railEnd > railTop+2 { // the thread the steps hang on, down from Ember
-		u.dc.roundRect(gx-0.5, railTop, 1, railEnd-railTop, 0.5, alpha(p.fg, 0.14))
 	}
 	if len(l.steps) > 0 || len(l.agents) > 0 {
 		y += 4
@@ -721,6 +771,8 @@ func (u *UI) moreLink(hidden int, x, w, y float32) {
 
 // ---- the glyphs ----
 
+const beadTime = 420 * time.Millisecond
+
 // beat is the one rhythm every pulse keeps (rings, the halo, orbits), so
 // the island breathes together instead of flickering in many tempos.
 const beat = 1.6
@@ -812,11 +864,16 @@ func (u *UI) dayStory(x, w, y float32) {
 	slot := bw / 24
 	bwid := max(slot-4, 3)
 	floor := y + 26
+	age := now.Sub(u.trAt)
 	for h := 0; h < 24; h++ {
 		c := u.day.Hours[h]
 		bh := float32(2)
-		if c > 0 {
-			bh = 3 + 19*float32(math.Sqrt(float64(c)/float64(top)))
+		if c > 0 { // the bars rise one after another as the card opens
+			g := phase(age, time.Duration(90+16*h)*time.Millisecond, 380*time.Millisecond)
+			if g < 1 {
+				u.tweening = true
+			}
+			bh = 2 + (1+19*float32(math.Sqrt(float64(c)/float64(top))))*float32(g)
 		}
 		col := alpha(p.fg, 0.12)
 		switch {
@@ -829,6 +886,13 @@ func (u *UI) dayStory(x, w, y float32) {
 		}
 		bx0 := bx + float32(h)*slot + (slot-bwid)/2
 		u.dc.roundRect(bx0, floor-bh, bwid, bh, min(1.5, bwid/2), col)
+		if h == now.Hour() { // this hour breathes on the island's beat
+			bx0, bh := bx0, bh
+			u.lives = append(u.lives, live{r: image.Rect(int(bx0)-4, int(floor-bh)-4, int(bx0+bwid)+5, int(floor)+4), draw: func(c *canvas, t float64) {
+				q := 0.5 + 0.5*math.Sin(t*2*math.Pi/(2*beat))
+				c.frame(bx0-2, floor-bh-2, bwid+4, bh+4, 2.5, 1, alpha(p.green, 0.12+0.3*q))
+			}})
+		}
 	}
 	for _, h := range []int{0, 6, 12, 18} {
 		lbl := map[int]string{0: "12a", 6: "6a", 12: "12p", 18: "6p"}[h]

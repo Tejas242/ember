@@ -156,7 +156,7 @@ func (u *UI) mainLine() line {
 			return l
 		}
 	}
-	l := line{key: "clock", mood: moodIdle, text: now.Format(u.cfg.pillFormat()), textCol: p.fg}
+	l := line{key: "clock", mood: moodIdle, text: now.Format(u.cfg.pillFormat()), textCol: mix(p.fg, p.muted, 0.7*u.sleepK)}
 	if e := u.edge; e != nil && e.Closed {
 		l.lock = true
 	}
@@ -244,15 +244,36 @@ func (u *UI) pillLayout(l line, h float32) (left, right []seg, w float32) {
 		switch {
 		case m != nil && m.thumb != nil:
 			th := m.thumb.Rect
-			ty := int(cy+0.5) - th.Dy()/2
+			drop := 0.0 // the preview drops into place
+			if k := float64(now.Sub(m.at)) / float64(320*time.Millisecond); k < 1 {
+				drop, u.tweening = 1-easeOut(k), true
+			}
+			ty := int(cy+0.5) - th.Dy()/2 - int(math.Round(9*drop))
 			draw.Draw(u.dc.img, th.Add(image.Pt(int(x), ty)), m.thumb, image.Point{}, draw.Over)
 			u.dc.frame(x, float32(ty), float32(th.Dx()), float32(th.Dy()), 3.5, 1, alpha(p.fg, 0.22))
 			u.spot = emberSpot{x: x + float32(th.Dx())/2, y: cy, s: 0, mood: moodIdle, show: true}
+		case m != nil && m.key == "osd:volume" && m.icon != "mute": // its waves follow the level
+			volumeGlyph(u.dc, x+8, cy, 15, float32(u.meter.x), m.tint)
+			u.spot = emberSpot{x: x + 8, y: cy + 1, s: 0, mood: l.mood, show: true}
+		case m != nil && m.icon == "sun": // its rays reach out with the brightness
+			sunGlyph(u.dc, x+8, cy, 15, float32(u.meter.x), m.tint)
+			u.spot = emberSpot{x: x + 8, y: cy + 1, s: 0, mood: l.mood, show: true}
 		case m != nil:
 			u.dc.icon(m.icon, x+8, cy, 15, m.tint)
 			u.spot = emberSpot{x: x + 8, y: cy + 1, s: 0, mood: l.mood, show: true} // Ember tucks into the icon
-		case l.music && u.art != nil:
-			u.dc.drawArt(u.art.small, int(x), int(cy-8), 4, 1)
+		case l.music && u.art != nil: // the cover as a disc, the song as a ring around it
+			n := u.art.small.Rect.Dx()
+			u.dc.drawArt(u.art.small, int(x+8)-n/2, int(cy)-n/2, float32(n)/2, 1)
+			if t := u.track; t != nil && t.Length > 0 {
+				acc, track := u.accent(p.fg), alpha(p.fg, 0.14)
+				u.lives = append(u.lives, live{r: image.Rect(int(x-4), int(cy-11), int(x+21), int(cy+12)), draw: func(c *canvas, _ float64) {
+					k := math.Min(1, float64(t.pos(u.now()))/float64(t.Length))
+					c.arc(x+8, cy, 9.3, 1.3, 0, 2*math.Pi, track)
+					if k > 0.005 {
+						ringArc(c, x+8, cy, 9.3, 1.3, -math.Pi/2, -math.Pi/2+2*math.Pi*k, acc)
+					}
+				}})
+			}
 			u.spot = emberSpot{x: x + 8, y: cy + 1, s: 0, mood: moodIdle, show: true} // Ember tucks into the cover
 		default:
 			u.spot = emberSpot{x: x + 8, y: cy + 1, s: 14, mood: l.mood, show: true}
@@ -287,9 +308,14 @@ func (u *UI) pillLayout(l line, h float32) (left, right []seg, w float32) {
 	if m != nil && m.meter {
 		right = append(right, seg{w: meterW, gap: 10, draw: func(x float32) {
 			k := float32(math.Max(0, math.Min(1, u.meter.x)))
-			u.dc.roundRect(x, cy-2, meterW, 4, 2, alpha(p.fg, 0.14))
+			// pressing on past the end stretches the meter a little, and it springs back
+			stretch := float32(0)
+			if b := float64(now.Sub(u.meterBump)) / float64(320*time.Millisecond); b < 1 {
+				stretch, u.tweening = 8*float32(math.Sin(math.Pi*b)*(1-b)), true
+			}
+			u.dc.roundRect(x, cy-2, meterW+stretch, 4, 2, alpha(p.fg, 0.14))
 			if k > 0 {
-				u.dc.roundRect(x, cy-2, max(meterW*k, 4), 4, 2, m.tint)
+				u.dc.roundRect(x, cy-2-stretch*0.08, max((meterW+stretch)*k, 4), 4+stretch*0.16, 2, m.tint)
 			}
 		}})
 	}
@@ -308,8 +334,8 @@ func (u *UI) pillLayout(l line, h float32) (left, right []seg, w float32) {
 	}
 	if m != nil && m.batt {
 		bw := battW() + 3
-		right = append(right, seg{w: bw, gap: 6, draw: func(x float32) {
-			u.dc.battery(x, cy, 9, float32(m.pct), alpha(p.fg, 0.45), m.tint)
+		right = append(right, seg{w: bw, gap: 6, draw: func(x float32) { // it fills up to its level as it appears
+			u.dc.battery(x, cy, 9, float32(u.tw("batt:"+m.key, m.pct, 0)), alpha(p.fg, 0.45), m.tint)
 		}})
 	}
 	if m := u.moment; l.verb == "Done" && m != nil { // a check strokes itself in at the end
@@ -448,8 +474,20 @@ func (u *UI) drawCompact(x, w, h float32) {
 		s.draw(rx)
 		rx -= s.gap
 	}
-	if l.music && u.track != nil { // the song, as a hairline along the pill's rim
+	if l.music && u.track != nil && u.art == nil { // no cover to ring: the song as a hairline along the rim
 		u.progressLive(x+12, h-1, w-24, 1, u.accent(p.fg), 0)
+	}
+	if m := l.m; m != nil && m.thumb != nil && now.Sub(m.at) < 260*time.Millisecond { // a shutter's flash
+		n, at := u.shape, m.at
+		u.tweening = true
+		u.lives = append(u.lives, live{r: n.interior(), draw: func(c *canvas, _ float64) {
+			k := float64(u.now().Sub(at)) / float64(260*time.Millisecond)
+			if k < 1 {
+				c.clip = &n
+				c.roundRect(n.x, 0, n.w, n.h, n.rb, alpha(colorWhite, 0.4*(1-easeOut(k))))
+				c.clip = nil
+			}
+		}})
 	}
 	if l.halo {
 		u.haloAt = now
@@ -471,6 +509,35 @@ const (
 	checkDelay = 175 * time.Millisecond // Ember's bounce at its top
 	checkTime  = 320 * time.Millisecond
 )
+
+// volumeGlyph is the speaker with its waves: the first arrives as the
+// level rises past nothing, the second past about a half.
+func volumeGlyph(c *canvas, cx, cy, s, level float32, col color.NRGBA) {
+	u := s / 16
+	P := func(x, y float32) pt { return pt{cx + (x-8)*u, cy + (y-8)*u} }
+	c.roundRect(cx-6.5*u, cy-2.6*u, 3.4*u, 5.2*u, 0.8*u, col)
+	c.poly(col, P(3.6, 5.4), P(7.4, 2), P(7.4, 14), P(3.6, 10.6))
+	a1 := math.Min(1, math.Max(0, float64(level)*4))
+	a2 := math.Min(1, math.Max(0, (float64(level)-0.45)*4))
+	if a1 > 0 {
+		c.arc(cx-0.6*u, cy, 3.6*u, 1.4*u, -0.85, 0.85, alpha(col, a1))
+	}
+	if a2 > 0 {
+		c.arc(cx-0.6*u, cy, 6.6*u, 1.4*u, -0.9, 0.9, alpha(col, a2))
+	}
+}
+
+// sunGlyph is the sun with rays as long as the brightness is high.
+func sunGlyph(c *canvas, cx, cy, s, level float32, col color.NRGBA) {
+	u := s / 16
+	c.circle(cx, cy, 3.2*u, col)
+	ray := 0.6 + 1.4*min(max(level, 0), 1) // from stubs to full rays
+	for i := 0; i < 8; i++ {
+		a := float64(i) * math.Pi / 4
+		dx, dy := float32(math.Cos(a)), float32(math.Sin(a))
+		c.line(pt{cx + dx*5.2*u, cy + dy*5.2*u}, pt{cx + dx*(5.2+ray)*u, cy + dy*(5.2+ray)*u}, 1.4*u, col)
+	}
+}
 
 // strokeCheck draws a check mark in a box of size s at (x, cy), stroked
 // as far as k (0..1) along its path: it draws itself.
@@ -552,11 +619,12 @@ func (u *UI) drawTrail(act string, x, cy, h float32) {
 	switch act {
 	case "music":
 		if u.art != nil {
-			u.dc.drawArt(u.art.small, int(x+1), int(cy-8), 8, 1) // a round disc
+			n := u.art.small.Rect.Dx()
+			u.dc.drawArt(u.art.small, int(x+9)-n/2, int(cy)-n/2, float32(n)/2, 1) // a round disc
 			if u.track != nil && u.track.Playing {
 				u.lives = append(u.lives, live{r: image.Rect(int(x)-2, int(cy-11), int(x+20), int(cy+11)), draw: func(c *canvas, t float64) {
 					a := t * 2.2 // a dot orbiting the disc: it's spinning
-					c.circle(x+9+6.4*float32(math.Cos(a)), cy+6.4*float32(math.Sin(a)), 1.2, alpha(colorWhite, 0.85))
+					c.circle(x+9+5.2*float32(math.Cos(a)), cy+5.2*float32(math.Sin(a)), 1.1, alpha(colorWhite, 0.85))
 				}})
 			}
 		} else {
@@ -583,10 +651,21 @@ func (u *UI) drawTrail(act string, x, cy, h float32) {
 // eqLive registers the little equaliser at (x, y) (bottom-left), height h.
 func (u *UI) eqLive(x, y, h float32, col color.NRGBA, playing bool) {
 	r := image.Rect(int(x)-1, int(y-h)-1, int(x+16)+1, int(y)+1)
+	u.eqShown = u.eqShown || playing
 	u.lives = append(u.lives, live{r: r, draw: func(c *canvas, t float64) {
+		lv, heard := u.audio.levels()
 		for i := 0; i < 3; i++ {
 			k := []float64{0.4, 0.75, 0.55}[i] // paused: still bars, not dots
-			if playing {
+			switch {
+			case playing && heard: // the song itself: low, mid, high, rising fast and falling slowly
+				target := 0.18 + 0.82*lv[i]
+				if target > u.eqLevel[i] {
+					u.eqLevel[i] += (target - u.eqLevel[i]) * 0.7
+				} else {
+					u.eqLevel[i] += (target - u.eqLevel[i]) * 0.25
+				}
+				k = u.eqLevel[i]
+			case playing:
 				k = 0.3 + 0.7*math.Abs(math.Sin(t*(3.7+float64(i)*1.9)+float64(i)*1.3))*(0.75+0.25*math.Sin(t*1.3+float64(i)))
 			}
 			bh := float32(k) * h

@@ -151,7 +151,11 @@ func (r *Recap) troubled() bool {
 func turnFacts(s *Session, now time.Time) string {
 	t := s.Turn
 	var parts []string
-	if !s.Since.IsZero() {
+	switch {
+	case s.Since.IsZero():
+	case now.Sub(s.Since) < time.Minute:
+		parts = append(parts, "just started")
+	default:
 		parts = append(parts, mins(now.Sub(s.Since))+" in")
 	}
 	if stalled(s, now) {
@@ -164,8 +168,14 @@ func turnFacts(s *Session, now time.Time) string {
 		}
 		parts = append(parts, f)
 	}
-	if t.Failures > 0 {
-		parts = append(parts, fmt.Sprintf("%d failed", t.Failures))
+	if t.Failures > 0 { // a failure that was retried is how agents work: only a live one is red
+		if n := len(t.Steps); n > 0 && t.Steps[n-1].Failed {
+			parts = append(parts, "last step failed")
+		} else if t.Failures == 1 {
+			parts = append(parts, "1 retry")
+		} else {
+			parts = append(parts, fmt.Sprintf("%d retries", t.Failures))
+		}
 	}
 	return strings.Join(parts, " · ")
 }

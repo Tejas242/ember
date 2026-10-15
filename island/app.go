@@ -183,6 +183,7 @@ func Run() error {
 	bar := readBar()
 	a := &app{ui: NewUI(surfW, surfH, bar.h), win: win, posts: posts, started: time.Now()}
 	a.ui.onKey = a.key
+	a.ui.audio = &audio{}
 	a.ui.habits = loadHabits()
 	a.ui.day = loadDay(time.Now())
 	win.onIdle = func(idle bool) { a.presence(idle); a.ui.Invalidate() }
@@ -313,8 +314,8 @@ func (a *app) nextWake(animating bool) time.Duration {
 	next := u.nextBlink()
 	if u.continuous() {
 		next = now.Add(flickerEvery)
-		if u.lastView != vCompact {
-			next = now.Add(time.Second / 24) // the card's pulses and orbits: only their squares repaint
+		if u.lastView != vCompact || u.eqShown {
+			next = now.Add(time.Second / 24) // the card's pulses, a listening equaliser: only their squares repaint
 		}
 		if u.shimmering() { // a band of light crosses smoothly, then rests
 			if t := now.Sub(u.start).Seconds(); shimmerPassing(t) {
@@ -418,6 +419,9 @@ func (a *app) hasCard(session string) bool {
 
 func (a *app) setTrack(t *Track) {
 	prev := a.track
+	if a.ui.audio != nil { // the equaliser listens only while a song plays
+		a.ui.audio.set(t != nil && t.Playing && a.cfg.Music)
+	}
 	if t != nil && !t.Playing { // when it stopped: a song paused long ago leaves the card
 		t.PausedAt = a.ui.now()
 		if prev != nil && !prev.Playing && prev.Title == t.Title && !prev.PausedAt.IsZero() {
@@ -681,6 +685,7 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		s.Turn.finish(false)
 	case "PostToolUseFailure":
 		s.Turn.finish(true)
+		a.ui.React("wince")
 		a.ui.mind.kick(now, 0.1, -0.12) // a small wince
 	case "PermissionRequest":
 		if answer == nil {

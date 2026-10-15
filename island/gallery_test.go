@@ -1,6 +1,7 @@
 package island
 
 import (
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/color"
@@ -141,7 +142,7 @@ func galleryArt() *albumArt {
 			img.Set(x, y, color.NRGBA{uint8(math.Min(255, r)), uint8(math.Min(255, math.Max(0, g))), uint8(math.Min(255, b)), 255})
 		}
 	}
-	a := &albumArt{small: scaleSquare(img, 16), large: scaleSquare(img, 60), row: scaleSquare(img, 24)}
+	a := &albumArt{small: scaleSquare(img, 14), large: scaleSquare(img, 60), row: scaleSquare(img, 24)}
 	a.accent = accentOf(a.large)
 	return a
 }
@@ -431,6 +432,7 @@ func TestGallery(t *testing.T) {
 		set(g)
 		g.run(2 * time.Second)
 		act(g)
+		g.a.ui.Invalidate() // as the app does after every event
 		f := 0
 		for _, n := range frames {
 			for ; f < n; f++ {
@@ -453,9 +455,55 @@ func TestGallery(t *testing.T) {
 		g.a.ui.mind.away = false
 		hookAt(g.a, "Stop", "k", "kinvault", map[string]any{"last_assistant_message": "All 42 tests pass under -race."})
 	}, []int{0, 4, 8, 12, 18, 26, 36, 50}, pillCrop)
+	strip("bead", "a new step: a bead runs down the thread", func(g *galleryScene) {
+		g.work("k", "kinvault", "fix the race in the store's compaction path and make the tests pass", 4)
+		g.a.ui.pinned = true
+	}, func(g *galleryScene) {
+		hookAt(g.a, "PostToolUse", "k", "kinvault", map[string]any{"tool_name": "Edit"})
+		hookAt(g.a, "PreToolUse", "k", "kinvault", map[string]any{"tool_name": "Bash", "tool_input": map[string]any{"command": "go vet ./...", "description": "Vet the store"}})
+	}, []int{0, 4, 8, 12, 16, 20, 26, 40}, image.Rect(surfW/2-210, 0, surfW/2+210, 190))
+	strip("react", "Allow: Ember nods; a failed step: it winces", func(g *galleryScene) {
+		g.work("k", "kinvault", "fix the race", 2)
+	}, func(g *galleryScene) {
+		g.a.ui.React("nod")
+	}, []int{0, 3, 6, 9, 12, 15, 20, 27}, pillCrop)
+	strip("shot", "a screenshot: a shutter flash, the preview drops in", func(g *galleryScene) {}, func(g *galleryScene) {
+		g.a.ui.Moment(moment{key: "shot:x", icon: "camera", tint: g.a.ui.pal.fg, text: "Screenshot saved", thumb: scaleThumb(galleryBackground().SubImage(image.Rect(200, 100, 1166, 668)), 30, 18), until: g.clock.Add(time.Hour)})
+	}, []int{0, 3, 6, 9, 12, 16, 20, 30}, pillCrop)
+	strip("meter", "volume up past 100: the meter stretches and springs back", func(g *galleryScene) {
+		g.a.ui.Moment(moment{key: "osd:volume", icon: "volume", tint: g.a.ui.pal.fg, meter: true, level: 1, right: "100", until: g.clock.Add(time.Hour), osd: true})
+	}, func(g *galleryScene) {
+		g.a.ui.Moment(moment{key: "osd:volume", icon: "volume", tint: g.a.ui.pal.fg, meter: true, level: 1, right: "100", until: g.clock.Add(time.Hour), osd: true})
+	}, []int{0, 3, 6, 9, 12, 15, 19, 24}, pillCrop)
+	strip("volume", "volume falling: the waves leave with it", func(g *galleryScene) {
+		g.a.ui.Moment(moment{key: "osd:volume", icon: "volume", tint: g.a.ui.pal.fg, meter: true, level: 0.8, right: "80", until: g.clock.Add(time.Hour), osd: true})
+	}, func(g *galleryScene) {
+		g.a.ui.Moment(moment{key: "osd:volume", icon: "volume", tint: g.a.ui.pal.fg, meter: true, level: 0.05, right: "5", until: g.clock.Add(time.Hour), osd: true})
+	}, []int{0, 3, 6, 9, 12, 16, 22, 30}, pillCrop)
 	strip("hero", "another session becomes the hero", func(g *galleryScene) {
 		g.work("e", "edge", "add a hint ladder to the daily problem flow", 3)
 		g.work("k", "kinvault", "fix the race in the store's compaction path", 4)
 		g.a.ui.pinned = true
 	}, func(g *galleryScene) { g.a.ui.press("s:e", 1); g.a.ui.Invalidate() }, open, cardCrop)
+
+	// edge's dashboard: the sample, and today's real stats if edge is running
+	var dash []galleryShot
+	dashShot := func(label string, st *EdgeStats) {
+		g := newScene()
+		g.a.ui.edgeStats = st
+		g.a.ui.dashboards["edge"] = edgeDash{}
+		g.run(500 * time.Millisecond)
+		g.a.ui.openDash("edge")
+		g.run(2500 * time.Millisecond)
+		_, h := edgeDash{}.Size(g.a.ui)
+		dash = append(dash, galleryShot{label, onDesktop(g.a.ui, image.Rect(surfW/2-290, 0, surfW/2+290, min(surfH, int(h)+20)))})
+	}
+	dashShot("edge's dashboard, mid-problem", sampleStats(time.Date(2026, 10, 15, 17, 24, 0, 0, time.Local)))
+	if b, err := os.ReadFile(filepath.Join(os.Getenv("XDG_RUNTIME_DIR"), "edge", "stats.json")); err == nil {
+		var st EdgeStats
+		if json.Unmarshal(b, &st) == nil && st.Version >= 1 {
+			dashShot("edge's dashboard, today", &st)
+		}
+	}
+	sheet(t, "gallery-dash", dash, 2)
 }

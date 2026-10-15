@@ -45,7 +45,7 @@ func TestBriefWhileWorking(t *testing.T) {
 	if b.mode != "work" || b.head != "ember is reading store.go" { // no informative prompt: the step speaks
 		t.Fatalf("mode %s, head %q", b.mode, b.head)
 	}
-	for _, want := range []string{"2m in", "1 file +3 −1", "1 failed"} {
+	for _, want := range []string{"2m in", "1 file +3 −1", "1 retry"} {
 		if !strings.Contains(b.sub, want) {
 			t.Fatalf("facts %q lack %q", b.sub, want)
 		}

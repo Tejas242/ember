@@ -29,7 +29,7 @@ const (
 	dashMid   = 96
 	dashHeat  = 92
 	dashTiles = 46
-	dashDiv   = 9 // the space and hairline between sections
+	dashDiv   = 9                       // the space and hairline between sections
 	dashEnter = 1700 * time.Millisecond // the whole entrance
 )
 

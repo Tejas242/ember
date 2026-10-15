@@ -21,7 +21,7 @@ import (
 // albumArt holds a track's cover pre-scaled to the sizes the island draws.
 type albumArt struct {
 	url          string
-	small, large *image.RGBA // 16 px (pill), 60 px (source of the rest)
+	small, large *image.RGBA // 14 px (pill: a disc in a progress ring), 60 px (source of the rest)
 	row          *image.RGBA // 24 px (the card's music section)
 	accent       color.NRGBA // the cover's colour, lifted to read on the dark island; zero if it's grey
 }
@@ -55,7 +55,7 @@ func loadArt(raw string, done func(*albumArt)) {
 		if err != nil {
 			return
 		}
-		art := &albumArt{url: raw, small: scaleSquare(src, 16), large: scaleSquare(src, 60), row: scaleSquare(src, 24)}
+		art := &albumArt{url: raw, small: scaleSquare(src, 14), large: scaleSquare(src, 60), row: scaleSquare(src, 24)}
 		art.accent = accentOf(art.large)
 		src, data = nil, nil
 		debug.FreeOSMemory() // a decoded cover can be tens of MB; give it back now

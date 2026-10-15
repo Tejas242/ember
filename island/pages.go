@@ -132,8 +132,19 @@ func (u *UI) edgeRow(x, w, y float32) {
 	}
 	cy := y + edgeH/2
 	gx := x + railX
-	u.dc.frame(gx-6, cy-6, 12, 12, 6, 1.2, alpha(p.yellow, 0.85))
-	u.dc.circle(gx, cy, 2, alpha(p.yellow, 0.85))
+	// today's goal as a ring, filled as far as you've got
+	goal := 0.0
+	if e.Need > 0 {
+		goal = math.Min(1, float64(e.Today)/float64(e.Need))
+	}
+	rc := p.yellow
+	if goal >= 1 {
+		rc = p.green
+	}
+	u.dc.arc(gx, cy, 6, 1.8, 0, 2*math.Pi, alpha(p.fg, 0.12))
+	if g := goal * u.tw("goal", goal, 0); g > 0.01 {
+		ringArc(u.dc, gx, cy, 6, 1.8, -math.Pi/2, -math.Pi/2+2*math.Pi*g, rc)
+	}
 	tx, right := x+textX, x+w-pad
 	var btn Button
 	sub := fmt.Sprintf("%d/%d today · %d-day streak", e.Today, e.Need, e.Streak)
@@ -160,7 +171,18 @@ func (u *UI) edgeRow(x, w, y float32) {
 	}
 	base := cy + 4.5
 	nw := u.dc.text(fBody(), ellipsize(fBody(), task, (right-tx)*0.55), tx, base, p.fg)
-	u.dc.text(fSecond(), ellipsize(fSecond(), sub, right-tx-nw-8), tx+nw+8, base, p.muted)
+	sx := tx + nw + 8
+	if day, streak, ok := strings.Cut(sub, " · "); ok && strings.HasSuffix(streak, "-day streak") && e.Streak > 0 {
+		// the streak gets its little flame
+		sx += u.dc.text(fSecond(), day+" · ", sx, base, p.muted)
+		fx, fy, hot := sx+4, cy+1, true
+		u.lives = append(u.lives, live{r: image.Rect(int(fx-6), int(fy-10), int(fx+7), int(fy+6)), draw: func(c *canvas, t float64) {
+			flame(c, fx, fy, 4.6, t, hot, p)
+		}})
+		sx += 11
+		sub = streak
+	}
+	u.dc.text(fSecond(), ellipsize(fSecond(), sub, right-sx), sx, base, p.muted)
 }
 
 // pillButton draws a small round button right-aligned at right, and

@@ -197,6 +197,7 @@ func (u *UI) press(k string, button int) {
 			return
 		}
 		u.RemoveCard(c.ID)
+		u.React("nod")
 		if c.OnPick != nil {
 			c.OnPick("option", []int{i})
 		}
@@ -208,6 +209,12 @@ func (u *UI) press(k string, button int) {
 			u.used("edge")
 		}
 	case strings.HasPrefix(k, "btn:") && c != nil:
+		switch strings.TrimPrefix(k, "btn:") {
+		case "allow", "always", "submit", "start":
+			u.React("nod")
+		case "deny":
+			u.React("shake")
+		}
 		var picked []int
 		for i := range c.Options {
 			if c.picked[i] {
