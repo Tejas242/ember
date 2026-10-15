@@ -97,9 +97,25 @@ func (u *UI) mainLine() line {
 		s := ss[0]
 		busy := 0
 		for _, x := range ss {
-			if x.State != "idle" {
+			if x.status() != "idle" {
 				busy++
 			}
+		}
+		if s.State == "idle" && s.running() > 0 { // the turn ended; its agents work on
+			l := line{key: "claude:agents:" + s.ID, mood: moodWork, textCol: p.fg, more: busy - 1, work: true}
+			ags := s.agentList()
+			if len(ags) == 1 {
+				l.text = ags[0].Label
+				if l.text == "" {
+					l.text = ags[0].name()
+				}
+				l.chip = mins(now.Sub(ags[0].Start))
+			} else {
+				l.text = agentsText(len(ags)) + " working"
+				l.chip = s.Project
+			}
+			l.chipCol = p.muted
+			return l
 		}
 		switch s.State {
 		case "wait":
@@ -110,8 +126,8 @@ func (u *UI) mainLine() line {
 				l.text = "Thinking"
 			}
 			var chips []string
-			if s.Agents > 0 {
-				chips = append(chips, agentsText(s.Agents))
+			if n := s.running(); n > 0 {
+				chips = append(chips, agentsText(n))
 			}
 			if !s.StepAt.IsZero() && now.Sub(s.StepAt) >= time.Minute { // one step running long: say how long
 				chips = append(chips, mins(now.Sub(s.StepAt)))

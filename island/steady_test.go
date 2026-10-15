@@ -23,7 +23,7 @@ func TestSteadyFrameMatchesFull(t *testing.T) {
 		},
 		"agents": func(u *UI, clock time.Time) {
 			working(u)
-			u.sessions["a"].Agents = 2
+			fakeAgents(u.sessions["a"], 2, clock)
 		},
 		"claude-music": func(u *UI, clock time.Time) {
 			working(u)

@@ -1,6 +1,7 @@
 package island
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -70,6 +71,24 @@ func TestPreviewBrief(t *testing.T) {
 			*c = c.Add(4 * time.Minute)
 			work(a, c, "e", "edge", false)
 			work(a, c, "s", "kinvault", true)
+			music(a, *c)
+		}},
+		{"agents", func(a *app, c *time.Time) {
+			work(a, c, "s", "kinvault", false)
+			for i, d := range []string{"Map the store's locking", "Find every compaction caller", "Audit the quota tests"} {
+				hookAt(a, "PreToolUse", "s", "kinvault", map[string]any{"tool_name": "Agent",
+					"tool_input": map[string]any{"description": d, "subagent_type": "Explore"}})
+				hookAt(a, "SubagentStart", "s", "kinvault", map[string]any{"agent_id": fmt.Sprint("x", i), "agent_type": "Explore"})
+				*c = c.Add(20 * time.Second)
+			}
+			for i, tl := range []map[string]any{
+				{"tool_name": "Grep", "tool_input": map[string]any{"pattern": "segment.Lock"}},
+				{"tool_name": "Read", "tool_input": map[string]any{"file_path": "/x/compact.go"}},
+				{"tool_name": "Bash", "tool_input": map[string]any{"command": "go test ./quota", "description": "Run the quota tests"}}} {
+				hookAt(a, "PreToolUse", "s", "kinvault", map[string]any{"agent_id": fmt.Sprint("x", i), "agent_type": "Explore", "tool_name": tl["tool_name"], "tool_input": tl["tool_input"]})
+			}
+			hookAt(a, "Stop", "s", "kinvault", map[string]any{"last_assistant_message": "Three agents are mapping it."})
+			*c = c.Add(50 * time.Second)
 			music(a, *c)
 		}},
 		{"recap", func(a *app, c *time.Time) {

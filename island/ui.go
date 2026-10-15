@@ -47,7 +47,9 @@ type Session struct {
 	Title                     string // the topic Claude put in its terminal's title
 	Prompt                    string // what you asked this turn, first line
 	Plus, Minus               int
-	Agents                    int // subagents running
+	Agents                    map[string]*Agent // subagents running, by agent_id
+	asks                      []agentAsk           // Agent calls waiting for their SubagentStart
+	ended                     map[string]time.Time // agents that stopped before their start arrived
 	Since, Seen               time.Time
 	StepAt                    time.Time // when the current step (Label) began
 	Pids                      []int
@@ -356,8 +358,8 @@ func (u *UI) sessionList() []*Session {
 	}
 	rank := map[string]int{"wait": 3, "work": 2, "idle": 1}
 	sort.Slice(out, func(i, j int) bool {
-		if rank[out[i].State] != rank[out[j].State] {
-			return rank[out[i].State] > rank[out[j].State]
+		if ri, rj := rank[out[i].status()], rank[out[j].status()]; ri != rj {
+			return ri > rj
 		}
 		return out[i].Seen.After(out[j].Seen)
 	})
@@ -415,7 +417,7 @@ func (u *UI) primary() string {
 // secondary is what the bubble beside the pill shows, if anything.
 func (u *UI) secondary(primary string) string {
 	ss := u.sessionList()
-	working := u.cfg.Claude && len(ss) > 0 && (ss[0].State == "work" || ss[0].State == "wait")
+	working := u.cfg.Claude && len(ss) > 0 && (ss[0].status() == "work" || ss[0].State == "wait")
 	switch {
 	case primary != "music" && u.track != nil && u.track.Playing && u.cfg.Music:
 		return "music"
@@ -697,7 +699,7 @@ func (u *UI) lookTarget(now time.Time) float64 {
 func (u *UI) senses() senses {
 	s := senses{music: u.track != nil && u.track.Playing, hovered: u.hover}
 	for _, x := range u.sessions {
-		s.working = s.working || x.State == "work"
+		s.working = s.working || x.status() == "work"
 		s.waiting = s.waiting || x.State == "wait"
 	}
 	return s
@@ -778,7 +780,7 @@ func (u *UI) continuous() bool {
 		return true
 	}
 	for _, s := range u.sessions {
-		if s.State != "idle" {
+		if s.status() != "idle" {
 			return true
 		}
 	}

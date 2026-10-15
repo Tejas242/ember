@@ -38,6 +38,7 @@ type brief struct {
 	head, sub string
 	mood      mood
 	others    []*Session
+	agents    []*Agent // the working session's subagents
 }
 
 // brief decides what the card is about.
@@ -50,7 +51,7 @@ func (u *UI) brief() brief {
 	var b brief
 	var working []*Session
 	for _, s := range ss {
-		if s.State == "work" {
+		if s.status() == "work" {
 			working = append(working, s)
 		}
 	}
@@ -69,6 +70,9 @@ func (u *UI) brief() brief {
 		if label == "" {
 			label = "Thinking"
 		}
+		if s.State == "idle" { // its turn ended; its agents work on
+			label = agentsText(s.running()) + " working"
+		}
 		// the headline is the task, in words; the timeline below says how it's going
 		head, sub := s.task(), s.Project+" · "+turnFacts(s, now)
 		if head == "" {
@@ -77,7 +81,7 @@ func (u *UI) brief() brief {
 				head = s.Project + " is " + g
 			}
 		}
-		b = brief{mode: "work", s: s, mood: moodWork, head: head, sub: strings.TrimSuffix(sub, " · ")}
+		b = brief{mode: "work", s: s, mood: moodWork, head: head, sub: strings.TrimSuffix(sub, " · "), agents: s.agentList()}
 	default:
 		var last *Session
 		for _, s := range ss {
@@ -109,21 +113,57 @@ func (u *UI) brief() brief {
 		if s == b.s || len(b.others) == 3 {
 			continue
 		}
-		if s.State != "idle" || (s.Recap != nil && now.Sub(s.Recap.At) < recapFresh) {
+		if s.status() != "idle" || (s.Recap != nil && now.Sub(s.Recap.At) < recapFresh) {
 			b.others = append(b.others, s)
 		}
 	}
 	return b
 }
 
-// shown is how many timeline steps fit: four alone, three when other
-// sessions need their lines too.
+// shown is how many timeline steps fit: four alone, one fewer when other
+// sessions need their lines, and fewer again for the agents' rows.
 func (b brief) shown() int {
+	n := keepShown
 	if len(b.others) > 0 {
-		return keepShown - 1
+		n--
 	}
-	return keepShown
+	n -= (min(len(b.agents), agentRows) + 1) / 2
+	return max(n, 1)
 }
+
+// timelineH is the height of the work story's timeline.
+func (b brief) timelineH() float32 {
+	n := min(len(b.steps()), b.shown())
+	if n == 0 {
+		return 0
+	}
+	return float32(10 + n*stepH)
+}
+
+// steps is the timeline: the turn's steps, less the launches of agents
+// that have their own row below.
+func (b brief) steps() []Step {
+	all := b.s.Turn.Steps
+	if len(b.agents) == 0 {
+		return all
+	}
+	running := map[string]bool{}
+	for _, ag := range b.agents {
+		if ag.Desc != "" {
+			running[ag.Desc] = true
+		}
+	}
+	out := make([]Step, 0, len(all))
+	for _, st := range all {
+		if st.Kind == "agent" && running[strings.TrimPrefix(st.Text, "Asked an agent: ")] {
+			continue
+		}
+		out = append(out, st)
+	}
+	return out
+}
+
+func agentsH(n int) float32 { return float32(8 + min(n, agentRows)*stepH) }
 
 // turnFacts: "4m in · 9 steps · 3 files +58 −12 · 1 failed".
 func turnFacts(s *Session, now time.Time) string {
@@ -206,11 +246,14 @@ func (u *UI) storyHeight(b brief) float32 {
 	case "wait":
 		return 34
 	case "work":
-		n := min(len(b.s.Turn.Steps), b.shown())
-		if n == 0 {
-			return 0
+		h := b.timelineH()
+		if len(b.agents) > 0 {
+			if h > 0 {
+				h += rowGapX
+			}
+			h += agentsH(len(b.agents))
 		}
-		return float32(10 + n*stepH)
+		return h
 	case "recap":
 		r := b.s.Recap
 		h := float32(14 + 15) // padding, facts line
@@ -266,7 +309,14 @@ func (u *UI) drawExpanded(x, w float32) {
 		case "wait":
 			u.waitStory(b.s, x, w, y)
 		case "work":
-			u.timeline(b.s, b.shown(), x, w, y, sh)
+			th := b.timelineH()
+			if th > 0 {
+				u.timeline(b.s, b.steps(), b.shown(), x, w, y, th)
+				th += rowGapX
+			}
+			if len(b.agents) > 0 {
+				u.agentsStory(b.s, b.agents, x, w, y+th)
+			}
 		case "recap":
 			u.recapStory(b.s, x, w, y, sh)
 		case "day":
@@ -301,10 +351,9 @@ func (u *UI) waitStory(s *Session, x, w, y float32) {
 
 // timeline: the turn so far, newest first, on a thin rail. The step in
 // progress pulses and counts its seconds; a failed step says so in red.
-func (u *UI) timeline(s *Session, shown int, x, w, y, h float32) {
+func (u *UI) timeline(s *Session, steps []Step, shown int, x, w, y, h float32) {
 	p, now := u.pal, u.now()
 	u.panel(x+pad-6, y, w-2*pad+12, h, 13, alpha(p.fg, 0.04))
-	steps := s.Turn.Steps
 	n := min(len(steps), shown)
 	rail := x + pad + 7
 	if n > 1 {
@@ -461,9 +510,15 @@ func (u *UI) otherRow(s *Session, x, w, y float32) {
 		if text == "" {
 			text = "Thinking"
 		}
+		if n := s.running(); n > 0 {
+			text = agentsText(n) + " · " + text
+		}
 		if !s.Since.IsZero() {
 			when = mins(now.Sub(s.Since))
 		}
+	case s.running() > 0: // the turn ended; its agents work on
+		ags := s.agentList()
+		text, when = agentsText(len(ags))+" working", mins(now.Sub(ags[0].Start))
 	case s.Recap != nil:
 		dot, text, when = p.faint, s.Recap.Summary, ago(now.Sub(s.Recap.At))
 		if text == "" {
@@ -477,4 +532,48 @@ func (u *UI) otherRow(s *Session, x, w, y float32) {
 	pw := u.dc.text(fBody(), ellipsize(fBody(), s.Project, 110), tx, cy+4.5, p.fg)
 	u.dc.text(fCaption(), ellipsize(fCaption(), text, right-ww-10-(tx+pw+8)), tx+pw+8, cy+4, p.muted)
 	u.hits = append(u.hits, hit{image.Rect(int(x+pad-6), int(y), int(x+w-pad+6), int(y+otherH)), key})
+}
+
+// agentsStory: the session's subagents, one row each: what it was asked,
+// what it's doing now, how long it's been at it. Past three, the last row
+// counts the rest.
+func (u *UI) agentsStory(s *Session, ags []*Agent, x, w, y float32) {
+	p, now := u.pal, u.now()
+	h := agentsH(len(ags))
+	u.panel(x+pad-6, y, w-2*pad+12, h, 13, alpha(p.fg, 0.04))
+	rows := min(len(ags), agentRows)
+	icon, right := x+pad+7, x+w-pad
+	for i := 0; i < rows; i++ {
+		cy := y + 4 + float32(i)*stepH + stepH/2
+		if i == rows-1 && len(ags) > agentRows { // the rest, counted
+			rest := len(ags) - i
+			u.dc.icon("agent", icon, cy, 11, p.faint)
+			u.dc.text(fCaption(), fmt.Sprintf("%d more agents", rest), icon+13, cy+4, p.muted)
+			break
+		}
+		ag := ags[i]
+		u.dc.icon("agent", icon, cy, 11, p.green)
+		u.lives = append(u.lives, live{image.Rect(int(icon-11), int(cy-11), int(icon+12), int(cy+12)), func(c *canvas, t float64) {
+			k := math.Mod(t/1.6+float64(i)*0.33, 1) // staggered, so they breathe in turn
+			r := 5 + 4*float32(k)
+			c.frame(icon-r, cy-r, 2*r, 2*r, r, 1, alpha(p.green, 0.4*(1-k)))
+		}})
+		d := now.Sub(ag.Start)
+		when := mins(d)
+		if d < time.Minute {
+			when = fmt.Sprintf("%ds", int(d.Seconds()))
+		}
+		ww := measure(fCaption(), when)
+		u.dc.text(fCaption(), when, right-ww, cy+4, p.faint)
+		tx, room := icon+13, right-ww-8-(icon+13)
+		name := ellipsize(fBody(), ag.name(), room*0.6)
+		if ag.Label == "" {
+			name = ellipsize(fBody(), ag.name(), room)
+		}
+		nw := u.dc.text(fBody(), name, tx, cy+4.5, p.fg)
+		if ag.Label != "" {
+			u.dc.text(fCaption(), ellipsize(fCaption(), ag.Label, room-nw-8), tx+nw+8, cy+4, p.muted)
+		}
+	}
+	u.hits = append(u.hits, hit{image.Rect(int(x+pad-6), int(y), int(x+w-pad+6), int(y+h)), "focus:" + s.ID})
 }

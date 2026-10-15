@@ -294,6 +294,9 @@ func (a *app) sweep() bool {
 			s.State, s.Label = "idle", ""
 			changed = true
 		}
+		if s.sweepAgents(now) {
+			changed = true
+		}
 	}
 	return changed
 }
@@ -541,22 +544,23 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 	}
 	var tin map[string]any
 	json.Unmarshal(in.ToolInput, &tin)
+	if in.AgentID != "" && a.agentHook(s, m.Event, in, tin, now) {
+		return ""
+	}
 
 	switch m.Event {
 	case "SessionEnd":
 		delete(a.ui.sessions, in.SessionID)
 	case "SessionStart":
-		s.Agents = 0
+		if in.Source == "startup" { // a compaction or a resume keeps its background agents
+			s.Agents, s.asks = nil, nil
+		}
 	case "UserPromptSubmit":
 		s.State, s.Label, s.Plus, s.Minus, s.Since, s.StepAt = "work", "Thinking", 0, 0, now, now
 		s.Turn = Turn{}
 		s.Prompt = firstLine(strings.TrimSpace(in.Prompt))
 		a.ui.mind.kick(now, 0.25, 0.05)
 		a.ui.mind.novel["claude"] = now
-	case "SubagentStart":
-		s.Agents++
-	case "SubagentStop":
-		s.Agents = max(s.Agents-1, 0)
 	case "PreCompact":
 		s.State, s.Label, s.Plus, s.Minus = "work", "Compacting the conversation", 0, 0
 	case "PostCompact":
@@ -586,6 +590,9 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 			break
 		}
 		s.State = "work"
+		if in.Tool == "Agent" || in.Tool == "Task" {
+			s.asked(tin)
+		}
 		label := s.Label
 		s.Label, s.Plus, s.Minus = activity(in.Tool, tin)
 		if s.Label != label || s.StepAt.IsZero() {
@@ -631,8 +638,8 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 			a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"done", s.Project, s.ID})
 			break
 		}
-		if !a.cfg.Done || slices.Contains(s.Pids, a.focusedPid()) {
-			break // they're looking at it
+		if !a.cfg.Done || slices.Contains(s.Pids, a.focusedPid()) || s.running() > 0 {
+			break // they're looking at it, or it isn't done: its agents work on
 		}
 		a.done(s, summarize(in.LastMessage), now)
 	}

@@ -50,6 +50,9 @@ type hookInput struct {
 	LastMessage string          `json:"last_assistant_message"`
 	Error       string          `json:"error"`  // StopFailure
 	Prompt      string          `json:"prompt"` // UserPromptSubmit
+	Source      string          `json:"source"` // SessionStart: startup | resume | clear | compact
+	AgentID     string          `json:"agent_id"`   // set on every hook a subagent fires
+	AgentType   string          `json:"agent_type"` // Explore, general-purpose, …
 }
 
 type server struct {

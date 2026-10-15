@@ -244,7 +244,7 @@ func (u *UI) salience(act string, now time.Time) float64 {
 	switch act {
 	case "claude":
 		ss := u.sessionList()
-		if len(ss) == 0 || ss[0].State != "work" {
+		if len(ss) == 0 || ss[0].status() != "work" {
 			return 0
 		}
 		s := 0.85 + 0.15*nov()
@@ -369,7 +369,7 @@ func (h *habits) predict(ctx string, pages []string) string {
 func (u *UI) habitContext() string {
 	cl := "none"
 	if ss := u.sessionList(); len(ss) > 0 {
-		cl = ss[0].State
+		cl = ss[0].status()
 	}
 	mu := "none"
 	if u.track != nil {

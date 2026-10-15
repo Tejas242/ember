@@ -86,7 +86,7 @@ func TestPreviewMoments(t *testing.T) {
 		}},
 		{"agents-casting", func(u *UI) {
 			working(u)
-			u.sessions["a"].Agents = 3
+			fakeAgents(u.sessions["a"], 3, clock)
 			u.casting = true
 		}},
 	}
