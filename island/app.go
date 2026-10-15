@@ -674,10 +674,10 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		a.ui.day.done(now, s.Project, took)
 		a.ui.mind.kick(now, 0.2, 0.35) // pleased
 		if a.ui.mind.away {            // tell them when they're back
-			a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"done", s.Project, s.ID})
+			a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"done", a.ui.name(s), s.ID})
 			break
 		}
-		if !a.cfg.Done || slices.Contains(s.Pids, a.focusedPid()) || s.running() > 0 {
+		if !a.cfg.Done || a.looking(s) || s.running() > 0 {
 			break // they're looking at it, or it isn't done: its agents work on
 		}
 		a.done(s, summarize(in.LastMessage), now)

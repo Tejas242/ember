@@ -160,14 +160,35 @@ func sessionTitle(title string) string {
 	return t
 }
 
-// sessionWindow finds the terminal window that hosts one of pids.
+// sessionWindow finds the terminal window that hosts a session: the window
+// of the nearest process in its chain (a terminal opened from another one's
+// shell has that one further up). None if that terminal runs several windows
+// in one process: which of them is the session's is anyone's guess.
 func (a *app) sessionWindow(pids []int) (deskWindow, bool) {
-	for _, w := range a.desk.windows {
-		if slices.Contains(pids, w.Pid) {
-			return w, true
+	for _, p := range pids {
+		var found []deskWindow
+		for _, w := range a.desk.windows {
+			if w.Pid == p {
+				found = append(found, w)
+			}
+		}
+		if len(found) == 1 {
+			return found[0], true
+		}
+		if len(found) > 1 {
+			break
 		}
 	}
 	return deskWindow{}, false
+}
+
+// looking: the session's terminal has your focus, so you see it finish.
+func (a *app) looking(s *Session) bool {
+	if a.desk.live {
+		w, ok := a.sessionWindow(s.Pids)
+		return ok && w.ID == a.desk.focused
+	}
+	return slices.Contains(s.Pids, a.focusedPid())
 }
 
 // deskChanged: titles may have changed, and looking at a session's
