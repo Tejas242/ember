@@ -417,11 +417,12 @@ func (u *UI) haloLive(col color.NRGBA) {
 	since := u.trAt
 	u.lives = append(u.lives, live{n.bounds().Inset(-12), func(c *canvas, t float64) {
 		in := math.Min(1, u.now().Sub(since).Seconds()/0.6) // it comes up gently
-		b := 0.55 + 0.45*math.Sin(t*2*math.Pi/1.6)
-		for i := 6; i >= 1; i-- {
-			a := 34 * math.Exp(-math.Pow(float64(i)/2.6, 2)) * b * in
-			c.fillNotch(n, float32(i)*1.5, alpha(col, a/255), &n, 0, int(u.BarH)-1)
+		b := 0.4 + 0.6*(0.5+0.5*math.Sin(t*2*math.Pi/1.6))
+		for i := 8; i >= 2; i-- { // the light spilling out
+			a := 70 * math.Exp(-math.Pow(float64(i)/3.6, 2)) * b * in
+			c.fillNotch(n, float32(i)*1.4, alpha(col, a/255), &n, 0, 0)
 		}
+		c.fillNotch(n, 1.1, alpha(col, (0.35+0.5*b)*in), &n, 0, 0) // and a lit rim
 	}})
 }
 

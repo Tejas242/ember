@@ -443,7 +443,7 @@ func (u *UI) heroBody(l *sessLayout, x, w, y float32, i *int) float32 {
 		*i++
 	}
 	if railEnd > railTop+2 { // the thread the steps hang on, down from Ember
-		u.dc.roundRect(gx-0.5, railTop, 1, railEnd-railTop, 0.5, alpha(p.fg, 0.1))
+		u.dc.roundRect(gx-0.5, railTop, 1, railEnd-railTop, 0.5, alpha(p.fg, 0.14))
 	}
 	if len(l.steps) > 0 || len(l.agents) > 0 {
 		y += 4

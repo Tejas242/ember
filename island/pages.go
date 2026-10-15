@@ -409,7 +409,7 @@ func (u *UI) drawCard(c *Card, x, w float32) {
 		bh := float32(2 + 15*len(body))
 		u.item("c:body", i, x, w, y, bh, func(y float32) {
 			for j, ln := range body {
-				u.dc.text(fCaption(), ln, tx, y+13+float32(j)*15, p.muted)
+				u.facts(ln, tx, y+13+float32(j)*15, right-tx, p.muted) // a diff in its colours
 			}
 		})
 		y += bh

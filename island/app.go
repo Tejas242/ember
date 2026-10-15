@@ -786,7 +786,7 @@ func (a *app) permission(s *Session, in hookInput, tin map[string]any, answer ch
 		}
 		_, p, m := activity(in.Tool, tin)
 		c.Title = verb + " " + filepath.Base(str("file_path"))
-		c.Body = fmt.Sprintf("%s  ·  %s", where(str("file_path")), diffText(max(p, 0), m))
+		c.Body = fmt.Sprintf("%s · %s", where(str("file_path")), diffText(max(p, 0), m))
 		if p == 0 && m == 0 {
 			c.Body = where(str("file_path"))
 		}
