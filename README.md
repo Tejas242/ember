@@ -41,7 +41,9 @@ of one core while Claude works and the flame is animating, and a fraction of tha
 
 **Music.** Any MPRIS player: title, artist and cover, a progress hairline along the pill's rim, and a section of the
 card with seek, previous, play/pause and next. Scroll on it to change the volume. The cover lights its section in its
-own colour. A song paused for a quarter of an hour leaves the card.
+own colour. A song paused for a quarter of an hour leaves the card. The equaliser listens: while a song plays, Ember reads
+the output's levels through `parec` (8 kHz mono) and splits them into low, mid and high, 25 times a second. Nothing is
+kept but those three numbers, and it stops when the music does.
 
 **System moments.** They appear for a moment, then step aside:
 - Volume, microphone mute and brightness, with a level bar. They replace Noctalia's OSD for those.

@@ -143,6 +143,13 @@ Every motion is physical (a spring) or a short ease. Nothing is linear except a 
 | Needs you | a blue light breathes around the pill (outside the bar), with a lit rim; it fades out when the wait is over |
 | One beat | every pulse keeps a 1.6 s beat: the step ring, the waiting pulse, the halo; orbits turn once in two beats |
 | Working | a band of light passes over the label every 2.4 s (1 s pass, eased); every shimmer passes together |
+| A new step | the old steps make room, then a bead of light runs down the thread from Ember into the new step (420 ms); the stretch to the live step glows green |
+| Ember reacts | a nod (two small dips) when you allow, a head shake when you deny, a flinch when a step fails |
+| The pill's song | the cover is a disc in a ring that fills as the song plays |
+| System pop-ups | volume waves come and go with the level, the sun's rays lengthen with brightness, the meter stretches and springs back past 100, the battery fills to its level, a screenshot flashes like a shutter and its preview drops in |
+| Asleep | the pill dims 16 % and the clock turns grey |
+| The equaliser | the song's own low, mid and high (25 Hz, rising fast, falling slowly) |
+| Queued requests | their edges peek out under the card, a stack |
 | Request countdown | a 1 px hairline on the rim drains from both ends; in the last 15 s it eases to amber and thickens |
 
 ## Cost
