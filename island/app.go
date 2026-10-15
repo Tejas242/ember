@@ -606,7 +606,7 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		}
 	case "UserPromptSubmit":
 		s.State, s.Label, s.Plus, s.Minus, s.Since, s.StepAt = "work", "Thinking", 0, 0, now, now
-		s.Turn = Turn{}
+		s.Turn, s.Finished = Turn{}, nil
 		s.Prompt = firstLine(strings.TrimSpace(in.Prompt))
 		a.ui.mind.kick(now, 0.25, 0.05)
 		a.ui.mind.novel["claude"] = now

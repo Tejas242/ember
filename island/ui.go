@@ -48,6 +48,7 @@ type Session struct {
 	Prompt                    string // what you asked this turn, first line
 	Plus, Minus               int
 	Agents                    map[string]*Agent    // subagents running, by agent_id
+	Finished                  []*Agent             // subagents that finished this turn, oldest first
 	asks                      []agentAsk           // Agent calls waiting for their SubagentStart
 	ended                     map[string]time.Time // agents that stopped before their start arrived
 	Since, Seen               time.Time
@@ -173,6 +174,8 @@ type UI struct {
 	edge       *EdgeStatus // set by the edge plugin while it runs
 	edgeStats  *EdgeStats
 	second     time.Time
+	opened     map[string]bool      // rows you opened or closed in the card: s:<session>, a:<session>:<agent>
+	boardOpen  map[string]bool      // how the card last drew them
 	dash       string               // the open dashboard's plugin, if any
 	dashAt     time.Time            // when it opened: its entrance plays from here
 	dashIn     bool                 // the pointer has been on it: leaving closes it
@@ -254,7 +257,7 @@ type UI struct {
 
 func NewUI(w, h int, barH float32) *UI {
 	u := &UI{W: w, H: h, BarH: barH, TimeFmt: "3:04 PM", cv: newCanvas(w, h), content: newCanvas(w, h),
-		prev: image.NewRGBA(image.Rect(0, 0, w, h)), pal: loadPalette(), cfg: DefaultConfig(), sessions: map[string]*Session{}, dashboards: map[string]Dashboard{},
+		prev: image.NewRGBA(image.Rect(0, 0, w, h)), pal: loadPalette(), cfg: DefaultConfig(), sessions: map[string]*Session{}, dashboards: map[string]Dashboard{}, opened: map[string]bool{},
 		now: time.Now, dirty: true, base: image.NewRGBA(image.Rect(0, 0, w, h))}
 	u.dc = u.content
 	u.light = -1

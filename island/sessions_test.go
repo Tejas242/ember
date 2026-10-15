@@ -69,17 +69,17 @@ func TestTwoSessionsHoldStill(t *testing.T) {
 		}
 		step(a, s, p, "f.go")
 		l, b := a.ui.mainLine(), a.ui.brief()
-		if l.key != "claude:b" || l.more != 1 {
-			t.Fatalf("after a step in %s: pill %q (+%d)", s, l.key, l.more)
+		if l.text != "Clauding…" || l.dots != 2 {
+			t.Fatalf("after a step in %s: pill %q (%d dots)", s, l.text, l.dots)
 		}
-		if b.mode != "work" || b.s.ID != "b" || len(b.others) != 1 || b.others[0].ID != "a" {
-			t.Fatalf("after a step in %s: card about %s, others %d", s, b.s.ID, len(b.others))
+		if b.mode != "work" || b.s.ID != "b" || len(b.rows) != 2 || b.rows[1].ID != "a" {
+			t.Fatalf("after a step in %s: card about %s, %d rows", s, b.s.ID, len(b.rows))
 		}
 	}
 	// a new prompt in the other one is news: it takes the headline
 	hookAt(a, "UserPromptSubmit", "a", "edge", map[string]any{"prompt": "now check the reset at midnight"})
-	if l := a.ui.mainLine(); l.key != "claude:a" {
-		t.Fatalf("pill %q", l.key)
+	if b := a.ui.brief(); b.rows[0].ID != "a" {
+		t.Fatalf("card leads with %q", b.rows[0].ID)
 	}
 }
 
@@ -98,8 +98,8 @@ func TestPillShowsTheSessionYouCantSee(t *testing.T) {
 	if p := a.ui.primary(); p != "claude" {
 		t.Fatalf("a session works where you can't see it: the pill shows %s", p)
 	}
-	if l := a.ui.mainLine(); l.key != "claude:a" || l.text != "Reading a.go" {
-		t.Fatalf("pill %q %q", l.key, l.text)
+	if b := a.ui.brief(); b.rows[0].ID != "a" {
+		t.Fatalf("card leads with %q", b.rows[0].ID)
 	}
 }
 

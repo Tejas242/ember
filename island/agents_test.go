@@ -41,11 +41,11 @@ func TestSubagentStepsStayTheirs(t *testing.T) {
 		t.Fatalf("agent = %+v", ag)
 	}
 	b := a.ui.brief()
-	if b.mode != "work" || len(b.agents) != 1 {
-		t.Fatalf("brief %s with %d agents", b.mode, len(b.agents))
+	if rows, _ := a.ui.board(b); b.mode != "work" || len(rows) != 1 || len(rows[0].agents) != 1 || !rows[0].open {
+		t.Fatalf("brief %s, rows %+v", b.mode, rows)
 	}
-	if l := a.ui.mainLine(); !strings.Contains(l.chip, "1 agent") {
-		t.Fatalf("pill chip %q", l.chip)
+	if l := a.ui.mainLine(); l.text != "Clauding…" || !l.work {
+		t.Fatalf("pill %q", l.text)
 	}
 }
 
@@ -62,11 +62,12 @@ func TestAgentsOutliveTheTurn(t *testing.T) {
 	if s.status() != "work" || a.ui.moment != nil {
 		t.Fatalf("status %s, moment %+v", s.status(), a.ui.moment)
 	}
-	if l := a.ui.mainLine(); l.text != "2 agents working" || !l.work {
+	if l := a.ui.mainLine(); l.text != "Clauding…" || !l.work {
 		t.Fatalf("pill %q", l.text)
 	}
-	if b := a.ui.brief(); b.mode != "work" || len(b.agents) != 2 || !strings.Contains(b.head, "2 agents working") {
-		t.Fatalf("brief %s %q, %d agents", b.mode, b.head, len(b.agents))
+	b := a.ui.brief()
+	if rows, _ := a.ui.board(b); b.mode != "work" || len(rows[0].agents) != 2 || !strings.Contains(b.head, "2 agents working") {
+		t.Fatalf("brief %s %q", b.mode, b.head)
 	}
 	agentHookAt(a, "SubagentStop", "x1", map[string]any{})
 	agentHookAt(a, "SubagentStop", "x2", map[string]any{})
@@ -97,8 +98,8 @@ func TestAgentRaces(t *testing.T) {
 	}
 }
 
-// Past three agents the last row counts the rest, and the card stays inside
-// the surface.
+// Many agents, each opened: the card trims their steps and stays inside the
+// surface, every agent still on the branch.
 func TestManyAgentsFit(t *testing.T) {
 	clock := time.Date(2026, 10, 15, 15, 0, 0, 0, time.Local)
 	a := newTestApp(&clock)
@@ -107,9 +108,13 @@ func TestManyAgentsFit(t *testing.T) {
 		hookAt(a, "PreToolUse", "s", "ember", map[string]any{"tool_name": "Read", "tool_input": map[string]any{"file_path": "/x/a.go"}})
 	}
 	fakeAgents(a.ui.sessions["s"], 5, clock)
-	b := a.ui.brief()
-	if got := a.ui.storyHeight(b); got != b.timelineH()+rowGapX+agentsH(5) || b.shown() != 2 {
-		t.Fatalf("story %v, timeline shows %d", got, b.shown())
+	for _, ag := range a.ui.sessions["s"].Agents {
+		ag.Hist = []Step{{Kind: "read", Text: "Read a.go"}, {Kind: "read", Text: "Read b.go"}, {Kind: "search", Text: "Searched x"}}
+		a.ui.opened["a:s:"+ag.ID] = true
+	}
+	rows, _ := a.ui.board(a.ui.brief())
+	if len(rows) != 1 || !rows[0].open || len(rows[0].agents) != 5 || rows[0].agSteps >= agentHist {
+		t.Fatalf("rows %+v", rows)
 	}
 	if h := a.ui.expandedHeight(); h > a.ui.H-14 {
 		t.Fatalf("card %d px", h)

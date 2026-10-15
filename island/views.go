@@ -65,6 +65,7 @@ type line struct {
 	music       bool
 	work        bool    // Claude is working: the label shimmers
 	trail       string  // the second activity, as a satellite at the pill's end
+	dots        int     // working sessions, one breathing dot each
 	m           *moment // a system moment: icon, meter, value, battery
 }
 
@@ -94,46 +95,26 @@ func (u *UI) mainLine() line {
 		if len(ss) == 0 {
 			break
 		}
-		s := ss[0]
-		busy := 0
+		// the pill never says what one session is doing: with several going it
+		// would have to pick. It says Claude is at it, one dot a session; the
+		// card says the rest. Only a session waiting on you is named.
+		var waiting []*Session
+		working := 0
 		for _, x := range ss {
-			if x.status() != "idle" {
-				busy++
+			switch {
+			case x.State == "wait":
+				waiting = append(waiting, x)
+			case x.status() == "work":
+				working++
 			}
 		}
-		if s.State == "idle" && s.running() > 0 { // the turn ended; its agents work on
-			l := line{key: "claude:agents:" + s.ID, mood: moodWork, textCol: p.fg, more: busy - 1, work: true}
-			ags := s.agentList()
-			if len(ags) == 1 {
-				l.text = ags[0].Label
-				if l.text == "" {
-					l.text = ags[0].name()
-				}
-				l.chip = mins(now.Sub(ags[0].Start))
-			} else {
-				l.text = agentsText(len(ags)) + " working"
-				l.chip = u.name(s)
-			}
-			l.chipCol = p.muted
-			return l
-		}
-		switch s.State {
-		case "wait":
-			return line{key: "claude:wait:" + s.ID, mood: moodWait, text: u.name(s) + " needs you", textCol: p.blue, more: busy - 1}
-		case "work":
-			l := line{key: "claude:" + s.ID, mood: moodWork, text: s.Label, plus: s.Plus, minus: s.Minus, textCol: p.fg, more: busy - 1, work: true}
-			if l.text == "" {
-				l.text = "Thinking"
-			}
-			var chips []string
-			if n := s.running(); n > 0 {
-				chips = append(chips, agentsText(n))
-			}
-			if !s.StepAt.IsZero() && now.Sub(s.StepAt) >= time.Minute { // one step running long: say how long
-				chips = append(chips, mins(now.Sub(s.StepAt)))
-			}
-			l.chip, l.chipCol = strings.Join(chips, " · "), p.muted
-			return l
+		switch {
+		case len(waiting) == 1:
+			return line{key: "claude:wait", mood: moodWait, text: u.name(waiting[0]) + " needs you", textCol: p.blue, dots: working}
+		case len(waiting) > 1:
+			return line{key: "claude:wait", mood: moodWait, text: fmt.Sprintf("%d sessions need you", len(waiting)), textCol: p.blue, dots: working}
+		case working > 0:
+			return line{key: "claude:work", mood: moodWork, text: "Clauding…", textCol: p.fg, work: true, dots: working}
 		}
 		return line{key: "claude:idle", mood: moodIdle, text: fmt.Sprintf("Claude · %d idle", len(ss)), textCol: p.muted}
 	case "music":
@@ -212,6 +193,9 @@ func (u *UI) compactWidth(l line) float64 {
 	}
 	if l.more > 0 {
 		w += 8 + float64(measure(fSmall(), fmt.Sprintf("+%d", l.more)))
+	}
+	if l.dots > 1 {
+		w += 8 + float64(dotsW(l.dots))
 	}
 	if l.chip != "" {
 		w += 14 + float64(measure(fSmall(), l.chip))
@@ -342,6 +326,9 @@ func (u *UI) drawCompact(x, w, h float32) {
 	if l.more > 0 {
 		avail -= 8 + measure(fSmall(), fmt.Sprintf("+%d", l.more))
 	}
+	if l.dots > 1 {
+		avail -= 8 + dotsW(l.dots)
+	}
 	subW := float32(0)
 	if l.sub != "" {
 		subW = min(150, measure(fSmall(), l.sub)+8)
@@ -379,6 +366,9 @@ func (u *UI) drawCompact(x, w, h float32) {
 	if l.more > 0 {
 		tx += 8
 		tx += u.dc.text(fSmall(), fmt.Sprintf("+%d", l.more), tx, base, p.muted)
+	}
+	if l.dots > 1 { // more than one session at it: a dot each, breathing in turn
+		u.sessionDots(tx+8, cy, l.dots)
 	}
 	if l.music && u.track != nil {
 		u.eqLive(tx+8, cy+5, 10, u.accent(p.green), u.track.Playing)
@@ -516,4 +506,21 @@ func powerText(pw *power) string {
 		return "Plugged in"
 	}
 	return ""
+}
+
+const maxDots = 5
+
+func dotsW(n int) float32 { return float32(min(n, maxDots))*7 - 3 }
+
+// sessionDots: one dot per working session, each breathing a little after
+// the one before, like a row of small lights.
+func (u *UI) sessionDots(x, cy float32, n int) {
+	p := u.pal
+	n = min(n, maxDots)
+	u.lives = append(u.lives, live{image.Rect(int(x-2), int(cy-4), int(x+dotsW(n)+3), int(cy+5)), func(c *canvas, t float64) {
+		for i := 0; i < n; i++ {
+			k := 0.5 + 0.5*math.Sin(t*3.2-float64(i)*0.9)
+			c.circle(x+2+float32(i)*7, cy, 1.7+0.6*float32(k), alpha(p.green, 0.45+0.55*k))
+		}
+	}})
 }

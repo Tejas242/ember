@@ -55,9 +55,10 @@ func TestExpandedButtonsWinHits(t *testing.T) {
 		}
 	}
 	for _, h := range u.hits {
-		if h.key == "focus:s" {
+		if h.key == "focus:s" { // the headline and "Go there" both lead there: one is enough
 			c := h.r.Min.Add(h.r.Max).Div(2)
 			u.press(u.hitAt(float64(c.X), float64(c.Y)), 1)
+			break
 		}
 	}
 	if strings.Join(got, ",") != "music:toggle,music:next,focus:s" {

@@ -226,7 +226,7 @@ idle = "clock"  # what the pill shows when nothing's going on: clock | date | bo
 [card]
 hover_delay_ms = 150  # how long the pointer rests on the pill before the card drops
 steps          = 4    # timeline steps, at most (1-4; fewer when other rows need the room)
-others         = 3    # other sessions listed under the story (0-3)
+others         = 3    # sessions listed besides the first; the rest fold into "N more" (0-3)
 
 [moments]
 done_s = 6     # how long "Done · project" stays up

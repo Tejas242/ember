@@ -127,10 +127,11 @@ func TestBriefOthersAndHeight(t *testing.T) {
 	}
 	a.ui.track = &Track{Player: "p", Title: "T", Playing: true, PosAt: clock}
 	b := a.ui.brief()
-	if b.s.ID != "c" || len(b.others) != 2 {
-		t.Fatalf("subject %s, others %d", b.s.ID, len(b.others))
+	rows, hidden := a.ui.board(b)
+	if b.s.ID != "c" || len(rows)+hidden != 3 || !rows[0].open || (len(rows) > 1 && rows[1].open) {
+		t.Fatalf("subject %s, %d rows (+%d)", b.s.ID, len(rows), hidden)
 	}
-	if h := a.ui.expandedHeight(); h > 260 {
+	if h := a.ui.expandedHeight(); h > a.ui.H-14 {
 		t.Fatalf("three sessions and music: %d px", h)
 	}
 }

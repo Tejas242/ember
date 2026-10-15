@@ -123,6 +123,10 @@ func (c *canvas) icon(name string, cx, cy, s float32, col color.NRGBA) {
 		c.roundRect(cx-4.4*u, cy-3.6*u, 8.8*u, 5.4*u, 1.6*u, col)
 		c.line(P(8, 9.8), P(8, 12), 1.4*u, col)
 		c.arc(cx+2.2*u, cy+4*u, 2.2*u, 1.4*u, math.Pi, math.Pi*1.5, col)
+	case "chart": // three bars: a dashboard
+		c.roundRect(cx-6*u, cy+1*u, 3*u, 6*u, 1*u, col)
+		c.roundRect(cx-1.5*u, cy-6*u, 3*u, 13*u, 1*u, col)
+		c.roundRect(cx+3*u, cy-2.5*u, 3*u, 9.5*u, 1*u, col)
 	case "bolt":
 		c.poly(col, P(9.6, 1), P(3.2, 9.2), P(7.6, 9.2), P(6.4, 15), P(12.8, 6.8), P(8.4, 6.8))
 	case "headphones":

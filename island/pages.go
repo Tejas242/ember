@@ -104,8 +104,20 @@ func (u *UI) musicRow(x, w, y float32) {
 
 // ---- edge ----
 
+// edgeRowShown: edge's row is there whenever the plugin runs: it's the way
+// to its dashboard.
+func (u *UI) edgeRowShown() bool {
+	return u.cfg.Edge && (u.edge != nil || u.edgeStats != nil || u.dashboards["edge"] != nil)
+}
+
 func (u *UI) edgeRow(x, w, y float32) {
 	p, now, e := u.pal, u.now(), u.edge
+	if e == nil { // before edge's first status: what its stats say
+		e = &EdgeStatus{}
+		if st := u.edgeStats; st != nil {
+			e.Today, e.Need, e.Streak, e.Closed = st.Today.Got, st.Today.Need, st.Streak.Current, st.Today.Gate == "closed"
+		}
+	}
 	u.rowBox("edge", x, w, y, edgeRowH, p.yellow, 0.06)
 	if u.dashboards["edge"] != nil { // the row opens edge's dashboard; its button still acts
 		u.hits = append(u.hits, hit{image.Rect(int(x+pad-6), int(y), int(x+w-pad+6), int(y+edgeRowH)), "dash:edge"})
@@ -128,6 +140,10 @@ func (u *UI) edgeRow(x, w, y float32) {
 	if btn.Key != "" {
 		u.buttonRow([]Button{btn}, "btn:edge:", x, w, y+(edgeRowH-btnH)/2, "")
 		right -= measure(face(fSemiBold, 12), btn.Label) + 26 + 10
+	}
+	if u.dashboards["edge"] != nil { // the row opens the dashboard: say so
+		u.dc.icon("chart", right-6, y+edgeRowH/2, 12, mix(p.yellow, p.fg, 0.3))
+		right -= 20
 	}
 	task := e.Task
 	if task == "" {

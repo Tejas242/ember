@@ -17,6 +17,27 @@ type Agent struct {
 	Label       string // what it's doing now
 	Start, Seen time.Time
 	Steps       int
+	Hist        []Step    // its last few steps, newest last: its short transcript
+	End         time.Time // when it finished (finished agents only)
+	Summary     string    // its own last word, summarized (finished agents only)
+}
+
+const (
+	agentHist    = 4 // steps an agent keeps
+	finishedKept = 3 // finished agents a session keeps, this turn
+)
+
+// note records a step the agent took; the one before it is over.
+func (ag *Agent) note(now time.Time, tool string, tin map[string]any) {
+	if n := len(ag.Hist); n > 0 {
+		ag.Hist[n-1].Done = true
+	}
+	kind, text := pastStep(tool, tin)
+	_, plus, minus := activity(tool, tin)
+	ag.Hist = append(ag.Hist, Step{At: now, Kind: kind, Text: text, Plus: plus, Minus: minus})
+	if len(ag.Hist) > agentHist {
+		ag.Hist = ag.Hist[len(ag.Hist)-agentHist:]
+	}
 }
 
 type agentAsk struct{ typ, desc string }
@@ -105,8 +126,16 @@ func (a *app) agentHook(s *Session, event string, in hookInput, tin map[string]a
 	case "SubagentStart":
 		s.agent(in.AgentID, in.AgentType, now)
 	case "SubagentStop":
-		if _, ok := s.Agents[in.AgentID]; ok {
+		if ag, ok := s.Agents[in.AgentID]; ok {
 			delete(s.Agents, in.AgentID)
+			if n := len(ag.Hist); n > 0 {
+				ag.Hist[n-1].Done = true
+			}
+			ag.End, ag.Summary = now, summarize(in.LastMessage)
+			s.Finished = append(s.Finished, ag)
+			if len(s.Finished) > finishedKept {
+				s.Finished = s.Finished[len(s.Finished)-finishedKept:]
+			}
 		} else {
 			s.ended = remember(s.ended, in.AgentID, now)
 		}
@@ -114,11 +143,16 @@ func (a *app) agentHook(s *Session, event string, in hookInput, tin map[string]a
 		if ag := s.agent(in.AgentID, in.AgentType, now); ag != nil {
 			ag.Label, _, _ = activity(in.Tool, tin)
 			ag.Steps++
+			ag.note(now, in.Tool, tin)
 		}
 		s.bump(now)
 		a.ui.day.call(now)
 	case "PostToolUse", "PostToolUseFailure":
-		s.agent(in.AgentID, in.AgentType, now)
+		if ag := s.agent(in.AgentID, in.AgentType, now); ag != nil {
+			if n := len(ag.Hist); n > 0 && !ag.Hist[n-1].Done {
+				ag.Hist[n-1].Done, ag.Hist[n-1].Failed = true, event == "PostToolUseFailure"
+			}
+		}
 	default:
 		return false
 	}
