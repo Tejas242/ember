@@ -20,7 +20,7 @@ const (
 	surfW, surfH = 440, 280
 	flickerEvery = time.Second / 12
 	idleEvery    = time.Second / 6
-	frameGrace   = 50 * time.Millisecond // a frame callback that never comes doesn't stall us
+	frameGrace   = 34 * time.Millisecond // a frame callback that never comes doesn't stall us
 )
 
 type app struct {
@@ -144,9 +144,8 @@ func Run() error {
 	statAt := time.Now()
 	draw := func() {
 		var damage image.Rectangle
-		wasDirty := a.ui.dirty
 		animating, damage = a.ui.renderDamage()
-		if wasDirty || damage.Dx() > 60 {
+		if a.ui.lastFull {
 			nFull++
 		} else {
 			nFast++
@@ -266,8 +265,8 @@ func (a *app) nextWake(animating bool) time.Duration {
 	if u.hover && now.Sub(u.hoverAt) < u.cfg.HoverDelay {
 		next = minTime(next, u.hoverAt.Add(u.cfg.HoverDelay))
 	}
-	if !u.hover && now.Sub(u.leftAt) < 400*time.Millisecond {
-		next = minTime(next, u.leftAt.Add(330*time.Millisecond))
+	if !u.hover && now.Sub(u.leftAt) < 300*time.Millisecond {
+		next = minTime(next, u.leftAt.Add(210*time.Millisecond))
 	}
 	return max(next.Sub(now), 5*time.Millisecond)
 }

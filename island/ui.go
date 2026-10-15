@@ -213,6 +213,8 @@ type UI struct {
 	frame       int     // full frames drawn: tweens step once per frame
 	dt          float64 // this frame's time step
 	tweening    bool    // a tween or roll is still moving
+	fadeK       float64 // how far the content has faded in (panels fade with it)
+	lastFull    bool    // the last frame was a full repaint (for EMBER_DEBUG)
 	slideDir    float64 // pages slide sideways: -1 back, 1 forward
 	lastPage    string
 	mind        *mind
@@ -447,7 +449,7 @@ func (u *UI) currentView() view {
 		return vCard
 	}
 	if u.pinned || u.drag != "" || (u.hover && !u.suppress && u.now().Sub(u.hoverAt) >= u.cfg.HoverDelay) ||
-		(!u.hover && u.lastView == vExpanded && u.now().Sub(u.leftAt) < 300*time.Millisecond) {
+		(!u.hover && u.lastView == vExpanded && u.now().Sub(u.leftAt) < 200*time.Millisecond) {
 		return vExpanded
 	}
 	return vCompact
@@ -525,6 +527,7 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 	// Ember (blinks, glances, gliding to a new spot) and other live parts only
 	// need their own rectangles repainted: that's the cheap path below.
 	full := u.dirty || !settled || p < 1 || sliding || flashing || u.tweening
+	u.lastFull = full
 	if full {
 		u.dirty, u.tweening = false, false
 		u.frame++
@@ -545,6 +548,7 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 		u.cv.drawNotch(u.pal, u.shape, 1, int(u.BarH))
 		// the content, laid out at its final size, revealed by the growing shape
 		u.content.clear(u.content.img.Rect)
+		u.fadeK = p
 		fx := (float32(u.W) - float32(tw)) / 2
 		switch v {
 		case vCompact:
@@ -631,13 +635,17 @@ func (u *UI) liveRects() []image.Rectangle {
 	return rs
 }
 
+// div255 is x/255 for x ≤ 255·255, without a divide.
+func div255(x uint32) uint32 { return (x + 1 + x>>8) >> 8 }
+
 // composite draws src (premultiplied) over dst at strength k, only inside n,
-// shifted dx pixels sideways.
+// shifted dx pixels sideways. Integer arithmetic throughout; transparent
+// source pixels (most of them) cost one load.
 func composite(dst *canvas, src *image.RGBA, n notch, k float64, dx int) {
 	if k <= 0.003 {
 		return
 	}
-	kk := uint32(k * 256)
+	kk := uint32(k*256 + 0.5)
 	b := dst.img.Rect
 	for py := 0; py < min(int(math.Ceil(float64(n.h))), b.Max.Y); py++ {
 		lx, rx, ok := n.span(float32(py) + 0.5)
@@ -646,22 +654,20 @@ func composite(dst *canvas, src *image.RGBA, n notch, k float64, dx int) {
 		}
 		x0, x1 := max(int(math.Ceil(float64(lx))), 0), min(int(rx), b.Max.X)
 		o := py * dst.img.Stride
-		s, d := src.Pix[o:], dst.img.Pix[o:]
+		s, d := words(src.Pix[o:o+dst.img.Stride]), words(dst.img.Pix[o:o+dst.img.Stride])
 		for px := x0; px < x1; px++ {
 			sx := px - dx
 			if sx < 0 || sx >= b.Max.X {
 				continue
 			}
-			i, j := px*4, sx*4
-			sa := uint32(s[j+3]) * kk >> 8
-			if sa == 0 {
+			v := s[sx]
+			if v == 0 {
 				continue
 			}
-			inv := 255 - min(sa, 255)
-			d[i] = uint8(min(255, uint32(s[j])*kk>>8+uint32(d[i])*inv/255))
-			d[i+1] = uint8(min(255, uint32(s[j+1])*kk>>8+uint32(d[i+1])*inv/255))
-			d[i+2] = uint8(min(255, uint32(s[j+2])*kk>>8+uint32(d[i+2])*inv/255))
-			d[i+3] = uint8(min(255, sa+uint32(d[i+3])*inv/255))
+			if kk < 256 {
+				v = scale(v, kk)
+			}
+			d[px] = over(v, d[px])
 		}
 	}
 }

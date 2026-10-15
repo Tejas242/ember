@@ -35,7 +35,7 @@ func (u *UI) rowBox(key string, x, w, y, h float32, tint color.NRGBA, strength f
 		on = 1
 	}
 	k := u.tw("row:"+key, on, 0)
-	u.dc.roundRect(x+pad-6, y, w-2*pad+12, h, 13, alpha(tint, strength+0.04*k))
+	u.panel(x+pad-6, y, w-2*pad+12, h, 13, alpha(tint, strength+0.04*k))
 	return k
 }
 
@@ -319,7 +319,7 @@ func (u *UI) drawCard(c *Card, x, w float32) {
 		lines := codeLines(c.Code, inner-16)
 		bh := float32(10 + 15*len(lines))
 		y += 8
-		u.dc.roundRect(x+pad, y, inner, bh, 9, alpha(p.fg, 0.06))
+		u.panel(x+pad, y, inner, bh, 9, alpha(p.fg, 0.06))
 		for i, ln := range lines {
 			by := y + 5 + 11 + float32(i)*15
 			if !c.Shell {
@@ -343,7 +343,7 @@ func (u *UI) drawCard(c *Card, x, w float32) {
 			if picked {
 				bg = alpha(p.green, 0.16)
 			}
-			u.dc.roundRect(x+pad, y, inner, optH, 10, bg)
+			u.panel(x+pad, y, inner, optH, 10, bg)
 			bx, by := x+pad+15, y+optH/2
 			if c.Multi {
 				u.dc.frame(bx-6.5, by-6.5, 13, 13, 4, 1.3, alpha(p.fg, 0.4))

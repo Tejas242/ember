@@ -189,7 +189,7 @@ binds {
 
 ```toml
 clock          = "12h"   # 12h | 24h
-hover_delay_ms = 240
+hover_delay_ms = 150
 
 [show]
 claude      = true  # sessions, permission requests, questions

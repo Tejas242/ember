@@ -37,9 +37,11 @@ func (n notch) span(cy float32) (lx, rx float32, ok bool) {
 	return lx, rx, true
 }
 
-// fillNotch fills the shape grown by `grow` px (shadows, borders), skipping
-// hole (interior that the fill will cover anyway).
-func (c *canvas) fillNotch(n notch, grow float32, col color.NRGBA, hole image.Rectangle, yOff float32, minRow int) {
+// fillNotch fills the shape grown by `grow` px (shadows, borders). If inner
+// is set, pixels well inside it are skipped: a shadow or a border needn't
+// paint under the body that covers it anyway. Fully covered pixels take an
+// integer path; only the anti-aliased edge pixels do float coverage.
+func (c *canvas) fillNotch(n notch, grow float32, col color.NRGBA, inner *notch, yOff float32, minRow int) {
 	if col.A == 0 {
 		return
 	}
@@ -49,6 +51,9 @@ func (c *canvas) fillNotch(n notch, grow float32, col color.NRGBA, hole image.Re
 	b := c.img.Rect
 	sa := float32(col.A) / 255
 	sr, sg, sb := float32(col.R)*sa, float32(col.G)*sa, float32(col.B)*sa
+	ia := uint32(col.A) + uint32(col.A)>>7 // 0..256
+	ir, ig, ib, iA := uint32(sr+0.5), uint32(sg+0.5), uint32(sb+0.5), uint32(col.A)
+	inv := 256 - ia
 	y1 := min(int(math.Ceil(float64(g.h+yOff))), b.Max.Y)
 	for py := max(b.Min.Y, int(yOff), minRow); py < y1; py++ {
 		cy := float32(py) + 0.5 - yOff
@@ -62,13 +67,24 @@ func (c *canvas) fillNotch(n notch, grow float32, col color.NRGBA, hole image.Re
 		}
 		x0, x1 := max(int(math.Floor(float64(lx))), b.Min.X), min(int(math.Ceil(float64(rx))), b.Max.X)
 		skip0, skip1 := 0, 0
-		if py >= hole.Min.Y && py < hole.Max.Y {
-			skip0, skip1 = hole.Min.X, hole.Max.X
+		if inner != nil {
+			if ilx, irx, ok := inner.span(float32(py) + 0.5); ok && irx-ilx > 4 {
+				skip0, skip1 = int(math.Ceil(float64(ilx)))+1, int(irx)-1
+			}
 		}
+		full0, full1 := int(math.Ceil(float64(lx))), int(rx) // pixels the shape covers completely
 		row := c.img.Pix[py*c.img.Stride:]
 		for px := x0; px < x1; px++ {
 			if px >= skip0 && px < skip1 {
 				px = skip1 - 1
+				continue
+			}
+			i := px * 4
+			if vcov >= 1 && px >= full0 && px < full1 {
+				row[i] = uint8(ir + uint32(row[i])*inv>>8)
+				row[i+1] = uint8(ig + uint32(row[i+1])*inv>>8)
+				row[i+2] = uint8(ib + uint32(row[i+2])*inv>>8)
+				row[i+3] = uint8(iA + uint32(row[i+3])*inv>>8)
 				continue
 			}
 			cov := (min(rx, float32(px+1)) - max(lx, float32(px))) * vcov
@@ -78,7 +94,6 @@ func (c *canvas) fillNotch(n notch, grow float32, col color.NRGBA, hole image.Re
 			cov = min(cov, 1)
 			a := sa * cov
 			fi := 1 - a
-			i := px * 4
 			row[i] = uint8(sr*cov + float32(row[i])*fi)
 			row[i+1] = uint8(sg*cov + float32(row[i+1])*fi)
 			row[i+2] = uint8(sb*cov + float32(row[i+2])*fi)
@@ -116,15 +131,87 @@ func (n notch) blurRects() []image.Rectangle {
 // drawNotch paints shadow, hairline and body. Nothing is drawn around the
 // part that sits in the bar (rows above barH): there it is part of the bar.
 func (c *canvas) drawNotch(p palette, n notch, alpha float64, barH int) {
-	hole := n.interior()
-	for i := 7; i >= 1; i-- { // a soft, wide shadow: rings with a gaussian falloff
+	for i := 7; i >= 1; i-- { // a soft, wide shadow: rings with a gaussian falloff, only outside the body
 		a := 30 * math.Exp(-math.Pow(float64(i)/3.4, 2))
-		c.fillNotch(n, float32(i)*1.6, color.NRGBA{0, 0, 0, uint8(alpha * a)}, hole, 2.5, barH-2)
+		c.fillNotch(n, float32(i)*1.6, color.NRGBA{0, 0, 0, uint8(alpha * a)}, &n, 2.5, barH-2)
 	}
-	c.fillNotch(n, 1, mixAlpha(p.line, 0.5*alpha), hole, 0, barH/2)
+	c.fillNotch(n, 1, mixAlpha(p.line, 0.5*alpha), &n, 0, barH/2)
 	body := p.island
 	body.A = uint8(float64(body.A) * alpha)
-	c.fillNotch(n, 0, body, image.Rectangle{}, 0, 0)
+	c.fillBody(n, body)
+}
+
+// fillBody fills the shape itself. Its interior is known to be transparent
+// (the canvas was cleared and the shadow and hairline skip it), so whole
+// stretches of a row are a copy of one premultiplied pixel; only the
+// anti-aliased edges blend.
+func (c *canvas) fillBody(n notch, col color.NRGBA) {
+	if col.A == 0 {
+		return
+	}
+	a := float32(col.A) / 255
+	px := [4]uint8{uint8(float32(col.R)*a + 0.5), uint8(float32(col.G)*a + 0.5), uint8(float32(col.B)*a + 0.5), col.A}
+	w := c.img.Rect.Dx()
+	if len(c.bodyRow) != w*4 || c.bodyPx != px {
+		c.bodyRow, c.bodyPx = make([]byte, w*4), px
+		for i := 0; i < w; i++ {
+			copy(c.bodyRow[i*4:], px[:])
+		}
+	}
+	b := c.img.Rect
+	for py := b.Min.Y; py < min(int(math.Ceil(float64(n.h))), b.Max.Y); py++ {
+		lx, rx, ok := n.span(float32(py) + 0.5)
+		if !ok {
+			continue
+		}
+		f0, f1 := max(int(math.Ceil(float64(lx)))+1, b.Min.X), min(int(rx)-1, b.Max.X)
+		if vcov := n.h - float32(py); vcov < 1 || f1-f0 < 4 { // the last, partial row: the general path
+			continue
+		}
+		row := c.img.Pix[py*c.img.Stride:]
+		copy(row[f0*4:f1*4], c.bodyRow[f0*4:f1*4])
+	}
+	// the edges and the partial bottom row, with coverage
+	c.fillNotchEdges(n, col)
+}
+
+// fillNotchEdges blends the body into the pixels fillBody's copy left: the
+// first and last two of each row, and the bottom row if it's partial.
+func (c *canvas) fillNotchEdges(n notch, col color.NRGBA) {
+	b := c.img.Rect
+	sa := float32(col.A) / 255
+	sr, sg, sb := float32(col.R)*sa, float32(col.G)*sa, float32(col.B)*sa
+	for py := b.Min.Y; py < min(int(math.Ceil(float64(n.h))), b.Max.Y); py++ {
+		lx, rx, ok := n.span(float32(py) + 0.5)
+		if !ok {
+			continue
+		}
+		vcov := min(float32(1), n.h-float32(py))
+		x0, x1 := max(int(math.Floor(float64(lx))), b.Min.X), min(int(math.Ceil(float64(rx))), b.Max.X)
+		f0, f1 := int(math.Ceil(float64(lx)))+1, int(rx)-1
+		if vcov < 1 || f1-f0 < 4 {
+			f0, f1 = x1, x1 // nothing was copied on this row
+		}
+		row := c.img.Pix[py*c.img.Stride:]
+		for px := x0; px < x1; px++ {
+			if px >= f0 && px < f1 {
+				px = f1 - 1
+				continue
+			}
+			cov := (min(rx, float32(px+1)) - max(lx, float32(px))) * vcov
+			if cov <= 0 {
+				continue
+			}
+			cov = min(cov, 1)
+			a := sa * cov
+			fi := 1 - a
+			i := px * 4
+			row[i] = uint8(sr*cov + float32(row[i])*fi)
+			row[i+1] = uint8(sg*cov + float32(row[i+1])*fi)
+			row[i+2] = uint8(sb*cov + float32(row[i+2])*fi)
+			row[i+3] = uint8(a*255 + float32(row[i+3])*fi)
+		}
+	}
 }
 
 func mixAlpha(c color.NRGBA, a float64) color.NRGBA {

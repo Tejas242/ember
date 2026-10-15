@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"time"
+	"unsafe"
 )
 
 // layer-shell constants (wlr-layer-shell-unstable-v1)
@@ -33,7 +34,7 @@ type window struct {
 	lastBlur                           []image.Rectangle
 	surface, layer, pointer, cursorDev uint32
 	w, h                               int
-	bufs                               [2]*shmBuffer
+	bufs                               [3]*shmBuffer // three: one on screen, one queued, one to draw into
 	configured, framePending, closed   bool
 	enterSerial                        uint32
 	px, py                             float64
@@ -282,10 +283,10 @@ func (win *window) present(img *image.RGBA, input, damage image.Rectangle, wantF
 	if !win.configured {
 		return false
 	}
-	var b, other *shmBuffer
-	for i, cand := range win.bufs {
+	var b *shmBuffer
+	for _, cand := range win.bufs {
 		if !cand.busy {
-			b, other = cand, win.bufs[1-i]
+			b = cand
 			break
 		}
 	}
@@ -296,14 +297,14 @@ func (win *window) present(img *image.RGBA, input, damage image.Rectangle, wantF
 	region := damage.Union(b.stale).Intersect(img.Rect)
 	for y := region.Min.Y; y < region.Max.Y; y++ {
 		o := y*img.Stride + region.Min.X*4
-		src := img.Pix[o : o+region.Dx()*4]
-		dst := b.data[o : o+region.Dx()*4]
-		for i := 0; i+3 < len(src); i += 4 {
-			dst[i], dst[i+1], dst[i+2], dst[i+3] = src[i+2], src[i+1], src[i], src[i+3]
-		}
+		swizzle(b.data[o:o+region.Dx()*4], img.Pix[o:o+region.Dx()*4])
 	}
 	b.stale = image.Rectangle{}
-	other.stale = other.stale.Union(damage)
+	for _, o := range win.bufs { // the others missed this frame's pixels
+		if o != b {
+			o.stale = o.stale.Union(damage)
+		}
+	}
 	if input != win.lastInput {
 		win.setInput(input)
 	}
@@ -352,4 +353,18 @@ func (win *window) setBlur(rects []image.Rectangle) {
 	win.c.send(win.blurSurf, 1, reg)
 	win.c.send(reg, 0)
 	win.lastBlur = rects
+}
+
+// swizzle copies RGBA pixels to ARGB8888 (B, G, R, A in memory), a whole
+// pixel at a time: swap the first and third byte of each 32-bit word.
+func swizzle(dst, src []byte) {
+	n := len(src) / 4
+	if n == 0 {
+		return
+	}
+	s := unsafe.Slice((*uint32)(unsafe.Pointer(&src[0])), n)
+	d := unsafe.Slice((*uint32)(unsafe.Pointer(&dst[0])), n)
+	for i, v := range s {
+		d[i] = v&0xFF00FF00 | v>>16&0xFF | v&0xFF<<16
+	}
 }

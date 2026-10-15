@@ -36,8 +36,31 @@ func cornerInset(r, d float32, n float64) float32 {
 		return 0
 	}
 	k := math.Min(1, float64(d/r))
+	if n == 2 {
+		return r * float32(1-math.Sqrt(1-k*k))
+	}
+	if n == cornerN { // the table, interpolated
+		f := k * cornerSteps
+		i := int(f)
+		if i >= cornerSteps {
+			return r * cornerLUT[cornerSteps]
+		}
+		t := float32(f - float64(i))
+		return r * (cornerLUT[i]*(1-t) + cornerLUT[i+1]*t)
+	}
 	return r * float32(1-math.Pow(1-math.Pow(k, n), 1/n))
 }
+
+const cornerSteps = 512
+
+// cornerLUT is the continuous corner's profile, computed once.
+var cornerLUT = func() (t [cornerSteps + 1]float32) {
+	for i := range t {
+		k := float64(i) / cornerSteps
+		t[i] = float32(1 - math.Pow(1-math.Pow(k, cornerN), 1/cornerN))
+	}
+	return
+}()
 
 // ---- tweens: small springs keyed by name, stepped once per frame ----
 
@@ -178,16 +201,20 @@ func (u *UI) shimmerLive(f fontFace, s string, x, base float32, col color.NRGBA)
 	w := float64(r.Dx())
 	u.lives = append(u.lives, live{r.Inset(-1), func(c *canvas, t float64) {
 		span := w + 120
-		center := math.Mod(t*95, span+160) - 60 // a pass every couple of seconds, with a rest
+		center := math.Mod(t*95, span+160) - 60                              // a pass every couple of seconds, with a rest
+		x0, x1 := max(0, int(center-80)), min(m.m.Rect.Dx(), int(center+80)) // the band is ~3σ wide
 		for yy := 0; yy < m.m.Rect.Dy(); yy++ {
 			row := c.img.Pix[(py+yy)*c.img.Stride:]
-			for xx := 0; xx < m.m.Rect.Dx(); xx++ {
+			for xx := x0; xx < x1; xx++ {
 				a := float64(m.m.Pix[yy*m.m.Stride+xx])
 				if a == 0 {
 					continue
 				}
-				d := (float64(xx) - center) / 26
-				k := math.Exp(-d*d) * 0.75 * a / 255
+				d := math.Abs(float64(xx)-center) / 26
+				if d >= 3 {
+					continue
+				}
+				k := band[int(d*85)] * a / 255
 				if k < 0.01 {
 					continue
 				}
@@ -260,3 +287,23 @@ func shellTokens(p palette, ln string) []struct {
 	}
 	return out
 }
+
+// panel draws a large translucent background (a row, a box) straight onto
+// the island, clipped to its shape and faded with the content, instead of
+// into the content layer: compositing then has only sparse text and icons
+// to blend, which is most of what made full frames cost.
+func (u *UI) panel(x, y, w, h, r float32, col color.NRGBA) {
+	col.A = uint8(float64(col.A) * u.fadeK)
+	u.cv.clip = &u.shape
+	u.cv.roundRect(x, y, w, h, r, col)
+	u.cv.clip = nil
+}
+
+// band is the shimmer's light across its width: 0.75·exp(−d²) for d in [0,3).
+var band = func() (t [256]float64) {
+	for i := range t {
+		d := float64(i) / 85
+		t[i] = 0.75 * math.Exp(-d*d)
+	}
+	return
+}()

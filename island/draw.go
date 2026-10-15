@@ -157,9 +157,12 @@ const (
 // ---- canvas ----
 
 type canvas struct {
-	img   *image.RGBA
-	r     *vector.Rasterizer
-	masks map[maskKey]*textMask
+	img     *image.RGBA
+	r       *vector.Rasterizer
+	masks   map[maskKey]*textMask
+	bodyRow []byte  // a row of the island's body colour, to copy
+	clip    *notch  // when set, fills stay inside this shape
+	bodyPx  [4]byte // the pixel bodyRow is made of
 }
 
 type maskKey struct {
@@ -235,6 +238,7 @@ func (c *canvas) roundRectHole(x, y, w, h, rad float32, col color.NRGBA, hole im
 	ia := uint32(col.A) + uint32(col.A)>>7
 	ir, ig, ib, iA := uint32(sr+0.5), uint32(sg+0.5), uint32(sb+0.5), uint32(col.A)
 	inv := 256 - ia
+	word := ir | ig<<8 | ib<<16 | iA<<24
 	y0, y1 := max(int(math.Floor(float64(y))), b.Min.Y), min(int(math.Ceil(float64(y+h))), b.Max.Y)
 	for py := y0; py < y1; py++ {
 		vcov := min(y+h, float32(py+1)) - max(y, float32(py))
@@ -253,12 +257,40 @@ func (c *canvas) roundRectHole(x, y, w, h, rad float32, col color.NRGBA, hole im
 			inset = cornerInset(rad, d, e)
 		}
 		lx, rx := x+inset, x+w-inset
+		if c.clip != nil { // inside the island only
+			clx, crx, ok := c.clip.span(cy)
+			if !ok {
+				continue
+			}
+			lx, rx = max(lx, clx), min(rx, crx)
+			if rx <= lx {
+				continue
+			}
+		}
 		x0, x1 := max(int(math.Floor(float64(lx))), b.Min.X), min(int(math.Ceil(float64(rx))), b.Max.X)
 		skip0, skip1 := 0, 0
 		if py >= hole.Min.Y && py < hole.Max.Y {
 			skip0, skip1 = hole.Min.X, hole.Max.X
 		}
 		row := c.img.Pix[py*c.img.Stride:]
+		if vcov >= 1 { // the fully covered middle of the row, a word at a time
+			f0, f1 := max(int(math.Ceil(float64(lx))), x0), min(int(math.Floor(float64(rx))), x1)
+			if f1-f0 > 2 {
+				px := words(row[:c.img.Stride])
+				if skip1 > skip0 && skip0 < f1 && skip1 > f0 {
+					fillSpan(px, f0, max(f0, skip0), word)
+					fillSpan(px, min(f1, skip1), f1, word)
+				} else {
+					fillSpan(px, f0, f1, word)
+				}
+				// leave only the edge pixels to the loop below
+				if skip1 <= skip0 || skip0 >= f1 || skip1 <= f0 {
+					skip0, skip1 = f0, f1
+				} else {
+					skip0, skip1 = min(f0, skip0), max(f1, skip1)
+				}
+			}
+		}
 		for px := x0; px < x1; px++ {
 			if px >= skip0 && px < skip1 {
 				px = skip1 - 1
@@ -340,17 +372,38 @@ func (c *canvas) text(f font.Face, s string, x, y float32, col color.NRGBA) floa
 	return float32(m.w)
 }
 
-func measure(f font.Face, s string) float32 { return float32(advance(f, display(s)).Ceil()) }
+var widths = map[maskKey]float32{}
+
+// measure is a string's width in f, remembered: layout asks the same
+// questions every frame, and kerning lookups aren't free.
+func measure(f font.Face, s string) float32 {
+	k := maskKey{f, s}
+	if w, ok := widths[k]; ok {
+		return w
+	}
+	if len(widths) > 4000 {
+		clear(widths)
+	}
+	w := float32(advance(f, display(s)).Ceil())
+	widths[k] = w
+	return w
+}
 
 func ellipsize(f font.Face, s string, maxW float32) string {
 	if measure(f, s) <= maxW {
 		return s
 	}
 	r := []rune(s)
-	for len(r) > 0 && measure(f, string(r)+"…") > maxW {
-		r = r[:len(r)-1]
+	lo, hi := 0, len(r) // the longest prefix that fits with "…": bisection, not one rune at a time
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		if measure(f, string(r[:mid])+"…") <= maxW {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
 	}
-	return strings.TrimRight(string(r), " ") + "…"
+	return strings.TrimRight(string(r[:lo]), " ") + "…"
 }
 
 // wrap greedily breaks s into at most n lines of width maxW.
@@ -494,6 +547,8 @@ func (c *canvas) emberX(p palette, cx, cy, s float32, m mood, t float64, e expr,
 // pixels around it stay untouched) with a soft radial light.
 func (c *canvas) glowInside(r image.Rectangle, cx, cy, rad float32, col color.NRGBA, strength float64) {
 	r = r.Intersect(c.img.Rect)
+	inv2 := 1 / (rad * rad)
+	st := uint32(strength * 256)
 	for y := r.Min.Y; y < r.Max.Y; y++ {
 		row := c.img.Pix[y*c.img.Stride:]
 		dy := float32(y) + 0.5 - cy
@@ -503,15 +558,24 @@ func (c *canvas) glowInside(r image.Rectangle, cx, cy, rad float32, col color.NR
 				continue
 			}
 			dx := float32(x) + 0.5 - cx
-			d := (dx*dx + dy*dy) / (rad * rad)
+			d := (dx*dx + dy*dy) * inv2
 			if d >= 1 {
 				continue
 			}
-			k := (1 - d) * (1 - d) * float32(strength)
-			a := float32(row[i+3]) / 255 // stay premultiplied: light scales with the body's own alpha
-			row[i] = uint8(min(float32(row[i])+(float32(col.R)*a-float32(row[i]))*k, 255))
-			row[i+1] = uint8(min(float32(row[i+1])+(float32(col.G)*a-float32(row[i+1]))*k, 255))
-			row[i+2] = uint8(min(float32(row[i+2])+(float32(col.B)*a-float32(row[i+2]))*k, 255))
+			k := falloff[int(d*255)] * st // (1-d)², from the table, in 1/256ths
+			if k == 0 {
+				continue
+			}
+			a := uint32(row[i+3]) // stay premultiplied: light scales with the body's own alpha
+			for ch, v := range [3]uint8{col.R, col.G, col.B} {
+				cur := uint32(row[i+ch])
+				tgt := uint32(v) * a / 255
+				if tgt > cur {
+					row[i+ch] = uint8(cur + (tgt-cur)*k>>16)
+				} else {
+					row[i+ch] = uint8(cur - (cur-tgt)*k>>16)
+				}
+			}
 		}
 	}
 }
@@ -570,3 +634,12 @@ func (c *canvas) glow(r image.Rectangle, cx, cy, rad float32, col color.NRGBA, s
 		}
 	}
 }
+
+// falloff is (1−d)² for d in [0,1), in 1/256ths: the glow's shape.
+var falloff = func() (t [256]uint32) {
+	for i := range t {
+		d := float64(i) / 255
+		t[i] = uint32((1 - d) * (1 - d) * 256)
+	}
+	return
+}()

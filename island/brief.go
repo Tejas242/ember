@@ -293,7 +293,7 @@ func (u *UI) drawExpanded(x, w float32) {
 // waitStory: one line and the way there.
 func (u *UI) waitStory(s *Session, x, w, y float32) {
 	p := u.pal
-	u.dc.roundRect(x+pad-6, y, w-2*pad+12, 34, 12, alpha(p.blue, 0.12))
+	u.panel(x+pad-6, y, w-2*pad+12, 34, 12, alpha(p.blue, 0.12))
 	u.dc.icon("run", x+pad+8, y+17, 13, p.blue)
 	u.dc.text(fBody(), "Answer it in the terminal", x+pad+24, y+21.5, p.fg)
 	u.buttonRow([]Button{{Key: s.ID, Label: "Go there", Primary: true}}, "focus:", x, w-4, y+4, "")
@@ -303,7 +303,7 @@ func (u *UI) waitStory(s *Session, x, w, y float32) {
 // progress pulses and counts its seconds; a failed step says so in red.
 func (u *UI) timeline(s *Session, shown int, x, w, y, h float32) {
 	p, now := u.pal, u.now()
-	u.dc.roundRect(x+pad-6, y, w-2*pad+12, h, 13, alpha(p.fg, 0.04))
+	u.panel(x+pad-6, y, w-2*pad+12, h, 13, alpha(p.fg, 0.04))
 	steps := s.Turn.Steps
 	n := min(len(steps), shown)
 	rail := x + pad + 7
@@ -392,7 +392,7 @@ func (u *UI) recapStory(s *Session, x, w, y, h float32) {
 	r := s.Recap
 	key := "focus:" + s.ID
 	k := u.hl(key)
-	u.dc.roundRect(x+pad-6, y, w-2*pad+12, h, 13, alpha(p.fg, 0.04+0.03*k))
+	u.panel(x+pad-6, y, w-2*pad+12, h, 13, alpha(p.fg, 0.04+0.03*k))
 	bar := p.green
 	if r.Failures > 0 && strings.Contains(strings.ToLower(r.Summary), "fail") {
 		bar = p.yellow
@@ -414,7 +414,7 @@ func (u *UI) recapStory(s *Session, x, w, y, h float32) {
 // dayStory: the day, hour by hour: when Claude was busy, and now.
 func (u *UI) dayStory(x, w, y float32) {
 	p, now := u.pal, u.now()
-	u.dc.roundRect(x+pad-6, y, w-2*pad+12, 46, 13, alpha(p.fg, 0.04))
+	u.panel(x+pad-6, y, w-2*pad+12, 46, 13, alpha(p.fg, 0.04))
 	bx, bw := x+pad+4, w-2*pad-8
 	top := 1
 	for _, c := range u.day.Hours {
@@ -450,7 +450,7 @@ func (u *UI) otherRow(s *Session, x, w, y float32) {
 	key := "focus:" + s.ID
 	k := u.hl(key)
 	if k > 0.01 {
-		u.dc.roundRect(x+pad-6, y, w-2*pad+12, otherH, 10, alpha(p.fg, 0.05*k))
+		u.panel(x+pad-6, y, w-2*pad+12, otherH, 10, alpha(p.fg, 0.05*k))
 	}
 	cy := y + otherH/2
 	dot, text, when := p.green, s.Label, ""

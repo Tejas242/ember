@@ -26,7 +26,7 @@ type Config struct {
 }
 
 func DefaultConfig() Config {
-	return Config{HoverDelay: 240 * time.Millisecond, Claude: true, Music: true, Edge: true, Battery: true,
+	return Config{HoverDelay: 150 * time.Millisecond, Claude: true, Music: true, Edge: true, Battery: true,
 		OSD: true, Devices: true, Screenshots: true, Privacy: true, Done: true}
 }
 
@@ -43,7 +43,7 @@ func ConfigPath() string {
 const DefaultConfigText = `# Ember: changes apply within ten seconds, no restart needed.
 
 clock          = "12h"   # 12h | 24h
-hover_delay_ms = 240     # how long the pointer rests on the pill before the card drops
+hover_delay_ms = 150     # how long the pointer rests on the pill before the card drops
 
 [show]
 claude      = true  # Claude Code sessions, permission requests, questions
