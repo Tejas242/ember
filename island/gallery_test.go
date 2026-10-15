@@ -280,7 +280,16 @@ func TestGallery(t *testing.T) {
 			g.a.ui.Moment(moment{key: "done:k", act: "claude", mood: moodHappy, verb: "Done", text: "kinvault", sub: "All 42 tests pass under -race", until: g.clock.Add(time.Hour), focus: "k"})
 		}),
 		pill("stopped", func(g *galleryScene) {
-			g.a.ui.Moment(moment{key: "fail:k", act: "claude", mood: moodError, verb: "Stopped", text: "kinvault", sub: "rate limit", until: g.clock.Add(time.Hour)})
+			g.a.ui.Moment(moment{key: "fail:k", act: "claude", mood: moodError, verb: "Stopped", text: "kinvault", sub: "Rate limited", until: g.clock.Add(time.Hour)})
+		}),
+		pill("finished while you were elsewhere", func(g *galleryScene) {
+			g.work("k", "kinvault", "fix the race", 3)
+			hookAt(g.a, "Stop", "k", "kinvault", map[string]any{"last_assistant_message": "Fixed."})
+			g.a.ui.moment = nil
+		}),
+		pill("gone quiet for 4 minutes", func(g *galleryScene) {
+			g.work("k", "kinvault", "fix the race", 3)
+			g.clock = g.clock.Add(4 * time.Minute)
 		}),
 		pill("music", func(g *galleryScene) { g.music(true) }),
 		pill("music, paused", func(g *galleryScene) { g.music(false); g.a.ui.focus, g.a.ui.focusAt = "music", g.clock }),
@@ -294,7 +303,7 @@ func TestGallery(t *testing.T) {
 			g.a.ui.Moment(moment{key: "osd:brightness", icon: "sun", tint: g.a.ui.pal.yellow, meter: true, level: 0.3, right: "30", until: g.clock.Add(time.Hour), osd: true})
 		}),
 		pill("charging", func(g *galleryScene) {
-			g.a.ui.Moment(moment{key: "power", icon: "bolt", tint: g.a.ui.pal.green, text: "Charging", right: "73%", batt: true, pct: 0.73, until: g.clock.Add(time.Hour)})
+			g.a.ui.Moment(moment{key: "power", icon: "bolt", tint: g.a.ui.pal.green, text: "Charging", sub: "full in 40m", batt: true, pct: 0.73, until: g.clock.Add(time.Hour)})
 		}),
 		pill("battery low", func(g *galleryScene) {
 			g.a.ui.Moment(moment{key: "power", icon: "warning", tint: g.a.ui.pal.red, text: "Battery low", right: "9%", batt: true, pct: 0.09, until: g.clock.Add(time.Hour)})

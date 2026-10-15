@@ -10,7 +10,11 @@ satellite to swap it in. Hover the pill and a card drops down. It's a brief on w
 
 ![The pill's states](docs/pills.png)
 
-![The card: working, just finished, a quiet day, a request](docs/cards.png)
+![The card: working, several sessions, waiting, just finished, a quiet day, subagents](docs/cards.png)
+
+![Requests: a command, an edit, questions, a practice nudge](docs/requests.png)
+
+How it looks and moves, and why, is in [docs/DESIGN.md](docs/DESIGN.md).
 
 It is one native Go binary. It talks the Wayland protocol directly and draws in software, with no toolkit and no
 GPU. It wakes only when something changes. Measured on a 2018 laptop, it uses about 9 MB of private memory and about 1%
@@ -19,25 +23,30 @@ of one core while Claude works and the flame is animating, and a fraction of tha
 ## What it shows
 
 **Claude Code**
-- **Live activity.** Each tool call becomes a short label, such as `Editing quota.go +12 −3`, `Running the store tests`
-  or `Searching the web`. It also shows running subagents and context compaction. With several sessions, the busiest
-  one shows and the rest count as `+N`.
-- **Permission requests in the pill.** Deny, Always (applies the rule Claude suggests) or Allow, with the command or
-  file shown. Several requests queue up behind each other, and the card says how many more are waiting.
+- **At a glance.** The pill names the session at work and how long it has been at it, under a slow band of light.
+  It changes only when the situation does, never per tool call. With several sessions, the one you can't see is
+  named and the rest count as `+N`. One that has gone quiet for three minutes turns its timer amber.
+- **Permission requests in the pill.** Deny, Always or Allow, with the whole command shown (it wraps; it's never cut
+  where an `&& rm -rf` could hide) and a line saying what Always would allow (*Always allows go test:\* in this
+  project*). Several requests queue up behind each other, and the card says how many more are waiting.
 - **Questions.** `AskUserQuestion` options show as rows, single or multi-select, one question after another.
-- **Done.** When a session finishes while you're looking elsewhere, the pill says so with the first line of Claude's
-  reply. Click it to jump to that terminal. If it stops on an error (a rate limit, say), you hear about that too.
+- **Done.** When a session finishes while you're looking elsewhere, the pill says so with Claude's most informative
+  sentence, and a check draws itself. Click it to jump to that terminal. If it stops on an error, it says which in
+  words (*Rate limited*, *Signed out, run /login*). Either way the outcome then waits quietly by the clock
+  (*kinvault done*) until you've looked.
 - **Never in the way.** Claude waits at most 90 s on the island, then asks in the terminal as usual. It asks in the
   terminal at once if Ember isn't running. If Claude cancels, the request leaves the island within a second.
 - **Sessions by name.** The card lists sessions with the topic Claude gave each one (read from the terminal's
   title), the current step, the diff so far and how long it has been running.
 
-**Music.** Any MPRIS player: title, artist and cover, a progress hairline under the pill, and a card with seek,
-previous, play/pause and next. Scroll on it to change the volume. The card takes its colour from the album cover.
+**Music.** Any MPRIS player: title, artist and cover, a progress hairline along the pill's rim, and a section of the
+card with seek, previous, play/pause and next. Scroll on it to change the volume. The cover lights its section in its
+own colour. A song paused for a quarter of an hour leaves the card.
 
 **System moments.** They appear for a moment, then step aside:
 - Volume, microphone mute and brightness, with a level bar. They replace Noctalia's OSD for those.
-- Charging, unplugged, fully charged, and battery low at 20, 10 and 5 %.
+- Charging (with when it'll be full), unplugged, fully charged, and battery low at 20, 10 and 5 %. The bar already has
+  the percentage, so only a low battery repeats it.
 - Bluetooth headphones connecting, with their battery, and disconnecting.
 - Screenshots, with a preview. Click it to open the file.
 - A dot while your screen is being shared or recorded.
@@ -46,26 +55,31 @@ previous, play/pause and next. Scroll on it to change the volume. The card takes
 anything need me, what is it doing and is it going well, what happened while I wasn't looking. The card answers
 whichever is true right now, and nothing else. It has no tabs and no settings: volume and brightness speak up in the
 pill when they change, and that's enough.
+One session is the **hero**: the one waiting on you, else one working where you can't see it, else the one that just
+finished.
 - **Headline.** The task in words: what you asked, if your prompt said something ("yes, do it" doesn't), else the
-  topic Claude gave the session. Under it, the facts: *kinvault · 4m in · 9 steps · 3 files +58 −12 · 1 failed*.
+  topic Claude gave the session. Under it, one line of facts: *kinvault · 4m in · 3 files +58 −12 · 1 failed*.
   Click it to jump to that terminal.
-- **Working.** A live timeline of the turn, newest first, on a thin rail. The current step pulses and counts its
-  seconds. Earlier steps say what they changed (+15 −3) and when. A step that failed says so in red, because Claude
-  Code reports tool failures to Ember.
-- **Just finished.** A recap: Claude's most informative sentence, then what the turn amounted to (steps, files
-  changed, the diff, failures).
-- **Waiting.** Who's asking, about what, and a button that takes you there.
+- **Working.** A live timeline of the turn hangs from Ember on a thin rail, newest first. The current step glows,
+  pulses and counts its seconds. Earlier steps say what they changed (+15 −3) and when. A step that failed says so in
+  red. Subagents branch off the rail, each opening into its own steps.
+- **Just finished.** Claude's most informative sentence beside a green bar. The bar is amber if Claude admits
+  something failed, and red with the error if the turn stopped.
+- **Waiting.** What it's asking (*Wants to run go test -race … · waiting 1m*) and a button to answer it in the
+  terminal.
 - **Quiet.** A greeting that knows the time, your day in one line (*7 tasks done · 2h 14m with Claude · mostly
   ember*), and the day hour by hour.
-- **Then one line each** for other sessions (what they're doing, or what they just did), the song with its controls
-  under your pointer, and edge when it has something for you.
+- **Then one line each** for other sessions (*Done ·*, *Stopped ·*, *Needs you ·*, or what they're doing). Click one
+  and it becomes the hero. Then the song, with its controls under your pointer, and edge's practice line.
 
-**Requests** use Claude's own words as the title ("Run the store tests with the race detector") and show the command
-once, syntax-tinted, with a line along the bottom that drains while the request waits. Questions have numbered
-option rows, with "In terminal" tucked into the corner.
+**Requests** have an eyebrow that says who wants what (*KINVAULT WANTS TO RUN*), Claude's own words as the title, and
+the command once, syntax-tinted. A hairline on the rim drains while the request waits and turns amber at the end.
+Questions are one grouped list with numbered options.
 
-Hovers fade in on springs, numbers roll when they change, and corners are continuous (superellipse) rather than
-circular arcs. Text in any script draws: styled Unicode letters fold to plain ones, and missing characters come from
+Every motion is a spring. The pill swells under your pointer. The card opens with the width leading and a
+little overshoot on the drop, and folds up first when it closes. Rows arrive one after another, and rows that move
+glide. Numbers roll, a check draws itself when something's done, and a blue light breathes around the pill while
+Claude waits on you. Corners are continuous (superellipse) rather than circular arcs. Text in any script draws: styled Unicode letters fold to plain ones, and missing characters come from
 a system font found through fontconfig.
 
 ## Alive
@@ -155,6 +169,7 @@ layer-rule {
 | Click the pill | Opens the card. On a request or a "Done", jumps to that terminal |
 | Click a moment | Screenshot: opens it. Others open the card |
 | Click the satellite | Swaps the second activity (the cover, the little flame) into the pill |
+| Click another session in the card | Makes it the hero: its timeline opens |
 | Scroll on the pill | Switches what the pill shows |
 | Drag the song's progress line | Follows your pointer, even past the island's edge. The seek happens on release |
 | Scroll on the music row | Changes the player's volume |

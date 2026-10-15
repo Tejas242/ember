@@ -323,7 +323,7 @@ func codeLines(code string, w float32) []string {
 		out[i] = ellipsize(f, out[i], w)
 	}
 	if len(out) > 4 {
-		out = []string{out[0], out[1], "  …", out[len(out)-1]}
+		out = []string{out[0], "  …", out[len(out)-2], out[len(out)-1]}
 	}
 	return out
 }
