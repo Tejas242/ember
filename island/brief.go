@@ -5,7 +5,6 @@ import (
 	"image"
 	"image/color"
 	"math"
-	"sort"
 	"strings"
 	"time"
 )
@@ -49,13 +48,12 @@ func (u *UI) brief() brief {
 		ss = nil
 	}
 	var b brief
-	var working []*Session
+	var working []*Session // in the list's order: the same session as the pill, held still
 	for _, s := range ss {
 		if s.status() == "work" {
 			working = append(working, s)
 		}
 	}
-	sort.SliceStable(working, func(i, j int) bool { return working[i].Seen.After(working[j].Seen) })
 	switch {
 	case len(ss) > 0 && ss[0].State == "wait":
 		s := ss[0]
