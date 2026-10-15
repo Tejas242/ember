@@ -77,7 +77,7 @@ func (a *audio) read(cmd *exec.Cmd, r io.Reader) {
 			rms := math.Sqrt(e[b] / audioChunk)
 			peak[b] = math.Max(rms, peak[b]*0.995) // the reference falls slowly: quiet songs move too
 			peak[b] = math.Max(peak[b], 300)
-			v[b] = math.Min(1, math.Log10(1+9*rms/peak[b]))
+			v[b] = math.Min(1, math.Pow(rms/peak[b], 1.4)) // spread: the bars use their whole height
 		}
 		a.mu.Lock()
 		if a.cmd != cmd {
