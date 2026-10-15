@@ -56,6 +56,8 @@ func install() error {
 		if err := os.WriteFile(cfg, []byte(island.DefaultConfigText), 0o644); err == nil {
 			fmt.Println("config →", cfg)
 		}
+	} else {
+		fmt.Println("config kept:", cfg, "(ember doctor lists any new settings)")
 	}
 
 	dir := filepath.Join(h, ".config", "systemd", "user")

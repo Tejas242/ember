@@ -28,7 +28,7 @@ const (
 	briefHeadH = 52 // Ember, the headline, its facts
 	stepH      = 22
 	otherH     = 26
-	keepShown  = 4 // timeline steps shown
+	keepShown  = 4 // timeline steps shown, at most ([card] steps)
 	recapFresh = 45 * time.Minute
 )
 
@@ -39,6 +39,7 @@ type brief struct {
 	mood      mood
 	others    []*Session
 	agents    []*Agent // the working session's subagents
+	keep      int      // timeline steps at most: [card] steps
 }
 
 // brief decides what the card is about.
@@ -109,8 +110,9 @@ func (u *UI) brief() brief {
 			b = brief{mode: "day", mood: moodIdle, head: greeting(now), sub: u.dayFacts()}
 		}
 	}
+	b.keep = u.cfg.CardSteps
 	for _, s := range ss { // everyone else, one line each: the busy, then the recently done
-		if s == b.s || len(b.others) == 3 {
+		if s == b.s || len(b.others) >= u.cfg.CardOthers {
 			continue
 		}
 		if s.status() != "idle" || (s.Recap != nil && now.Sub(s.Recap.At) < recapFresh) {
@@ -120,10 +122,11 @@ func (u *UI) brief() brief {
 	return b
 }
 
-// shown is how many timeline steps fit: four alone, one fewer when other
-// sessions need their lines, and fewer again for the agents' rows.
+// shown is how many timeline steps fit: four (or [card] steps) alone, one
+// fewer when other sessions need their lines, and fewer again for the
+// agents' rows.
 func (b brief) shown() int {
-	n := keepShown
+	n := b.keep
 	if len(b.others) > 0 {
 		n--
 	}

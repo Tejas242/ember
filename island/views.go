@@ -161,7 +161,7 @@ func (u *UI) mainLine() line {
 			return l
 		}
 	}
-	l := line{key: "clock", mood: moodIdle, text: now.Format(u.TimeFmt), textCol: p.fg}
+	l := line{key: "clock", mood: moodIdle, text: now.Format(u.cfg.pillFormat()), textCol: p.fg}
 	if e := u.edge; e != nil && e.Closed {
 		l.lock = true
 	}

@@ -25,7 +25,7 @@ import (
 // screenshots. Each watcher sleeps until the system tells it something
 // changed, then posts to the main loop. Nothing polls.
 
-const osdHold = 1600 * time.Millisecond
+const osdHold = 1600 * time.Millisecond // [moments] osd_ms
 
 func startSystem(posts chan<- func(*app)) {
 	go watchBattery(posts)
@@ -307,7 +307,7 @@ func (a *app) volumeChanged(l level) {
 		icon = "volume-low"
 	}
 	m := moment{key: "osd:volume", icon: icon, tint: tint, meter: true, level: min(l.v, 1), right: strconv.Itoa(int(l.v*100 + 0.5)),
-		until: a.ui.now().Add(osdHold), osd: true}
+		until: a.ui.now().Add(a.cfg.OSDFor), osd: true}
 	if l.muted {
 		m.right = "Muted"
 	}
@@ -318,7 +318,7 @@ func (a *app) micChanged(muted bool) {
 	if !a.cfg.OSD {
 		return
 	}
-	m := moment{key: "osd:mic", icon: "mic", tint: a.ui.pal.green, text: "Microphone on", until: a.ui.now().Add(osdHold), osd: true}
+	m := moment{key: "osd:mic", icon: "mic", tint: a.ui.pal.green, text: "Microphone on", until: a.ui.now().Add(a.cfg.OSDFor), osd: true}
 	if muted {
 		m.icon, m.tint, m.text = "mic-off", a.ui.pal.red, "Microphone muted"
 	}
@@ -479,7 +479,7 @@ func (a *app) brightnessChanged(v float64) {
 		return
 	}
 	a.ui.Moment(moment{key: "osd:brightness", icon: "sun", tint: a.ui.pal.yellow, meter: true, level: v,
-		right: strconv.Itoa(int(v*100 + 0.5)), until: a.ui.now().Add(osdHold), osd: true})
+		right: strconv.Itoa(int(v*100 + 0.5)), until: a.ui.now().Add(a.cfg.OSDFor), osd: true})
 }
 
 // screenshotTaken loads a small preview and shows it.

@@ -4,7 +4,6 @@ import (
 	"image"
 	"log"
 	"math"
-	"os"
 	"time"
 	"unsafe"
 )
@@ -46,6 +45,8 @@ type window struct {
 	retire                             func() // the surface a raise replaced, to destroy once the new one shows
 	marginTop                          int
 	idleMgr, idleVer                   uint32
+	idleNote                           uint32        // the idle notification, remade when away_after_s changes
+	idleFor                            time.Duration // what it was asked for
 	lastInput                          image.Rectangle
 	lastShape                          uint32
 }
@@ -97,12 +98,6 @@ func openWindow(w, h, marginTop int, layer uint32) (*window, error) {
 	if err := c.roundtrip(); err != nil { // seat capabilities
 		return nil, err
 	}
-	away := 2 * time.Minute
-	if v, err := time.ParseDuration(os.Getenv("EMBER_AWAY_AFTER")); err == nil && v > 0 { // for testing
-		away = v
-	}
-	win.watchIdle(away)
-
 	win.layerKind, win.marginTop = layer, marginTop
 	win.createSurface()
 	if err := c.roundtrip(); err != nil {
@@ -120,8 +115,11 @@ func openWindow(w, h, marginTop int, layer uint32) (*window, error) {
 // for d, and when you come back (ext-idle-notify-v1). Version 2's input
 // idle ignores inhibitors, so a playing video doesn't count as you.
 func (win *window) watchIdle(d time.Duration) {
-	if win.idleMgr == 0 || win.seat == 0 {
+	if win.idleMgr == 0 || win.seat == 0 || d == win.idleFor {
 		return
+	}
+	if win.idleNote != 0 {
+		win.c.send(win.idleNote, 0) // ext_idle_notification_v1.destroy
 	}
 	id := win.c.newID(func(op uint16, _ *dec) {
 		if win.onIdle != nil {
@@ -133,6 +131,7 @@ func (win *window) watchIdle(d time.Duration) {
 		op = 2 // get_input_idle_notification
 	}
 	win.c.send(win.idleMgr, op, id, uint32(d.Milliseconds()), win.seat)
+	win.idleNote, win.idleFor = id, d
 }
 
 // createSurface makes the island's surface and its layer role; the

@@ -185,29 +185,72 @@ binds {
 
 ## Config
 
-`~/.config/ember/config.toml`. Changes apply within ten seconds, with no restart.
+`~/.config/ember/config.toml`, written by `ember install` the first time (never overwritten after). Every key is
+optional and changes apply within ten seconds, with no restart. This is the whole file, with the defaults:
 
 ```toml
-clock          = "12h"   # 12h | 24h
-hover_delay_ms = 150
+# Ember: changes apply within ten seconds, no restart needed.
+# A value Ember can't use keeps its default; `ember doctor` says which.
+
+clock        = "12h"  # 12h | 24h
+away_after_s = 120    # idle this long and you're away: news waits and is summed up when you're back
+
+[pill]
+idle = "clock"  # what the pill shows when nothing's going on: clock | date | both
+
+[card]
+hover_delay_ms = 150  # how long the pointer rests on the pill before the card drops
+steps          = 4    # timeline steps, at most (1-4; fewer when other rows need the room)
+others         = 3    # other sessions listed under the story (0-3)
+
+[moments]
+done_s = 6     # how long "Done · project" stays up
+osd_ms = 1600  # how long a volume or brightness level stays up
+
+[claude]
+answer          = true  # answer permission requests and questions on the island; false: only the terminal asks
+wait_s          = 85    # how long a request waits on the island before the terminal asks (5-85)
+settle_min      = 30    # a session silent this long is taken as stopped (a killed Claude never says so)
+agent_quiet_min = 20    # the same for a subagent
+
+[look]
+opacity = 0.87  # the island's body: 1 is solid, lower lets the blur through (0.3-1)
+# colours are hex, like "#72dd71"; "" follows Noctalia's theme
+green   = ""    # working, done
+blue    = ""    # waiting on you
+red     = ""    # errors
+amber   = ""    # nudges, low battery
 
 [show]
-claude      = true  # sessions, permission requests, questions
+claude      = true  # Claude Code sessions, permission requests, questions
 done        = true  # "Done · project" when a session finishes and you're elsewhere
-music       = true
-edge        = true
-osd         = true  # volume, microphone, brightness
+music       = true  # the playing track (MPRIS)
+edge        = true  # edge's practice status, if edge runs
+osd         = true  # volume, microphone and brightness changes
 battery     = true  # charging, fully charged, battery low
-devices     = true  # Bluetooth audio
-screenshots = true
-privacy     = true  # the screen-sharing dot
+devices     = true  # Bluetooth audio connecting and disconnecting
+screenshots = true  # a preview when a screenshot is saved
+privacy     = true  # a dot while your screen is being shared or recorded
+
+# Plugins run when their tool is installed; set enabled to turn one on or off.
+# [plugins.edge]
+# enabled = "auto"  # auto | true | false — edge's practice status, cards and dashboard
 ```
+
+A value Ember can't use, an unknown key or a stray line never stops it: that line keeps its default, and
+`ember doctor` says which line and why (`config: line 12: card.steps must be a whole number from 1 to 4`). Doctor also
+lists settings newer than your file, so you can copy them from here. `hover_delay_ms` at the top of the file, where
+it lived before `[card]`, still works. `EMBER_AWAY_AFTER` (a Go duration, like `20s`) overrides `away_after_s` for
+testing.
+
+`[plugins.<name>]` tables belong to plugins. `enabled = "auto"` runs a plugin when its tool is installed; `true` or
+`false` decides for it. `[show] edge = false` still turns edge off.
 
 ## How it works
 
 - **Claude Code** runs `ember hook <Event>`. Reporting events are sent to the island over
   `$XDG_RUNTIME_DIR/ember.sock` and return at once. A permission request or a question holds the connection open
-  until you answer, or 90 s pass. If the hook process goes away because Claude cancelled, the island drops the card.
+  until you answer, or for `[claude] wait_s` (85 s); then Claude asks in the terminal. If the hook process goes away because Claude cancelled, the island drops the card.
 - **The island** is one `zwlr_layer_shell_v1` surface on the top layer. It reserves no space, so it sits over the
   bar, and takes input only inside its shape. It draws into shared memory with damage tracking. While nothing
   moves, only Ember's few pixels and the live parts (equaliser, progress) are repainted.

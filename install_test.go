@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Tejas242/ember/island"
 )
 
 func TestPatchSettingsOnRealCopy(t *testing.T) {
@@ -42,5 +44,16 @@ func TestPatchSettingsOnRealCopy(t *testing.T) {
 		if k != "hooks" && fmt.Sprint(after[k]) != fmt.Sprint(v) {
 			t.Errorf("changed unrelated key %s", k)
 		}
+	}
+}
+
+// The README shows the config file exactly as install writes it.
+func TestReadmeConfig(t *testing.T) {
+	b, err := os.ReadFile("README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "```toml\n"+island.DefaultConfigText+"```") {
+		t.Fatal("README's Config section differs from island.DefaultConfigText")
 	}
 }

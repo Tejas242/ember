@@ -22,7 +22,7 @@ type Agent struct {
 type agentAsk struct{ typ, desc string }
 
 const (
-	agentQuiet = 20 * time.Minute // an agent that says nothing this long was killed
+	agentQuiet = 20 * time.Minute // an agent that says nothing this long was killed ([claude] agent_quiet_min)
 	agentRows  = 3                // rows the card gives agents
 )
 
@@ -141,10 +141,10 @@ func remember(m map[string]time.Time, id string, now time.Time) map[string]time.
 
 // sweepAgents drops agents that went silent: one that was killed (Esc, a
 // crash) never says SubagentStop.
-func (s *Session) sweepAgents(now time.Time) bool {
+func (s *Session) sweepAgents(now time.Time, quiet time.Duration) bool {
 	changed := false
 	for id, ag := range s.Agents {
-		if now.Sub(ag.Seen) > agentQuiet {
+		if now.Sub(ag.Seen) > quiet {
 			delete(s.Agents, id)
 			changed = true
 		}

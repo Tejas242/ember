@@ -91,7 +91,7 @@ func TestAgentRaces(t *testing.T) {
 	}
 	agentHookAt(a, "SubagentStart", "x2", map[string]any{})
 	clock = clock.Add(agentQuiet + time.Minute)
-	s.sweepAgents(clock)
+	s.sweepAgents(clock, agentQuiet)
 	if s.running() != 0 {
 		t.Fatal("a silent agent was never swept")
 	}
