@@ -109,7 +109,7 @@ func TestPreviewDash(t *testing.T) {
 	if dir == "" {
 		t.Skip("set EMBER_PREVIEW")
 	}
-	const W, H = 580, 410
+	const W, H = surfW, surfH
 	render := func(st *EdgeStats, frames []int, hover string) *image.RGBA {
 		clock := time.Date(2026, 10, 15, 21, 30, 0, 0, time.Local)
 		u := NewUI(W, H, 22)

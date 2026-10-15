@@ -10,24 +10,26 @@ import (
 	"time"
 )
 
-// edge's dashboard: the day, the week, the rating, the year, and the four
-// numbers that say whether practice is working. Everything arrives in a
-// short choreography (the ring sweeps, the bars grow one after another, the
-// rating line draws itself, the year ripples in, the numbers count up); after
-// that only the living parts move (the streak's flame, the pulse on a problem
-// in progress), and those repaint on their own.
+// edge's dashboard: the day, the problem in progress, the week, the rating,
+// the year, and the four numbers that say whether practice is working. One
+// dark surface, like the card: sections divided by hairlines and named in
+// small capitals, no boxes in boxes. Everything arrives in a short
+// choreography (the ring sweeps, the bars grow one after another, the rating
+// line draws itself, the year ripples in, the numbers count up); after that
+// only the living parts move (the streak's flame, the pulses), and those
+// repaint on their own.
 
 type edgeDash struct{}
 
 const (
 	dashW     = 560
-	dashP     = 16 // inner padding
-	dashHead  = 58
-	dashCur   = 38 // the problem in progress, when there is one
-	dashMid   = 104
+	dashP     = 20 // inner margin
+	dashHead  = 56
+	dashCur   = 34 // the problem in progress, when there is one
+	dashMid   = 96
 	dashHeat  = 92
-	dashTiles = 62
-	dashGap   = 8
+	dashTiles = 46
+	dashDiv   = 9 // the space and hairline between sections
 	dashEnter = 1700 * time.Millisecond // the whole entrance
 )
 
@@ -36,12 +38,12 @@ func (edgeDash) Size(u *UI) (float64, float64) {
 	if st == nil {
 		return dashW, 96
 	}
-	h := dashHead + dashGap + dashMid + dashGap + dashHeat + dashGap + dashTiles + dashP
+	h := dashHead + dashDiv + dashMid + dashDiv + dashHeat + dashDiv + dashTiles + 4
 	if st.Current != nil {
-		h += dashCur + dashGap
+		h += dashCur + dashDiv
 	}
 	if len(st.Health) > 0 {
-		h += 20
+		h += 22
 	}
 	return dashW, float64(h)
 }
@@ -49,6 +51,11 @@ func (edgeDash) Size(u *UI) (float64, float64) {
 // phase is an entrance's progress: 0 before delay, eased to 1 over dur.
 func phase(age, delay, dur time.Duration) float64 {
 	return easeOut(float64(age-delay) / float64(dur))
+}
+
+// dashDivider: a hairline between sections, faded in with the entrance.
+func dashDivider(u *UI, x, w, y float32, k float64) {
+	u.dc.roundRect(x+dashP, y+dashDiv/2, w-2*dashP, 1, 0.5, alpha(u.pal.hair(), k))
 }
 
 func (d edgeDash) Draw(u *UI, x, w float32, age time.Duration) bool {
@@ -59,20 +66,29 @@ func (d edgeDash) Draw(u *UI, x, w float32, age time.Duration) bool {
 	}
 	y := float32(0)
 	d.header(u, st, x, w, age)
-	y += dashHead + dashGap
+	y += dashHead
 	if st.Current != nil {
+		dashDivider(u, x, w, y, phase(age, 80, 400*time.Millisecond))
+		y += dashDiv
 		d.current(u, st, x, w, y, age)
-		y += dashCur + dashGap
+		y += dashCur
 	}
+	dashDivider(u, x, w, y, phase(age, 120, 400*time.Millisecond))
+	y += dashDiv
 	inner := w - 2*dashP
-	lw := (inner - dashGap) * 0.42
+	lw := (inner - 33) * 0.42
 	d.week(u, st, x+dashP, y, lw, age)
-	d.rating(u, st, x+dashP+lw+dashGap, y, inner-lw-dashGap, age)
-	y += dashMid + dashGap
+	u.dc.roundRect(x+dashP+lw+16, y+4, 1, dashMid-8, 0.5, alpha(u.pal.hair(), phase(age, 200, 400*time.Millisecond)))
+	d.rating(u, st, x+dashP+lw+33, y, inner-lw-33, age)
+	y += dashMid
+	dashDivider(u, x, w, y, phase(age, 300, 400*time.Millisecond))
+	y += dashDiv
 	d.year(u, st, x+dashP, y, inner, age)
-	y += dashHeat + dashGap
+	y += dashHeat
+	dashDivider(u, x, w, y, phase(age, 700, 400*time.Millisecond))
+	y += dashDiv
 	d.tiles(u, st, x+dashP, y, inner, age)
-	y += dashTiles + 6
+	y += dashTiles + 4
 	if len(st.Health) > 0 {
 		h := st.Health[0]
 		u.dc.icon("warning", x+dashP+6, y+9, 11, u.pal.red)
@@ -88,11 +104,19 @@ func (edgeDash) waiting(u *UI, x, w float32) {
 	u.dc.text(fCaption(), "systemctl --user status edge   ·   edge stats", x+dashP, 74, p.faint)
 }
 
+// ringArc strokes an arc with round ends: progress rings.
+func ringArc(c *canvas, cx, cy, r, w float32, a0, a1 float64, col color.NRGBA) {
+	c.arc(cx, cy, r, w, float32(a0), float32(a1), col)
+	for _, a := range []float64{a0, a1} {
+		c.circle(cx+r*float32(math.Cos(a)), cy+r*float32(math.Sin(a)), w/2, col)
+	}
+}
+
 // ---- the day ----
 
 func (edgeDash) header(u *UI, st *EdgeStats, x, w float32, age time.Duration) {
 	p, t := u.pal, st.Today
-	cx, cy, r := x+dashP+20, float32(31), float32(17)
+	cx, cy, r := x+dashP+18, float32(29), float32(16)
 	frac := 1.0
 	if t.Need > 0 {
 		frac = math.Min(1, float64(t.Got)/float64(t.Need))
@@ -101,18 +125,18 @@ func (edgeDash) header(u *UI, st *EdgeStats, x, w float32, age time.Duration) {
 	if t.Done {
 		ring = p.green
 	}
-	u.dc.arc(cx, cy, r, 4, 0, 2*math.Pi, alpha(p.fg, 0.08))
+	u.dc.arc(cx, cy, r, 3.5, 0, 2*math.Pi, alpha(p.fg, 0.08))
 	if sweep := frac * phase(age, 80, 900*time.Millisecond); sweep > 0.002 {
-		u.dc.arc(cx, cy, r, 4, -math.Pi/2, float32(-math.Pi/2+2*math.Pi*sweep), ring)
+		ringArc(u.dc, cx, cy, r, 3.5, -math.Pi/2, -math.Pi/2+2*math.Pi*sweep, ring)
 	}
 	n := fmt.Sprintf("%d/%d", t.Got, t.Need)
 	f := face(fSemiBold, 12)
 	u.dc.text(f, n, cx-measure(f, n)/2, cy+4.5, p.fg)
-	if st.Current != nil && !st.Current.Started.IsZero() { // working on it: the ring breathes
-		u.lives = append(u.lives, live{r: image.Rect(int(cx-r-9), int(cy-r-9), int(cx+r+10), int(cy+r+10)), draw: func(c *canvas, tt float64) {
-			k := math.Mod(tt/2.2, 1)
-			rr := r + 3 + 5*float32(k)
-			c.frame(cx-rr, cy-rr, 2*rr, 2*rr, rr, 1.2, alpha(ring, 0.45*(1-k)))
+	if st.Current != nil && !st.Current.Started.IsZero() { // working on it: the ring breathes on the island's beat
+		u.lives = append(u.lives, live{r: image.Rect(int(cx-r-10), int(cy-r-10), int(cx+r+11), int(cy+r+11)), draw: func(c *canvas, tt float64) {
+			k := math.Mod(tt/(2*beat), 1)
+			rr := r + 4 + 5*float32(easeOut(k))
+			c.frame(cx-rr, cy-rr, 2*rr, 2*rr, rr, 1.1, alpha(ring, 0.4*(1-k)*math.Min(1, k*6)))
 		}})
 	}
 
@@ -124,28 +148,36 @@ func (edgeDash) header(u *UI, st *EdgeStats, x, w float32, age time.Duration) {
 	case !t.Done && t.Need > t.Got:
 		head = fmt.Sprintf("%d to go today", t.Need-t.Got)
 	}
-	tx := cx + r + 14
-	u.dc.text(fTitle(), head, tx, 27, p.fg)
+	tx := cx + r + 16
+	u.dc.text(face(fSemiBold, 15), head, tx, 25, p.fg)
 	sub, subCol := gateWords(st), p.muted
 	if t.Gate == "closed" {
 		subCol = mix(p.yellow, p.fg, 0.35)
 	}
+	sx := tx
+	if t.Gate == "closed" { // a small padlock says it before the words do
+		u.dc.lock(sx, 33, 9, subCol)
+		sx += 14
+	}
 	if t.WorkSec > 0 {
 		sub += " · " + mins(time.Duration(t.WorkSec)*time.Second) + " focused"
 	}
-	u.dc.text(fCaption(), sub, tx, 44, subCol)
+	u.dc.text(fCaption(), sub, sx, 42, subCol)
 
-	// the streak, at the right: a flame and the count
+	// the streak, at the right: a living flame and the count
 	rx := x + w - dashP
-	big := face(fSemiBold, 22)
+	big := face(fSemiBold, 24)
 	num := fmt.Sprint(int(math.Round(float64(st.Streak.Current) * phase(age, 200, 700*time.Millisecond))))
 	nw := measure(big, num)
-	u.dc.text(big, num, rx-nw, 33, p.fg)
+	u.dc.text(big, num, rx-nw, 31, p.fg)
 	cap := fmt.Sprintf("day streak · best %d", st.Streak.Best)
 	cw := measure(fCaption(), cap)
-	u.dc.text(fCaption(), cap, rx-cw, 48, p.faint)
-	fx, fy := rx-nw-12, float32(28)
+	u.dc.text(fCaption(), cap, rx-cw, 46, p.faint)
+	fx, fy := rx-nw-13, float32(26)
 	hot := st.Streak.Current > 0
+	if hot { // the flame lights the island around it
+		u.cv.glowInside(image.Rect(int(fx-40), 4, int(fx+40), 60), fx, fy-4, 34, mix(p.yellow, p.red, 0.4), 0.12*phase(age, 200, 600*time.Millisecond))
+	}
 	u.lives = append(u.lives, live{r: image.Rect(int(fx-10), int(fy-17), int(fx+10), int(fy+10)), draw: func(c *canvas, tt float64) {
 		flame(c, fx, fy, 9, tt, hot, p)
 	}})
@@ -211,18 +243,42 @@ func (edgeDash) current(u *UI, st *EdgeStats, x, w float32, y float32, age time.
 	p, c := u.pal, st.Current
 	k := phase(age, 120, 500*time.Millisecond)
 	y += 6 * float32(1-k)
-	u.panel(x+dashP-4, y, w-2*dashP+8, dashCur, 12, alpha(p.yellow, 0.08*k))
-	kind := map[string]string{"new": "NEW", "resolve": "RE-SOLVE", "reentry": "AGAIN"}[c.Kind]
+	cy := y + dashCur/2
+	kind := map[string]string{"new": "New", "resolve": "Re-solve", "reentry": "Again"}[c.Kind]
 	if kind == "" {
-		kind = strings.ToUpper(c.Kind)
+		kind = c.Kind
 	}
-	cf := face(fSemiBold, 9.5)
-	kw := measure(cf, kind) + 12
-	cx := x + dashP + 6
-	u.dc.roundRect(cx, y+dashCur/2-8, kw, 16, 8, alpha(p.yellow, 0.18*k))
-	u.dc.text(cf, kind, cx+6, y+dashCur/2+3.5, alpha(p.yellow, k))
-	right := x + w - dashP - 4
-	// right: how long, and what the hints say
+	kw := eyebrowW(kind) + 14
+	cx := x + dashP
+	u.dc.roundRect(cx, cy-8, kw, 16, 8, alpha(p.yellow, 0.16*k))
+	u.dc.eyebrow(kind, cx+7, cy+3.5, alpha(p.yellow, k))
+	right := x + w - dashP
+	// the hint ladder: a dot a hint, used, ready, then the next one filling
+	// as its time comes
+	hx := right
+	next := 0.0
+	if c.NextHintSec > 0 {
+		next = math.Max(0.08, 1-float64(c.NextHintSec)/1800)
+	}
+	dots := c.HintsAllowed + map[bool]int{true: 1}[c.NextHintSec > 0]
+	dots = max(dots, c.Hints, 1)
+	for i := dots - 1; i >= 0; i-- {
+		dx := hx - 5
+		switch {
+		case i < c.Hints: // used
+			u.dc.circle(dx, cy, 3.5, alpha(p.muted, k))
+		case i < c.HintsAllowed: // ready to take
+			u.dc.circle(dx, cy, 3.5, alpha(p.yellow, k))
+		default: // coming: its ring fills as the wait runs down
+			u.dc.arc(dx, cy, 3, 1.1, 0, 2*math.Pi, alpha(p.fg, 0.18*k))
+			if next > 0 {
+				ringArc(u.dc, dx, cy, 3, 1.1, -math.Pi/2, -math.Pi/2+2*math.Pi*next, alpha(p.yellow, 0.8*k))
+			}
+		}
+		hx -= 12
+	}
+	u.dc.text(fCaption(), "hints", hx-measure(fCaption(), "hints")+2, cy+4, alpha(p.faint, k))
+	hx -= measure(fCaption(), "hints") + 12
 	var facts []string
 	if c.Started.IsZero() {
 		facts = append(facts, "not started")
@@ -233,22 +289,22 @@ func (edgeDash) current(u *UI, st *EdgeStats, x, w float32, y float32, age time.
 	case c.HintsAllowed > c.Hints:
 		facts = append(facts, "hint ready")
 	case c.NextHintSec > 0:
-		facts = append(facts, "hint in "+mins(time.Duration(c.NextHintSec)*time.Second))
+		facts = append(facts, "next in "+mins(time.Duration(c.NextHintSec)*time.Second))
 	}
 	if c.Fails > 0 {
 		facts = append(facts, plural(c.Fails, "fail"))
 	}
 	ft := strings.Join(facts, " · ")
 	fw := measure(fCaption(), ft)
-	u.dc.text(fCaption(), ft, right-fw, y+dashCur/2+4, alpha(p.muted, k))
+	u.dc.text(fCaption(), ft, hx-fw, cy+4, alpha(p.muted, k))
 	tx := cx + kw + 10
 	title := strings.TrimPrefix(c.ID, "cf:") + " · " + c.Title
 	if c.Source == "lc" {
 		title = c.Title
 	}
-	tw := u.dc.text(fBody(), ellipsize(fBody(), title, right-fw-60-tx), tx, y+dashCur/2+4.5, alpha(p.fg, k))
+	tw := u.dc.text(fBody(), ellipsize(fBody(), title, hx-fw-50-tx), tx, cy+4.5, alpha(p.fg, k))
 	if c.Rating > 0 {
-		u.dc.text(fCaption(), fmt.Sprint(c.Rating), tx+tw+8, y+dashCur/2+4, alpha(p.faint, k))
+		u.dc.text(fCaption(), fmt.Sprint(c.Rating), tx+tw+8, cy+4, alpha(p.faint, k))
 	}
 }
 
@@ -256,11 +312,10 @@ func (edgeDash) current(u *UI, st *EdgeStats, x, w float32, y float32, age time.
 
 func (edgeDash) week(u *UI, st *EdgeStats, x, y, w float32, age time.Duration) {
 	p := u.pal
-	u.panel(x-4, y, w+8, dashMid, 13, alpha(p.fg, 0.04))
-	u.dc.text(fCaption(), "This week", x+8, y+18, p.muted)
+	u.dc.eyebrow("This week", x, y+14, p.faint)
 	tot := fmt.Sprintf("%d/%d", st.Week.Credits, st.Week.Target)
-	f := face(fSemiBold, 11.5)
-	u.dc.text(f, tot, x+w-8-measure(f, tot), y+18, p.fg)
+	f := face(fSemiBold, 12)
+	u.dc.text(f, tot, x+w-measure(f, tot), y+14, p.fg)
 	days := st.Week.Days
 	if len(days) == 0 {
 		return
@@ -269,12 +324,12 @@ func (edgeDash) week(u *UI, st *EdgeStats, x, y, w float32, age time.Duration) {
 	for _, d := range days {
 		top = max(top, d.Credits, d.Need)
 	}
-	slot := (w - 16) / float32(len(days))
-	base, maxH := y+dashMid-24, float32(dashMid-24-30)
+	slot := w / float32(len(days))
+	base, maxH := y+dashMid-22, float32(dashMid-22-28)
 	today := st.Today.Date
 	future := false
 	for i, d := range days {
-		bx := x + 8 + float32(i)*slot + slot/2
+		bx := x + float32(i)*slot + slot/2
 		bw := min(slot*0.46, 16)
 		isToday := d.Date == today
 		k := float32(phase(age, time.Duration(150+70*i)*time.Millisecond, 650*time.Millisecond))
@@ -292,6 +347,13 @@ func (edgeDash) week(u *UI, st *EdgeStats, x, y, w float32, age time.Duration) {
 				u.dc.frame(bx-bw/2, base-needH, bw, needH, bw/2.6, 1.2, alpha(p.blue, 0.55*float64(k)))
 			case h > 0.5:
 				u.dc.roundRect(bx-bw/2, base-max(h, bw*0.5), bw, max(h, bw*0.5), bw/2.6, col)
+				if isToday && !d.Met { // today's bar breathes until it's met
+					bh := max(h, bw*0.5)
+					u.lives = append(u.lives, live{r: image.Rect(int(bx-bw/2)-3, int(base-bh)-3, int(bx+bw/2)+4, int(base)+3), draw: func(c *canvas, t float64) {
+						q := 0.5 + 0.5*math.Sin(t*2*math.Pi/(2*beat))
+						c.frame(bx-bw/2-1.5, base-bh-1.5, bw+3, bh+3, bw/2.6+1.5, 1, alpha(col, 0.15+0.3*q))
+					}})
+				}
 			}
 		}
 		lbl := []string{"M", "T", "W", "T", "F", "S", "S"}[i%7]
@@ -311,7 +373,6 @@ func (edgeDash) week(u *UI, st *EdgeStats, x, y, w float32, age time.Duration) {
 
 func (edgeDash) rating(u *UI, st *EdgeStats, x, y, w float32, age time.Duration) {
 	p := u.pal
-	u.panel(x-4, y, w+8, dashMid, 13, alpha(p.fg, 0.04))
 	name, src := "Codeforces", "cf"
 	s, ok := st.Sources["cf"]
 	if !ok || (s.Rating == 0 && len(s.RatingHistory) == 0) {
@@ -320,24 +381,24 @@ func (edgeDash) rating(u *UI, st *EdgeStats, x, y, w float32, age time.Duration)
 		}
 	}
 	_ = src
-	u.dc.text(fCaption(), name, x+8, y+18, p.muted)
+	u.dc.eyebrow(name, x, y+14, p.faint)
 	h := s.RatingHistory
-	rx := x + w - 8
+	rx := x + w
 	if s.Rating > 0 {
-		f := face(fSemiBold, 11.5)
+		f := face(fSemiBold, 12)
 		r := fmt.Sprint(int(math.Round(float64(s.Rating) * phase(age, 250, 900*time.Millisecond))))
 		rw := measure(f, r)
-		u.dc.text(f, r, rx-rw, y+18, p.fg)
+		u.dc.text(f, r, rx-rw, y+14, p.fg)
 		if n := len(h); n >= 2 {
 			dlt := h[n-1].Rating - h[n-2].Rating
 			ds, dc := fmt.Sprintf("+%d", dlt), p.green
 			if dlt < 0 {
 				ds, dc = fmt.Sprintf("−%d", -dlt), p.red
 			}
-			u.dc.text(fCaption(), ds, rx-rw-6-measure(fCaption(), ds), y+18, alpha(dc, phase(age, 900, 400*time.Millisecond)))
+			u.dc.text(fCaption(), ds, rx-rw-6-measure(fCaption(), ds), y+14, alpha(dc, phase(age, 900, 400*time.Millisecond)))
 		}
 	}
-	gx, gy, gw, gh := x+8, y+30, w-16, float32(dashMid-30-12)
+	gx, gy, gw, gh := x, y+26, w, float32(dashMid-26-8)
 	if len(h) < 2 {
 		msg := "No rated contests yet"
 		if len(h) == 1 {
@@ -369,8 +430,26 @@ func (edgeDash) rating(u *UI, st *EdgeStats, x, y, w float32, age time.Duration)
 	for i, r := range h {
 		pts[i] = pt{gx + gw*float32(i)/float32(len(h)-1), yOf(r.Rating)}
 	}
-	// the line draws itself from the first contest to the last
+	// the line draws itself from the first contest to the last, a soft
+	// fill rising under it
 	reveal := float32(phase(age, 350, 1100*time.Millisecond)) * float32(len(pts)-1)
+	if fk := phase(age, 700, 700*time.Millisecond); fk > 0 {
+		area := append([]pt{{pts[0].x, gy + gh}}, pts...)
+		area = append(area, pt{pts[len(pts)-1].x, gy + gh})
+		u.dc.poly(alpha(p.blue, 0.08*fk), area...)
+		for j := 1; j <= 3; j++ { // denser toward the line: a gradient in a few layers
+			up := make([]pt, 0, len(pts)+2)
+			sh := gh * float32(j) * 0.18
+			up = append(up, pt{pts[0].x, min(pts[0].y+sh, gy+gh)})
+			for _, q := range pts {
+				up = append(up, pt{q.x, q.y})
+			}
+			for i := len(pts) - 1; i >= 0; i-- {
+				up = append(up, pt{pts[i].x, min(pts[i].y+sh, gy+gh)})
+			}
+			u.dc.poly(alpha(p.blue, 0.035*fk), up...)
+		}
+	}
 	for i := 1; i < len(pts); i++ {
 		a, b := pts[i-1], pts[i]
 		seg := min(max(reveal-float32(i-1), 0), 1)
@@ -400,7 +479,6 @@ func (edgeDash) rating(u *UI, st *EdgeStats, x, y, w float32, age time.Duration)
 
 func (edgeDash) year(u *UI, st *EdgeStats, x, y, w float32, age time.Duration) {
 	p := u.pal
-	u.panel(x-4, y, w+8, dashHeat, 13, alpha(p.fg, 0.04))
 	cal := st.Calendar
 	met := 0
 	for _, d := range cal {
@@ -409,7 +487,7 @@ func (edgeDash) year(u *UI, st *EdgeStats, x, y, w float32, age time.Duration) {
 		}
 	}
 	// the caption: the year, or the day under the pointer
-	caption, capCol := "The last 12 months", p.muted
+	caption, capCol := "", p.muted
 	right := plural(met, "day") + " met"
 	hovered := -1
 	if strings.HasPrefix(u.hoverKey, "heat:") {
@@ -418,9 +496,13 @@ func (edgeDash) year(u *UI, st *EdgeStats, x, y, w float32, age time.Duration) {
 	if hovered >= 0 && hovered < len(cal) {
 		caption, capCol, right = dayWords(cal[hovered]), p.fg, ""
 	}
-	u.dc.text(fCaption(), caption, x+8, y+17, capCol)
+	if caption == "" {
+		u.dc.eyebrow("The last 12 months", x, y+14, p.faint)
+	} else { // the day under the pointer
+		u.dc.text(fCaption(), caption, x, y+14, capCol)
+	}
 	if right != "" {
-		u.dc.text(fCaption(), right, x+w-8-measure(fCaption(), right), y+17, p.faint)
+		u.dc.text(fCaption(), right, x+w-measure(fCaption(), right), y+14, p.faint)
 	}
 	if len(cal) == 0 {
 		return
@@ -433,10 +515,10 @@ func (edgeDash) year(u *UI, st *EdgeStats, x, y, w float32, age time.Duration) {
 	lastRow := (int(last.Weekday()) + 6) % 7
 	cols := (len(cal) - 1 - lastRow + 6) / 7 // whole weeks before this one
 	cols++
-	pitch := min(float32(9), (w-16)/float32(cols))
+	pitch := min(float32(8.8), w/float32(cols))
 	cell := pitch - 2
-	gx := x + 8 + (w-16-pitch*float32(cols))/2
-	gy := y + 26
+	gx := x + (w-pitch*float32(cols))/2
+	gy := y + 22
 	months := map[int]string{}
 	for i, d := range cal {
 		back := len(cal) - 1 - i // days before today
@@ -463,9 +545,9 @@ func (edgeDash) year(u *UI, st *EdgeStats, x, y, w float32, age time.Duration) {
 			months[col] = t.Format("Jan")
 		}
 	}
-	mf := face(fRegular, 9)
+	mf := fCaption()
 	for col, m := range months {
-		u.dc.text(mf, m, gx+float32(col)*pitch, gy+7*pitch+9, alpha(p.faint, phase(age, 700, 500*time.Millisecond)))
+		u.dc.text(mf, m, gx+float32(col)*pitch, gy+7*pitch+11, alpha(p.faint, phase(age, 700, 500*time.Millisecond)))
 	}
 }
 
@@ -556,19 +638,21 @@ func (edgeDash) tiles(u *UI, st *EdgeStats, x, y, w float32, age time.Duration) 
 	}
 	ts = append(ts, weak)
 
-	tw := (w - float32(len(ts)-1)*dashGap) / float32(len(ts))
+	tw := w / float32(len(ts)) // a row of four, hairlines between: numbers, not boxes
 	for i, tl := range ts {
-		tx := x + float32(i)*(tw+dashGap)
+		tx := x + float32(i)*tw
+		if i > 0 {
+			tx += 14
+			u.dc.roundRect(tx-14, y+2, 1, dashTiles-6, 0.5, alpha(p.hair(), phase(age, 900, 400*time.Millisecond)))
+		}
 		k := phase(age, time.Duration(900+90*i)*time.Millisecond, 600*time.Millisecond)
-		ty := y + 8*float32(1-k)
-		u.panel(tx-4, ty, tw+8, dashTiles, 12, alpha(p.fg, 0.04*k))
-		u.dc.roundRect(tx+6, ty+12, 3, 12, 1.5, alpha(tl.col, k))
-		u.dc.text(fCaption(), tl.label, tx+14, ty+22, alpha(p.muted, k))
+		ty := y + 6*float32(1-k)
+		u.dc.circle(tx+3, ty+8, 3, alpha(tl.col, k))
+		u.dc.eyebrow(tl.label, tx+11, ty+11.5, alpha(p.faint, k))
 		v := tl.format(tl.value * phase(age, time.Duration(950+90*i)*time.Millisecond, 800*time.Millisecond))
-		bf := face(fSemiBold, 15)
-		u.dc.text(bf, ellipsize(bf, v, tw-16), tx+8, ty+40, alpha(p.fg, k))
-		sf := face(fRegular, 9.5)
-		u.dc.text(sf, ellipsize(sf, tl.sub, tw-12), tx+8, ty+54, alpha(p.faint, k))
+		bf := face(fSemiBold, 17)
+		u.dc.text(bf, ellipsize(bf, v, tw-20), tx, ty+31, alpha(p.fg, k))
+		u.dc.text(fCaption(), ellipsize(fCaption(), tl.sub, tw-20), tx, ty+44, alpha(p.muted, k))
 	}
 }
 
