@@ -56,6 +56,7 @@ type Status struct {
 	Sessions    int     `json:"sessions"`
 	Pending     int     `json:"pending"`
 	Config      string  `json:"config"`
+	Plugins     []string `json:"plugins"` // running, with a word on each
 }
 
 func (a *app) status() Status {
@@ -68,6 +69,16 @@ func (a *app) status() Status {
 	}
 	if !mtime(ConfigPath()).IsZero() {
 		st.Config = ConfigPath()
+	}
+	for _, p := range a.allPlugins {
+		switch q := a.plugins[p.Name()]; {
+		case q == nil:
+			st.Plugins = append(st.Plugins, p.Name()+": off (its tool isn't installed, or the config turns it off)")
+		case p.Name() == "edge" && a.ui.edgeStats == nil:
+			st.Plugins = append(st.Plugins, "edge: on, waiting for edge's stats (is its daemon running?)")
+		default:
+			st.Plugins = append(st.Plugins, p.Name()+": on")
+		}
 	}
 	return st
 }

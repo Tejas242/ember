@@ -159,7 +159,8 @@ layer-rule {
 | Drag the song's progress line | Follows your pointer, even past the island's edge. The seek happens on release |
 | Scroll on the music row | Changes the player's volume |
 | Middle-click | Play / pause |
-| Right-click | Dismisses a moment or the card |
+| Right-click | Dismisses a moment, the card or a dashboard |
+| Click edge's row in the card | Opens edge's dashboard. Leave it, click it or right-click to close |
 
 Commands, for keybindings or scripts:
 
@@ -171,6 +172,7 @@ ember play                              play / pause
 ember allow | deny | always             answer the oldest permission request
 ember terminal                          hand it back to Claude's own prompt
 ember answer opt:N | submit             answer the oldest question
+ember dash [name]                       open or close a plugin's dashboard (edge)
 ```
 
 For example, in niri:
@@ -180,8 +182,32 @@ binds {
     Mod+Shift+Y { spawn "ember" "allow"; }
     Mod+Shift+N { spawn "ember" "deny"; }
     Mod+Shift+C { spawn "ember" "toggle"; }
+    Mod+D       { spawn "ember" "dash" "edge"; }
 }
 ```
+
+## Plugins
+
+Some of what Ember shows belongs to tools not everyone has. Those parts are plugins: compiled in, but asleep
+(no watchers, no rows, no pages) until their tool is installed, and they wake within a minute of it appearing.
+`[plugins.<name>] enabled = "auto" | true | false` in the config decides otherwise, and `ember doctor` says which are on.
+
+**edge** ([edge](https://github.com/Tejas242/edge), a practice coach). Its day sits in the pill and the card, its
+notes and buttons on the island, and it has a dashboard (`ember dash edge`, or click its row in the card):
+
+- **the day**: a ring for today's tasks, whether Claude is locked, the streak's flame
+- **the problem in progress**: how long you've worked on it, when the next hint unlocks
+- **the week** as bars against each day's need, and your **Codeforces rating** over the band edge picks from
+- **the year** as a heatmap. Hover a day for what happened
+- **solo rate, retention, focus and your weakest focus topic**
+
+It reads edge's live stats file (`$XDG_RUNTIME_DIR/edge/stats.json`) and edge's pushes over the socket. It opens with
+a short choreography: the ring sweeps, the bars grow in turn, the rating line draws itself, the year ripples in and
+the numbers count up. After that only the flame and the pulses move.
+
+A tool reaches its plugin over the same socket with `{"type":"plugin","name":"<name>","payload":…}`. A new plugin
+implements `Plugin` in `island/plugin.go` (detect, start, stop, messages, an optional `Dashboard`) and is listed in
+`plugins()`.
 
 ## Config
 

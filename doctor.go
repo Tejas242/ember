@@ -88,6 +88,9 @@ func doctor() {
 		} else {
 			note("battery", "no battery reported by UPower")
 		}
+		for _, p := range st.Plugins {
+			note("plugin", p)
+		}
 		note("now", fmt.Sprintf("%d Claude session(s), %d request(s) waiting", st.Sessions, st.Pending))
 	}
 
