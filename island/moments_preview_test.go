@@ -54,7 +54,7 @@ func TestPreviewMoments(t *testing.T) {
 			u.sessions["b"] = &Session{ID: "b", Project: "kinvault", State: "wait"}
 		}},
 		{"done", func(u *UI) {
-			u.Moment(moment{key: "done", act: "claude", mood: moodHappy, text: "Done · kinvault", sub: "All 42 tests pass", until: clock.Add(time.Hour)})
+			u.Moment(moment{key: "done", act: "claude", mood: moodHappy, verb: "Done", text: "kinvault", sub: "All 42 tests pass", until: clock.Add(time.Hour)})
 		}},
 		{"music", func(u *UI) {
 			u.track = &Track{Player: "x", Title: "Veridis Quo", Artist: "Daft Punk", Playing: true, Length: 5 * time.Minute, Position: 2 * time.Minute, PosAt: clock}

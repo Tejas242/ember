@@ -69,8 +69,8 @@ func TestTwoSessionsHoldStill(t *testing.T) {
 		}
 		step(a, s, p, "f.go")
 		l, b := a.ui.mainLine(), a.ui.brief()
-		if l.text != "Clauding…" || l.dots != 2 {
-			t.Fatalf("after a step in %s: pill %q (%d dots)", s, l.text, l.dots)
+		if l.text != "ember" || l.badge != "+1" || !l.work {
+			t.Fatalf("after a step in %s: pill %q %q", s, l.text, l.badge)
 		}
 		if b.mode != "work" || b.s.ID != "b" || len(b.rows) != 2 || b.rows[1].ID != "a" {
 			t.Fatalf("after a step in %s: card about %s, %d rows", s, b.s.ID, len(b.rows))
@@ -124,8 +124,8 @@ func TestTwinSessionsHaveNames(t *testing.T) {
 	// the requests say which one is asking
 	id, _ := askAt(a, "PermissionRequest", "b", "ember", map[string]any{"tool_name": "Bash",
 		"tool_input": map[string]any{"command": "rm -rf build", "description": "Clean the build"}})
-	if c := u.cards[0]; c.ID != id || c.Meta != "ember 2" {
-		t.Fatalf("card %q meta %q", c.ID, c.Meta)
+	if c := u.cards[0]; c.ID != id || c.Eyebrow != "ember 2 wants to run" {
+		t.Fatalf("card %q eyebrow %q", c.ID, c.Eyebrow)
 	}
 	if l := u.mainLine(); l.text != "ember 2 needs you" {
 		t.Fatalf("pill %q", l.text)
@@ -258,13 +258,13 @@ func TestDoneMergesAcrossSessions(t *testing.T) {
 	clock = clock.Add(2 * time.Second)
 	hookAt(a, "Stop", "b", "ember", map[string]any{"last_assistant_message": "Fixed too."})
 	m := a.ui.moment
-	if m == nil || m.text != "Done · edge, ember" || m.sub != "2 sessions finished" || m.focus != "b" {
+	if m == nil || m.verb+" "+m.text != "Done edge, ember" || m.sub != "2 sessions finished" || m.focus != "b" {
 		t.Fatalf("%+v", m)
 	}
 	hookAt(a, "UserPromptSubmit", "a", "edge", map[string]any{})
 	clock = clock.Add(time.Second)
 	hookAt(a, "Stop", "a", "edge", map[string]any{"last_assistant_message": "Again."})
-	if m := a.ui.moment; m.text != "Done · edge, ember" || m.sub != "2 sessions finished" {
+	if m := a.ui.moment; m.verb+" "+m.text != "Done edge, ember" || m.sub != "2 sessions finished" {
 		t.Fatalf("a session finishing twice is named once: %q / %q", m.text, m.sub)
 	}
 }

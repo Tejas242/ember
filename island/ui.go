@@ -22,6 +22,7 @@ type Card struct {
 	ID       string
 	Kind     string // perm | ask | edge
 	Mood     mood
+	Eyebrow  string // who wants what, in small capitals: "kinvault wants to run"
 	Title    string
 	Meta     string
 	Body     string
@@ -92,6 +93,7 @@ type moment struct {
 	key   string
 	act   string
 	mood  mood
+	verb  string // a word before the text in the mood's colour: Done, Stopped
 	text  string
 	sub   string
 	until time.Time
@@ -108,6 +110,7 @@ type moment struct {
 	pct   float64     // its fill, 0..1
 	thumb *image.RGBA // a screenshot preview instead of the icon
 	osd   bool        // you just pressed a key: shows over everything but a card
+	at    time.Time   // when it appeared
 }
 
 type view int
@@ -174,9 +177,10 @@ type UI struct {
 	edge       *EdgeStatus // set by the edge plugin while it runs
 	edgeStats  *EdgeStats
 	second     time.Time
-	opened     map[string]bool      // rows you opened or closed in the card: s:<session>, a:<session>:<agent>
-	boardOpen  map[string]bool      // how the card last drew them
+	opened     map[string]bool      // agents you opened or closed in the card: a:<session>:<agent>
+	shownOpen  map[string]bool      // how the card last drew them (the room it had may have closed one)
 	allRows    bool                 // the card shows every session, one line each ("Show all"), until it closes
+	hero       string               // the session you made the card's hero, until it closes
 	dash       string               // the open dashboard's plugin, if any
 	dashAt     time.Time            // when it opened: its entrance plays from here
 	dashIn     bool                 // the pointer has been on it: leaving closes it
@@ -211,11 +215,13 @@ type UI struct {
 	meter       spring // a moment's level bar
 	meterKey    string
 	tweens      map[string]*tween
+	enterAt     map[string]time.Time // when each element of the current view began to arrive
 	rolls       map[string]*roll
 	frame       int     // full frames drawn: tweens step once per frame
 	dt          float64 // this frame's time step
 	tweening    bool    // a tween or roll is still moving
 	fadeK       float64 // how far the content has faded in (panels fade with it)
+	rowK        float64 // how far the element being drawn has arrived
 	lastFull    bool    // the last frame was a full repaint (for EMBER_DEBUG)
 	slideDir    float64 // pages slide sideways: -1 back, 1 forward
 	lastPage    string
@@ -261,9 +267,11 @@ func NewUI(w, h int, barH float32) *UI {
 		prev: image.NewRGBA(image.Rect(0, 0, w, h)), pal: loadPalette(), cfg: DefaultConfig(), sessions: map[string]*Session{}, dashboards: map[string]Dashboard{}, opened: map[string]bool{},
 		now: time.Now, dirty: true, base: image.NewRGBA(image.Rect(0, 0, w, h))}
 	u.dc = u.content
-	u.light = -1
+	u.light, u.rowK = -1, 1
+	u.shownOpen = map[string]bool{}
 	u.sliders = map[string]image.Rectangle{}
 	u.tweens, u.rolls, u.watching = map[string]*tween{}, map[string]*roll{}, map[string]bool{}
+	u.enterAt = map[string]time.Time{}
 	u.mind = newMind(u.now())
 	u.day = &Day{}
 	u.day.roll(u.now())
@@ -344,6 +352,11 @@ func (u *UI) Moment(m moment) {
 	}
 	if u.moment == nil || u.moment.key != m.key {
 		u.mind.notice(u.now(), 0.6) // Ember looks at the news
+	}
+	if u.moment == nil || u.moment.key != m.key {
+		m.at = u.now()
+	} else {
+		m.at = u.moment.at
 	}
 	u.moment = &m
 	if m.mood == moodHappy {
@@ -513,17 +526,20 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 	v := u.currentView()
 	key := u.viewKey(v)
 	if v != vExpanded {
-		u.allRows = false // "Show all" lasts as long as the card's open
+		u.allRows, u.hero = false, "" // "Show all" and the hero you picked last as long as the card's open
 	}
 	if v != u.lastView || key != u.lastKey {
 		u.transition(v, key, now)
 		// keep what's on screen to cross-fade it out while the new view grows in
 		copy(u.prev.Pix, u.content.img.Pix)
 		u.prevAlive = !u.trAt.IsZero()
+		if v != u.lastView {
+			u.resetMotion()
+		}
 		u.lastView, u.lastKey, u.trAt, u.dirty = v, key, now, true
 	}
 	if v == vCompact { // a chip that counts minutes changes without any event
-		if c := u.compactLine().chip; c != u.lastChip {
+		if c := u.compactLine().tick(); c != u.lastChip {
 			u.lastChip, u.dirty = c, true
 		}
 	}
@@ -609,10 +625,10 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 				u.tweening = true
 			}
 		}
-		if u.prevAlive && p < 1 {
-			composite(u.cv, u.prev, u.shape, 1-math.Min(1, p/0.45), 0)
+		if u.prevAlive && p < 1 { // the old view leaves quickly, drifting up
+			composite(u.cv, u.prev, u.shape, 1-math.Min(1, p/0.45), 0, -int(math.Round(3*p)))
 		}
-		composite(u.cv, u.content.img, u.shape, p, 0)
+		composite(u.cv, u.content.img, u.shape, p, 0, 0)
 		copy(u.base.Pix, u.cv.img.Pix)
 		u.stepEmber(dt, now)
 		b := u.shape.bounds().Union(u.bubble).Inset(-10)
@@ -688,9 +704,9 @@ func (u *UI) liveRects() []image.Rectangle {
 func div255(x uint32) uint32 { return (x + 1 + x>>8) >> 8 }
 
 // composite draws src (premultiplied) over dst at strength k, only inside n,
-// shifted dx pixels sideways. Integer arithmetic throughout; transparent
+// shifted dx pixels sideways and dy down. Integer arithmetic throughout; transparent
 // source pixels (most of them) cost one load.
-func composite(dst *canvas, src *image.RGBA, n notch, k float64, dx int) {
+func composite(dst *canvas, src *image.RGBA, n notch, k float64, dx, dy int) {
 	if k <= 0.003 {
 		return
 	}
@@ -702,8 +718,12 @@ func composite(dst *canvas, src *image.RGBA, n notch, k float64, dx int) {
 			continue
 		}
 		x0, x1 := max(int(math.Ceil(float64(lx))), 0), min(int(rx), b.Max.X)
-		o := py * dst.img.Stride
-		s, d := words(src.Pix[o:o+dst.img.Stride]), words(dst.img.Pix[o:o+dst.img.Stride])
+		sy := py - dy
+		if sy < 0 || sy >= b.Max.Y {
+			continue
+		}
+		o, so := py*dst.img.Stride, sy*dst.img.Stride
+		s, d := words(src.Pix[so:so+dst.img.Stride]), words(dst.img.Pix[o:o+dst.img.Stride])
 		for px := x0; px < x1; px++ {
 			sx := px - dx
 			if sx < 0 || sx >= b.Max.X {

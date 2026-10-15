@@ -627,7 +627,7 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 			a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"fail", a.ui.name(s), s.ID})
 			break
 		}
-		a.ui.Moment(moment{key: "fail:" + s.ID, act: "claude", mood: moodError, text: "Stopped · " + a.ui.name(s),
+		a.ui.Moment(moment{key: "fail:" + s.ID, act: "claude", mood: moodError, verb: "Stopped", text: a.ui.name(s),
 			sub: strings.ReplaceAll(msg, "_", " "), until: now.Add(8 * time.Second), focus: s.ID})
 	case "AskUserQuestion":
 		if answer != nil {
@@ -699,7 +699,7 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 // two merge into one ("Done · edge, ember") rather than one hiding the other.
 func (a *app) done(s *Session, summary string, now time.Time) {
 	name := a.ui.name(s)
-	m := moment{key: "done:" + s.ID, act: "claude", mood: moodHappy, text: "Done · " + name,
+	m := moment{key: "done:" + s.ID, act: "claude", mood: moodHappy, verb: "Done", text: name,
 		sub: summary, until: now.Add(a.cfg.DoneFor), focus: s.ID, many: []string{name}}
 	if cur := a.ui.moment; cur != nil && strings.HasPrefix(cur.key, "done") && now.Before(cur.until) {
 		names := cur.many
@@ -708,7 +708,7 @@ func (a *app) done(s *Session, summary string, now time.Time) {
 		}
 		if len(names) > 1 {
 			m.key, m.many = "done:many", names
-			m.text = "Done · " + strings.Join(names, ", ")
+			m.text = strings.Join(names, ", ")
 			m.sub = fmt.Sprintf("%d sessions finished", len(names))
 			m.until = now.Add(a.cfg.DoneFor + time.Second)
 		}
@@ -772,7 +772,7 @@ func (a *app) permission(s *Session, in hookInput, tin map[string]any, answer ch
 		return ""
 	}
 	c := &Card{ID: "perm:" + s.ID + ":" + fmt.Sprint(time.Now().UnixNano()), Kind: "perm", Mood: moodWait,
-		Meta: a.ui.name(s), Priority: 10, Footer: "In terminal", Expires: a.ui.now().Add(a.cfg.Wait)}
+		Eyebrow: a.ui.name(s) + " wants to " + wants(in.Tool), Priority: 10, Footer: "In terminal", Expires: a.ui.now().Add(a.cfg.Wait)}
 	switch in.Tool {
 	case "Bash": // Claude says what it wants in words: that's the title; the command is the detail
 		c.Title, c.Code, c.Shell = str("description"), str("command"), true
@@ -828,6 +828,27 @@ func (a *app) permission(s *Session, in hookInput, tin map[string]any, answer ch
 	return c.ID
 }
 
+// wants is what a tool asks to do, for a request's eyebrow.
+func wants(tool string) string {
+	switch tool {
+	case "Bash":
+		return "run"
+	case "Edit", "MultiEdit", "NotebookEdit":
+		return "edit"
+	case "Write":
+		return "create"
+	case "WebFetch":
+		return "fetch"
+	case "WebSearch":
+		return "search"
+	}
+	if strings.HasPrefix(tool, "mcp__") { // mcp__server__tool: the tool's own name
+		parts := strings.Split(tool, "__")
+		tool = strings.ReplaceAll(parts[len(parts)-1], "_", " ")
+	}
+	return "use " + tool
+}
+
 // where is a file's folder, short: "~/Gems/edge/store".
 func where(p string) string {
 	if p == "" {
@@ -869,10 +890,10 @@ func (a *app) ask(s *Session, in hookInput, tin map[string]any, answer chan<- js
 	var show func(i int)
 	show = func(i int) {
 		q := qs[i]
-		c := &Card{ID: id, Kind: "ask", Mood: moodWait, Title: q.Question, Meta: a.ui.name(s), Priority: 9,
+		c := &Card{ID: id, Kind: "ask", Mood: moodWait, Title: q.Question, Eyebrow: a.ui.name(s) + " asks", Priority: 9,
 			Multi: q.MultiSelect, Footer: "In terminal", Expires: deadline}
 		if len(qs) > 1 {
-			c.Meta = fmt.Sprintf("%s · %d/%d", a.ui.name(s), i+1, len(qs))
+			c.Meta = fmt.Sprintf("%d of %d", i+1, len(qs))
 		}
 		for _, o := range q.Options {
 			if len(c.Options) == 4 {

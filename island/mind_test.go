@@ -145,7 +145,7 @@ func TestDoneNotesMerge(t *testing.T) {
 	a := &app{ui: u, cfg: DefaultConfig()}
 	a.done(&Session{ID: "1", Project: "edge"}, "ok", clock)
 	a.done(&Session{ID: "2", Project: "ember"}, "ok", clock.Add(time.Second))
-	if u.moment.text != "Done · edge, ember" || u.moment.sub != "2 sessions finished" {
+	if u.moment.verb+" "+u.moment.text != "Done edge, ember" || u.moment.sub != "2 sessions finished" {
 		t.Fatalf("got %q / %q", u.moment.text, u.moment.sub)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/draw"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -14,11 +15,6 @@ import (
 
 const maxComp = 400
 
-var (
-	fText  = func() fontFace { return face(fMedium, 12.5) }
-	fSmall = func() fontFace { return face(fRegular, 11.5) }
-	fValue = func() fontFace { return face(fSemiBold, 12) }
-)
 
 func short(task string) string {
 	if i := strings.Index(task, " · "); i > 0 {
@@ -52,22 +48,30 @@ func diffText(p, m int) string {
 
 // ---- compact: the pill ----
 
+// line is what the pill says. It changes when the situation changes
+// (working → done), not with every tool call: the card has the detail.
 type line struct {
-	key         string
-	mood        mood
-	text, sub   string
-	textCol     color.NRGBA
-	plus, minus int
-	more        int
-	chip        string
-	chipCol     color.NRGBA
-	lock        bool
-	music       bool
-	work        bool    // Claude is working: the label shimmers
-	trail       string  // the second activity, as a satellite at the pill's end
-	dots        int     // working sessions, one breathing dot each
-	m           *moment // a system moment: icon, meter, value, battery
+	key      string
+	mood     mood
+	verb     string // a word before the label in the mood's colour: Done, Stopped
+	text     string
+	sub      string // secondary words after the label
+	textCol  color.NRGBA
+	badge    string // "+2": more sessions than the one named
+	timer    string // how long it has been at it, at the right end
+	agents   int    // subagents running: an amber spark and a count
+	chip     string // a quiet value at the right end (edge's minutes, its task)
+	chipCol  color.NRGBA
+	lock     bool
+	music    bool
+	work     bool    // Claude is working: the label shimmers
+	halo     bool    // waiting on you: a blue light breathes around the pill
+	trail    string  // the second activity, as a satellite at the pill's end
+	m        *moment // a system moment: icon, meter, value, battery
 }
+
+// tick is the part of the line that changes with time alone.
+func (l line) tick() string { return l.timer + "|" + l.chip }
 
 const meterW = 86
 
@@ -86,7 +90,7 @@ func (u *UI) mainLine() line {
 	switch u.primary() {
 	case "moment":
 		m := u.moment
-		l := line{key: "moment:" + m.key, mood: m.mood, text: m.text, sub: m.sub, textCol: p.fg}
+		l := line{key: "moment:" + m.key, mood: m.mood, verb: m.verb, text: m.text, sub: m.sub, textCol: p.fg}
 		if m.icon != "" || m.thumb != nil {
 			l.m = m
 		}
@@ -95,45 +99,49 @@ func (u *UI) mainLine() line {
 		if len(ss) == 0 {
 			break
 		}
-		// the pill never says what one session is doing: with several going it
-		// would have to pick. It says Claude is at it, one dot a session; the
-		// card says the rest. Only a session waiting on you is named.
-		var waiting []*Session
-		working := 0
+		// the pill names a session and says how long it has been at it; what
+		// it's doing step by step is the card's job
+		var waiting, working []*Session
+		agents := 0
 		for _, x := range ss {
+			agents += x.running()
 			switch {
 			case x.State == "wait":
 				waiting = append(waiting, x)
 			case x.status() == "work":
-				working++
+				working = append(working, x)
 			}
 		}
 		switch {
 		case len(waiting) == 1:
-			return line{key: "claude:wait", mood: moodWait, text: u.name(waiting[0]) + " needs you", textCol: p.blue, dots: working}
+			return line{key: "claude:wait", mood: moodWait, text: u.name(waiting[0]) + " needs you", textCol: p.blue, halo: true}
 		case len(waiting) > 1:
-			return line{key: "claude:wait", mood: moodWait, text: fmt.Sprintf("%d sessions need you", len(waiting)), textCol: p.blue, dots: working}
-		case working > 0:
-			return line{key: "claude:work", mood: moodWork, text: "Clauding…", textCol: p.fg, work: true, dots: working}
+			return line{key: "claude:wait", mood: moodWait, text: fmt.Sprintf("%d sessions need you", len(waiting)), textCol: p.blue, halo: true}
+		case len(working) > 0:
+			s := working[0]
+			l := line{key: "claude:work", mood: moodWork, text: u.name(s), textCol: p.fg, work: true, agents: agents}
+			if len(working) > 1 {
+				l.badge = fmt.Sprintf("+%d", len(working)-1)
+			}
+			if d := now.Sub(s.Since); !s.Since.IsZero() && d >= time.Minute {
+				l.timer = mins(d)
+			}
+			return l
 		}
 		return line{key: "claude:idle", mood: moodIdle, text: fmt.Sprintf("Claude · %d idle", len(ss)), textCol: p.muted}
 	case "music":
 		if t := u.track; t != nil {
-			txt := t.Title
-			if t.Artist != "" {
-				txt += " · " + t.Artist
-			}
 			col := p.fg
 			if !t.Playing {
 				col = p.muted
 			}
-			return line{key: "music", mood: moodIdle, text: txt, textCol: col, music: true}
+			return line{key: "music", mood: moodIdle, text: t.Title, sub: t.Artist, textCol: col, music: true}
 		}
 	case "edge":
 		if e := u.edge; e != nil {
 			if e.StartedMs > 0 && !e.Pending {
 				return line{key: "edge", mood: moodWork, text: short(e.Task), textCol: p.fg,
-					chip: mins(now.Sub(time.UnixMilli(e.StartedMs))), chipCol: p.green}
+					timer: mins(now.Sub(time.UnixMilli(e.StartedMs)))}
 			}
 			l := line{key: "edge", mood: moodNudge, text: fmt.Sprintf("Today %d/%d", e.Today, e.Need), textCol: p.fg, lock: e.Closed}
 			if e.Task != "" {
@@ -156,64 +164,208 @@ func agentsText(n int) string {
 	return fmt.Sprintf("%d agents", n)
 }
 
-// thumbW is how much wider than Ember's slot a screenshot preview is.
-func (l line) thumbW() float32 {
-	if l.m != nil && l.m.thumb != nil {
-		return float32(l.m.thumb.Rect.Dx()) - 15
-	}
-	return 0
-}
-
 func battW() float32 { return 9 * 1.9 }
 
-func (u *UI) compactWidth(l line) float64 {
-	w := 12 + 15 + 8 + float64(measure(fText(), l.text)) + float64(l.thumbW())
-	if m := l.m; m != nil {
-		if l.text == "" {
-			w -= 8
+// seg is one element of the pill: its room, the space before it, and how
+// to draw it with its left edge at x. Measuring and drawing share the list,
+// so the pill is always exactly as wide as what it shows.
+type seg struct {
+	w, gap float32
+	draw   func(x float32)
+}
+
+var (
+	fPill    = func() fontFace { return face(fMedium, 12.5) }
+	fPillSub = func() fontFace { return face(fRegular, 12) }
+	fPillVal = func() fontFace { return face(fSemiBold, 12) }
+	fTimer   = func() fontFace { return face(fMedium, 11.5) }
+	fBadge   = func() fontFace { return face(fSemiBold, 10) }
+)
+
+const (
+	pillEnd  = 10 // the pill's ends
+	leadW    = 16 // the leading glyph's slot
+	leadGap  = 8
+	maxSub   = 160 // secondary words, at most
+	minLabel = 40  // the label shrinks to this before the pill stops growing
+)
+
+// pillLayout lays out the pill for line l: the left group (lead, verb,
+// label, words, badge) and the right group (timer, values, satellite).
+func (u *UI) pillLayout(l line, h float32) (left, right []seg, w float32) {
+	p, now := u.pal, u.now()
+	cy := h / 2
+	base := cy + 4.5
+	m := l.m
+
+	// the lead: Ember, the cover, a moment's icon or a screenshot
+	leadSlot := float32(leadW)
+	if m != nil && m.thumb != nil {
+		leadSlot = float32(m.thumb.Rect.Dx())
+	}
+	left = append(left, seg{w: leadSlot, draw: func(x float32) {
+		switch {
+		case m != nil && m.thumb != nil:
+			th := m.thumb.Rect
+			ty := int(cy+0.5) - th.Dy()/2
+			draw.Draw(u.dc.img, th.Add(image.Pt(int(x), ty)), m.thumb, image.Point{}, draw.Over)
+			u.dc.frame(x, float32(ty), float32(th.Dx()), float32(th.Dy()), 3.5, 1, alpha(p.fg, 0.22))
+			u.spot = emberSpot{x: x + float32(th.Dx())/2, y: cy, s: 0, mood: moodIdle, show: true}
+		case m != nil:
+			u.dc.icon(m.icon, x+8, cy, 15, m.tint)
+			u.spot = emberSpot{x: x + 8, y: cy + 1, s: 0, mood: l.mood, show: true} // Ember tucks into the icon
+		case l.music && u.art != nil:
+			u.dc.drawArt(u.art.small, int(x-1), int(cy-9), 5, 1)
+			u.spot = emberSpot{x: x + 8, y: cy + 1, s: 0, mood: moodIdle, show: true} // Ember tucks into the cover
+		default:
+			u.spot = emberSpot{x: x + 8, y: cy + 1, s: 14, mood: l.mood, show: true}
 		}
-		if m.meter {
-			w += 8 + meterW
-		}
-		if m.right != "" {
-			w += 10 + float64(tabWidth(fValue(), m.right))
-		}
-		if m.batt {
-			w += 6 + float64(battW()) + 3
-		}
+	}})
+
+	// the right group, laid out first: it's fixed, the words take what's left
+	if l.timer != "" {
+		tw := tabWidth(fTimer(), l.timer)
+		right = append(right, seg{w: tw, gap: 8, draw: func(x float32) {
+			u.rollText(u.dc, "pill:timer", l.timer, fTimer(), x+tw, base, p.muted)
+		}})
 	}
-	if l.sub != "" {
-		w += 8 + math.Min(150, float64(measure(fSmall(), l.sub)))
-	}
-	if l.music {
-		w += 24
-	}
-	if l.plus > 0 || l.minus > 0 {
-		w += 7 + float64(tabWidth(face(fMedium, 12), diffText(l.plus, l.minus)))
-	}
-	if l.more > 0 {
-		w += 8 + float64(measure(fSmall(), fmt.Sprintf("+%d", l.more)))
-	}
-	if l.dots > 1 {
-		w += 8 + float64(dotsW(l.dots))
+	if l.agents > 0 {
+		t := fmt.Sprint(l.agents)
+		tw := measure(fBadge(), t)
+		right = append(right, seg{w: 12 + tw, gap: 10, draw: func(x float32) {
+			u.dc.icon("agent", x+5, cy, 10, p.yellow)
+			u.dc.text(fBadge(), t, x+12, base-0.5, p.yellow)
+		}})
 	}
 	if l.chip != "" {
-		w += 14 + float64(measure(fSmall(), l.chip))
+		cw := min(measure(fPillSub(), l.chip), 120)
+		right = append(right, seg{w: cw + 8, gap: 8, draw: func(x float32) {
+			u.dc.circle(x+1.5, cy, 1.5, p.faint)
+			u.dc.text(fPillSub(), ellipsize(fPillSub(), l.chip, cw), x+8, base, l.chipCol)
+		}})
 	}
 	if l.lock {
-		w += 15
+		right = append(right, seg{w: 11, gap: 8, draw: func(x float32) { u.dc.lock(x, cy-6, 11, p.yellow) }})
 	}
-	if u.casting {
-		w += 12
+	if m != nil && m.meter {
+		right = append(right, seg{w: meterW, gap: 10, draw: func(x float32) {
+			k := float32(math.Max(0, math.Min(1, u.meter.x)))
+			u.dc.roundRect(x, cy-2, meterW, 4, 2, alpha(p.fg, 0.14))
+			if k > 0 {
+				u.dc.roundRect(x, cy-2, max(meterW*k, 4), 4, 2, m.tint)
+			}
+		}})
+	}
+	if m != nil && m.right != "" { // the value rolls as it changes
+		vw := max(tabWidth(fPillVal(), m.right), tabWidth(fPillVal(), "100"))
+		if m.batt {
+			vw = tabWidth(fPillVal(), m.right)
+		}
+		right = append(right, seg{w: vw, gap: 10, draw: func(x float32) {
+			col := p.fg
+			if m.tint == p.muted {
+				col = p.muted
+			}
+			u.rollText(u.dc, "pill:value", m.right, fPillVal(), x+vw, base, col)
+		}})
+	}
+	if m != nil && m.batt {
+		bw := battW() + 3
+		right = append(right, seg{w: bw, gap: 6, draw: func(x float32) {
+			u.dc.battery(x, cy, 9, float32(m.pct), alpha(p.fg, 0.45), m.tint)
+		}})
+	}
+	if u.casting { // someone can see your screen
+		right = append(right, seg{w: 7, gap: 8, draw: func(x float32) { u.dc.circle(x+3.5, cy, 3.2, mix(p.red, p.yellow, 0.35)) }})
+	}
+	if l.music && u.track != nil {
+		right = append(right, seg{w: 14, gap: 10, draw: func(x float32) {
+			u.eqLive(x, cy+5, 10, u.accent(p.green), u.track.Playing)
+		}})
 	}
 	if l.trail != "" {
-		w += trailW
+		right = append(right, seg{w: trailW - 8, gap: 8, draw: func(x float32) {
+			u.dc.roundRect(x, cy-6, 1, 12, 0.5, alpha(p.fg, 0.14))
+			u.drawTrail(l.trail, x+8, cy, h)
+		}})
 	}
-	lo := 70.0
-	if l.m != nil && l.m.meter {
+	slices.Reverse(right) // laid out from the right end inwards
+	fixed := float32(2 * pillEnd)
+	for _, s := range append(append([]seg{}, left...), right...) {
+		fixed += s.w + s.gap
+	}
+
+	// the words: verb, label, secondary words, badge
+	var verbW, badgeW float32
+	if l.verb != "" {
+		verbW = measure(fPillVal(), l.verb) + 5
+	}
+	if l.badge != "" {
+		badgeW = measure(fBadge(), l.badge) + 10 + 6
+	}
+	labelW := measure(fPill(), l.text)
+	subW := float32(0)
+	if l.sub != "" {
+		subW = min(maxSub, measure(fPillSub(), l.sub)) + 8
+	}
+	gap := float32(leadGap)
+	if l.text == "" && l.verb == "" {
+		gap, labelW = 0, 0
+	}
+	room := float32(maxComp) - fixed - gap - verbW - badgeW
+	if labelW+subW > room { // too long: the secondary words give way first, then the label
+		subW = max(0, room-labelW)
+		if subW < 40 {
+			subW = 0
+		}
+		labelW = max(minLabel, min(labelW, room-subW))
+	}
+	words := verbW + labelW + subW + badgeW
+	if words > 0 {
+		slideKey := l.key
+		left = append(left, seg{w: words, gap: gap, draw: func(x float32) {
+			if l.verb != "" {
+				x += u.dc.text(fPillVal(), l.verb, x, base, p.moodColor(l.mood)) + 5
+			}
+			text := ellipsize(fPill(), l.text, labelW)
+			// a label that changes in place slides: the old one up and out, the new one in from below
+			if slideKey == u.lineKey && l.text != u.lineText && u.lineText != "" {
+				u.slideOld, u.slideAt = u.lineText, now
+			}
+			u.lineKey, u.lineText = slideKey, l.text
+			if k := float64(now.Sub(u.slideAt)) / float64(slideTime); k < 1 {
+				e := float32(easeOut(k))
+				u.dc.text(fPill(), ellipsize(fPill(), u.slideOld, labelW), x, base-9*e, alpha(l.textCol, 1-float64(e)))
+				u.dc.text(fPill(), text, x, base+9*(1-e), alpha(l.textCol, float64(e)))
+			} else if l.work { // lit from inside while Claude works
+				u.dc.text(fPill(), text, x, base, mix(l.textCol, p.bg, 0.18))
+				u.shimmerLive(fPill(), text, x, base, mix(l.textCol, colorWhite, 0.6))
+			} else {
+				u.dc.text(fPill(), text, x, base, l.textCol)
+			}
+			x += measure(fPill(), text)
+			if subW > 0 {
+				u.dc.text(fPillSub(), ellipsize(fPillSub(), l.sub, subW-8), x+8, base, p.muted)
+				x += subW
+			}
+			if l.badge != "" { // more sessions than the one named
+				bw := badgeW - 6
+				u.dc.roundRect(x+6, cy-7, bw, 14, 7, alpha(p.fg, 0.09))
+				u.dc.text(fBadge(), l.badge, x+6+5, cy+3.5, p.muted)
+			}
+		}})
+	}
+	w = fixed + gap + words
+	lo := float32(70)
+	if m != nil && m.meter {
 		lo = 168 // the bar shouldn't jump as the number changes
 	}
-	return math.Min(maxComp, math.Max(lo, w+12))
+	return left, right, min(maxComp, max(lo, w))
+}
+
+func (u *UI) compactWidth(l line) float64 {
+	_, _, w := u.pillLayout(l, u.BarH)
+	return float64(w)
 }
 
 func (u *UI) measure(v view) (float64, float64) {
@@ -232,148 +384,71 @@ func (u *UI) measure(v view) (float64, float64) {
 func (u *UI) drawCompact(x, w, h float32) {
 	p, now := u.pal, u.now()
 	l := u.compactLine()
-	cy := h / 2
-	ix := x + 12
-	// a label that changes in place slides: the old one up and out, the new one in from below
-	if l.key == u.lineKey && l.text != u.lineText && u.lineText != "" {
-		u.slideOld, u.slideAt = u.lineText, now
+	left, right, _ := u.pillLayout(l, h)
+	lx := x + pillEnd
+	for _, s := range left {
+		lx += s.gap
+		s.draw(lx)
+		lx += s.w
 	}
-	u.lineKey, u.lineText = l.key, l.text
+	rx := x + w - pillEnd
+	for _, s := range right {
+		rx -= s.w
+		s.draw(rx)
+		rx -= s.gap
+	}
+	if l.music && u.track != nil { // the song, as a hairline along the pill's rim
+		u.progressLive(x+16, h-2.5, w-32, 1.5, u.accent(p.fg), 0)
+	}
+	if l.halo {
+		u.haloLive(p.blue)
+	}
+	if m := u.moment; m != nil && l.m == nil && m.mood == moodHappy && now.Sub(m.at) < sweepTime {
+		u.sweepLive(m.at, p.green)
+	}
+}
 
-	m := l.m
-	switch {
-	case m != nil && m.thumb != nil:
-		th := m.thumb.Rect
-		ty := int(cy+0.5) - th.Dy()/2
-		draw.Draw(u.dc.img, th.Add(image.Pt(int(ix-1), ty)), m.thumb, image.Point{}, draw.Over)
-		u.dc.frame(ix-1, float32(ty), float32(th.Dx()), float32(th.Dy()), 3.5, 1, alpha(p.fg, 0.22))
-		u.spot = emberSpot{x: ix + float32(th.Dx())/2, y: cy, s: 0, mood: moodIdle, show: true}
-	case m != nil:
-		u.dc.icon(m.icon, ix+7, cy, 15, m.tint)
-		u.spot = emberSpot{x: ix + 7, y: cy + 1, s: 0, mood: l.mood, show: true} // Ember tucks into the icon
-	case l.music && u.art != nil:
-		u.dc.drawArt(u.art.small, int(ix-1), int(cy-9), 5, 1)
-		u.spot = emberSpot{x: ix + 8, y: cy + 1, s: 0, mood: moodIdle, show: true} // Ember tucks into the cover
-	default:
-		u.spot = emberSpot{x: ix + 7, y: cy + 1, s: 14, mood: l.mood, show: true}
-	}
-	tx := ix + 22 + l.thumbW()
-	base := cy + 4.5
+const sweepTime = 900 * time.Millisecond
 
-	// the right end, laid out first: the satellite, privacy dot, battery,
-	// value, meter, lock, chip
-	rx := x + w - 12
-	if l.trail != "" {
-		u.drawTrail(l.trail, rx-18, cy, h)
-		u.dc.roundRect(rx-18-7-1, cy-6, 1, 12, 0.5, alpha(p.fg, 0.14))
-		rx -= trailW
-	}
-	if u.casting { // someone can see your screen
-		u.dc.circle(rx-3, cy, 3.2, mix(p.red, p.yellow, 0.35))
-		rx -= 12
-	}
-	if m != nil {
-		if m.batt {
-			bw := battW()
-			u.dc.battery(rx-bw-3, cy, 9, float32(m.pct), alpha(p.fg, 0.45), m.tint)
-			rx -= bw + 3 + 6
+// haloLive: a soft light breathes around the pill while something waits
+// on you. It lives outside the body, so it repaints alone.
+func (u *UI) haloLive(col color.NRGBA) {
+	n := u.shape
+	since := u.trAt
+	u.lives = append(u.lives, live{n.bounds().Inset(-12), func(c *canvas, t float64) {
+		in := math.Min(1, u.now().Sub(since).Seconds()/0.6) // it comes up gently
+		b := 0.55 + 0.45*math.Sin(t*2*math.Pi/1.6)
+		for i := 6; i >= 1; i-- {
+			a := 34 * math.Exp(-math.Pow(float64(i)/2.6, 2)) * b * in
+			c.fillNotch(n, float32(i)*1.5, alpha(col, a/255), &n, 0, int(u.BarH)-1)
 		}
-		if m.right != "" { // the value rolls as it changes
-			col := p.fg
-			if m.tint == p.muted {
-				col = p.muted
-			}
-			rx -= u.rollText(u.dc, "pill:value", m.right, fValue(), rx, base, col) + 10
-		}
-		if m.meter {
-			mx := tx
-			if l.text != "" {
-				mx = rx - meterW
-			}
-			mw := rx - mx
-			k := float32(math.Max(0, math.Min(1, u.meter.x)))
-			u.dc.roundRect(mx, cy-2.5, mw, 5, 2.5, alpha(p.fg, 0.16))
-			if k > 0 {
-				u.dc.roundRect(mx, cy-2.5, max(mw*k, 5), 5, 2.5, m.tint)
-			}
-			rx = mx - 8
-		}
-	}
-	if l.lock {
-		rx -= 11
-		u.dc.lock(rx, cy-6, 11, p.yellow)
-		rx -= 4
-	}
-	if l.chip != "" {
-		cw := measure(fSmall(), l.chip)
-		u.dc.circle(rx-cw-7, cy, 1.5, p.faint)
-		u.dc.text(fSmall(), l.chip, rx-cw, base, l.chipCol)
-		rx -= cw + 14
-	}
-	if l.text == "" {
-		return
-	}
+	}})
+}
 
-	avail := rx - tx
-	if l.music {
-		avail -= 24
-	}
-	diff := ""
-	if l.plus > 0 || l.minus > 0 {
-		diff = diffText(l.plus, l.minus)
-		avail -= 7 + tabWidth(face(fMedium, 12), diff)
-	}
-	if l.more > 0 {
-		avail -= 8 + measure(fSmall(), fmt.Sprintf("+%d", l.more))
-	}
-	if l.dots > 1 {
-		avail -= 8 + dotsW(l.dots)
-	}
-	subW := float32(0)
-	if l.sub != "" {
-		subW = min(150, measure(fSmall(), l.sub)+8)
-		avail -= subW
-	}
-	text := ellipsize(fText(), l.text, avail)
-	if k := float64(now.Sub(u.slideAt)) / float64(slideTime); k < 1 {
-		e := float32(easeOut(k))
-		u.dc.text(fText(), ellipsize(fText(), u.slideOld, avail), tx, base-9*e, alpha(l.textCol, 1-float64(e)))
-		u.dc.text(fText(), text, tx, base+9*(1-e), alpha(l.textCol, float64(e)))
-		tx += measure(fText(), text)
-	} else if l.work { // lit from inside while Claude works
-		u.dc.text(fText(), text, tx, base, mix(l.textCol, p.bg, 0.22))
-		u.shimmerLive(fText(), text, tx, base, mix(l.textCol, colorWhite, 0.55))
-		tx += measure(fText(), text)
-	} else {
-		tx += u.dc.text(fText(), text, tx, base, l.textCol)
-	}
-	if l.sub != "" {
-		u.dc.text(fSmall(), ellipsize(fSmall(), l.sub, subW-8), tx+8, base, p.muted)
-		tx += subW
-	}
-	if diff != "" {
-		tx += 7
-		df := face(fMedium, 12)
-		if l.plus > 0 {
-			s := fmt.Sprintf("+%d", l.plus)
-			tx += u.rollText(u.dc, "pill:plus", s, df, tx+tabWidth(df, s), base, p.green) + 4
+// sweepLive: one band of light crosses the pill when something succeeds.
+func (u *UI) sweepLive(at time.Time, col color.NRGBA) {
+	n := u.shape
+	u.tweening = true // a single pass at the full frame rate
+	u.lives = append(u.lives, live{n.interior(), func(c *canvas, _ float64) {
+		k := u.now().Sub(at).Seconds() / sweepTime.Seconds()
+		if k >= 1 {
+			return
 		}
-		if l.minus > 0 {
-			s := fmt.Sprintf("−%d", l.minus)
-			tx += u.rollText(u.dc, "pill:minus", s, df, tx+tabWidth(df, s), base, p.red)
+		e := easeOut(k)
+		cx := float64(n.x) - 40 + e*float64(n.w+80)
+		r := n.interior().Intersect(c.img.Rect)
+		for y := r.Min.Y; y < r.Max.Y; y++ {
+			row := c.img.Pix[y*c.img.Stride:]
+			for x := max(r.Min.X, int(cx-36)); x < min(r.Max.X, int(cx+36)); x++ {
+				d := math.Abs(float64(x)-cx) / 18
+				a := 0.16 * math.Exp(-d*d) * (1 - k)
+				i := x * 4
+				for ch, v := range [3]uint8{col.R, col.G, col.B} {
+					row[i+ch] = uint8(float64(row[i+ch])*(1-a) + float64(v)*a)
+				}
+			}
 		}
-	}
-	if l.more > 0 {
-		tx += 8
-		tx += u.dc.text(fSmall(), fmt.Sprintf("+%d", l.more), tx, base, p.muted)
-	}
-	if l.dots > 1 { // more than one session at it: a dot each, breathing in turn
-		u.sessionDots(tx+8, cy, l.dots)
-	}
-	if l.music && u.track != nil {
-		u.eqLive(tx+8, cy+5, 10, u.accent(p.green), u.track.Playing)
-		u.progressLive(x+16, h-2.5, w-32, 1.5, u.accent(p.fg), 0) // a hairline of the song under the pill
-	}
+	}})
 }
 
 // accent is the playing cover's colour, else fallback.
@@ -508,19 +583,3 @@ func powerText(pw *power) string {
 	return ""
 }
 
-const maxDots = 5
-
-func dotsW(n int) float32 { return float32(min(n, maxDots))*7 - 3 }
-
-// sessionDots: one dot per working session, each breathing a little after
-// the one before, like a row of small lights.
-func (u *UI) sessionDots(x, cy float32, n int) {
-	p := u.pal
-	n = min(n, maxDots)
-	u.lives = append(u.lives, live{image.Rect(int(x-2), int(cy-4), int(x+dotsW(n)+3), int(cy+5)), func(c *canvas, t float64) {
-		for i := 0; i < n; i++ {
-			k := 0.5 + 0.5*math.Sin(t*3.2-float64(i)*0.9)
-			c.circle(x+2+float32(i)*7, cy, 1.7+0.6*float32(k), alpha(p.green, 0.45+0.55*k))
-		}
-	}})
-}

@@ -10,26 +10,23 @@ import (
 // things you look up for: does anything need me; what is Claude doing, and
 // is it going well; what happened while I wasn't looking.
 //
-// A headline says it in a sentence. Under it, every Claude session is a
-// row: a glyph for its state (an orbit while it works, with a satellite per
-// subagent; a pulse while it waits on you; a check when it's done), its
-// name, what it's doing, its last ten minutes. A row opens into its short
-// transcript: what you asked, its latest steps, its subagents on a branch
-// (each opens into its own steps), and a way to its terminal. The session
-// that matters most opens by itself; what you open or close stays so. When
-// it doesn't all fit, steps go first, then rows close, then the last rows
-// fold into "N more". Music and edge come last. With no session at all, the
-// day, hour by hour.
+// One session is the hero: the one waiting on you, else one working that you
+// aren't looking at, else the one that just finished. Its headline is the
+// task in words, and its timeline hangs from Ember on a thin rail (its latest
+// steps, its subagents on a branch), or, once it's done, Claude's most
+// informative sentence. Every other session is one line; click one and it
+// becomes the hero. Music and edge come last. With no session at all, the
+// hero is the day, hour by hour.
 
 const (
-	briefHeadH = 52 // Ember, the headline, its facts
-	stepH      = 20 // a step in a session's transcript
+	heroHeadH  = 52 // Ember, the headline, its facts
+	stepH      = 22 // a step on the rail
 	keepShown  = 4  // steps shown, at most ([card] steps)
 	recapFresh = 45 * time.Minute
 )
 
 type brief struct {
-	mode      string // wait | work | recap | day
+	mode      string // wait | work | recap | idle | day
 	s         *Session
 	head, sub string
 	mood      mood
@@ -37,7 +34,7 @@ type brief struct {
 	keep      int        // steps at most: [card] steps
 }
 
-// brief decides what the headline says.
+// brief decides who the hero is and what the headline says.
 func (u *UI) brief() brief {
 	now := u.now()
 	ss := u.sessionList()
@@ -45,39 +42,42 @@ func (u *UI) brief() brief {
 		ss = nil
 	}
 	b := brief{rows: ss, keep: u.cfg.CardSteps}
-	var waiting, working []*Session
-	for _, s := range ss {
-		switch {
-		case s.State == "wait":
-			waiting = append(waiting, s)
-		case s.status() == "work":
-			working = append(working, s)
+	var hero *Session
+	for _, s := range ss { // one you picked in the card stays the hero while it's open
+		if s.ID == u.hero {
+			hero = s
 		}
 	}
-	also := ""
-	if len(working) > 0 {
-		also = fmt.Sprintf(" · %d working", len(working))
+	if hero == nil {
+		for _, s := range ss {
+			if s.State == "wait" || s.status() == "work" { // the list ranks these first
+				hero = s
+				break
+			}
+		}
 	}
+	if hero == nil {
+		for _, s := range ss {
+			if s.Recap != nil && now.Sub(s.Recap.At) < recapFresh && (hero == nil || s.Recap.At.After(hero.Recap.At)) {
+				hero = s
+			}
+		}
+	}
+	if hero == nil {
+		b.mode, b.mood, b.head, b.sub = "day", moodIdle, greeting(now), u.dayFacts()
+		return b
+	}
+	b.s = hero
+	s := hero
 	switch {
-	case len(waiting) > 1:
-		b.mode, b.s, b.mood = "wait", waiting[0], moodWait
-		b.head = fmt.Sprintf("%d sessions need you", len(waiting))
-		var names []string
-		for _, s := range waiting {
-			names = append(names, u.name(s))
-		}
-		b.sub = strings.Join(names, ", ") + also
-	case len(waiting) == 1:
-		s := waiting[0]
-		b.mode, b.s, b.mood = "wait", s, moodWait
+	case s.State == "wait":
+		b.mode, b.mood = "wait", moodWait
 		b.head = u.name(s) + " needs you"
-		b.sub = "It's asking in the terminal · " + ago(now.Sub(s.Seen))
+		b.sub = "Asking in the terminal · " + ago(now.Sub(s.Seen))
 		if t := s.task(); t != "" {
 			b.sub = t + " · " + ago(now.Sub(s.Seen))
 		}
-		b.sub += also
-	case len(working) == 1:
-		s := working[0]
+	case s.status() == "work":
 		label := s.Label
 		if label == "" {
 			label = "Thinking"
@@ -85,7 +85,7 @@ func (u *UI) brief() brief {
 		if s.State == "idle" { // its turn ended; its agents work on
 			label = agentsText(s.running()) + " working"
 		}
-		// the headline is the task, in words; the rows below say how it's going
+		// the headline is the task, in words; the timeline says how it's going
 		head, sub := s.task(), s.Project+" · "+turnFacts(s, now)
 		if head == "" {
 			head, sub = u.name(s)+" · "+label, turnFacts(s, now)
@@ -93,44 +93,28 @@ func (u *UI) brief() brief {
 				head = u.name(s) + " is " + g
 			}
 		}
-		b.mode, b.s, b.mood, b.head, b.sub = "work", s, moodWork, head, strings.TrimSuffix(sub, " · ")
-	case len(working) > 1:
-		b.mode, b.s, b.mood = "work", working[0], moodWork
-		b.head = fmt.Sprintf("Clauding in %d sessions", len(working))
-		agents, steps := 0, 0
-		for _, s := range working {
-			agents += s.running()
-			steps += s.Turn.Count
-		}
-		parts := []string{plural(steps, "step")}
-		if agents > 0 {
-			parts = append(parts, agentsText(agents))
-		}
-		b.sub = strings.Join(parts, " · ") + " so far"
-	default:
-		var last *Session
-		for _, s := range ss {
-			if s.Recap != nil && now.Sub(s.Recap.At) < recapFresh && (last == nil || s.Recap.At.After(last.Recap.At)) {
-				last = s
-			}
-		}
-		if last == nil {
-			b.mode, b.mood, b.head, b.sub = "day", moodIdle, greeting(now), u.dayFacts()
-			break
-		}
-		r := last.Recap
-		b.mode, b.s, b.mood = "recap", last, moodHappy
+		b.mode, b.mood, b.head, b.sub = "work", moodWork, head, strings.TrimSuffix(sub, " · ")
+	case s.Recap != nil:
+		r := s.Recap
+		b.mode, b.mood = "recap", moodHappy
 		if r.Failures > 0 && strings.Contains(strings.ToLower(r.Summary), "fail") {
 			b.mood = moodNudge
 		}
-		b.sub = last.Project + " · done " + ago(now.Sub(r.At))
+		b.sub = s.Project + " · done " + ago(now.Sub(r.At))
 		if r.Took > 0 {
 			b.sub += " · took " + mins(r.Took)
 		}
-		b.head = last.task()
+		b.head = s.task()
 		if b.head == "" {
-			b.head, b.sub = u.name(last)+" is done", "D"+strings.TrimPrefix(b.sub, last.Project+" · d")
+			b.head, b.sub = u.name(s)+" is done", "D"+strings.TrimPrefix(b.sub, s.Project+" · d")
 		}
+	default:
+		b.mode, b.mood = "idle", moodIdle
+		b.head = s.task()
+		if b.head == "" {
+			b.head = u.name(s)
+		}
+		b.sub = s.Project + " · idle"
 	}
 	return b
 }

@@ -156,8 +156,10 @@ func (u *UI) press(k string, button int) {
 		u.pinned, u.suppress = false, true
 	case k == "rows:all": // "Show all" / "Show less"
 		u.allRows = !u.allRows
-	case strings.HasPrefix(k, "s:"), strings.HasPrefix(k, "a:"): // a session or an agent in the card: open or close it
-		u.opened[k] = !u.boardOpen[k]
+	case strings.HasPrefix(k, "s:"): // another session in the card: it becomes the hero
+		u.hero = strings.TrimPrefix(k, "s:")
+	case strings.HasPrefix(k, "a:"): // an agent on the branch: open or close its steps
+		u.opened[k] = !u.shownOpen[k]
 	case k == "dash": // so does a dashboard's
 		u.closeDash()
 	case strings.HasPrefix(k, "dash:"): // a plugin's row in the card: its dashboard

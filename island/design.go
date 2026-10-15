@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"strings"
 	"time"
 )
 
@@ -13,21 +14,31 @@ import (
 
 const (
 	pad     = 16  // the card's inner margin
-	headH   = 50  // the card's header: Ember, title, context line, page switcher
+	railX   = 26  // the rail and Ember's centre, from the card's left edge
+	textX   = 48  // where text starts, from the card's left edge
 	rowGap  = 6   // between rows
 	radCard = 22  // the card's bottom corners
-	radRow  = 12  // rows, code, options
+	radRow  = 10  // hovers, code, options
 	cornerN = 2.7 // superellipse exponent: 2 is a circle; Apple's corners are ~2.5–3
 )
 
+// Type: four sizes, three weights (see docs/DESIGN.md).
 var (
 	fTitle   = func() fontFace { return face(fSemiBold, 14) }
 	fBody    = func() fontFace { return face(fMedium, 12.5) }
 	fBodyReg = func() fontFace { return face(fRegular, 12.5) }
+	fSecond  = func() fontFace { return face(fRegular, 12) }
 	fCaption = func() fontFace { return face(fRegular, 11) }
 	fNum     = func() fontFace { return face(fSemiBold, 12) }
 	fMonoS   = func() fontFace { return face(fMono, 11.5) }
+	fEyebrow = func() fontFace { return face(fSemiBold, 9.5) }
 )
+
+// secondary is text one step quieter than fg: steps, artists, summaries.
+func (p palette) secondary() color.NRGBA { return mix(p.fg, p.bg, 0.3) }
+
+// hair is a divider.
+func (p palette) hair() color.NRGBA { return alpha(p.fg, 0.07) }
 
 // cornerInset is how far a continuous corner of radius r sits in from the
 // straight edge, d px into the corner (0 at its start, r at the very edge).
@@ -293,7 +304,7 @@ func shellTokens(p palette, ln string) []struct {
 // into the content layer: compositing then has only sparse text and icons
 // to blend, which is most of what made full frames cost.
 func (u *UI) panel(x, y, w, h, r float32, col color.NRGBA) {
-	col.A = uint8(float64(col.A) * u.fadeK)
+	col.A = uint8(float64(col.A) * u.fadeK * u.rowK)
 	u.cv.clip = &u.shape
 	u.cv.roundRect(x, y, w, h, r, col)
 	u.cv.clip = nil
@@ -307,3 +318,91 @@ var band = func() (t [256]float64) {
 	}
 	return
 }()
+
+// ---- entrances: rows arrive one after another ----
+
+const (
+	enterTime  = 220 * time.Millisecond
+	enterStep  = 28 * time.Millisecond // between one row and the next
+	enterRise  = 6                     // px a row rises as it fades in
+	glideStiff = 520
+)
+
+// enter is how far the i-th element of the current view has arrived, 0..1.
+// Elements a view gains later (a new session while the card is open) arrive
+// on their own when they first appear.
+func (u *UI) enter(key string, i int) float64 {
+	at, ok := u.enterAt[key]
+	if !ok {
+		at = u.now()
+		if d := u.trAt.Add(time.Duration(i) * enterStep); u.now().Sub(u.trAt) < fadeIn {
+			at = d // part of the view's own entrance: staggered
+		}
+		u.enterAt[key] = at
+	}
+	k := float64(u.now().Sub(at)) / float64(enterTime)
+	if k < 1 {
+		u.tweening = true
+	}
+	return easeOut(k)
+}
+
+// rise is the offset an arriving element is drawn at.
+func rise(e float64) float32 { return float32(1-e) * enterRise }
+
+// glide eases a row's position toward y: rows reorder by sliding, not
+// jumping. A row new to the view starts where it belongs.
+func (u *UI) glide(key string, y float32) float32 {
+	return float32(u.tw("y:"+key, float64(y), float64(y)))
+}
+
+// resetMotion: a view opens fresh, so nothing glides from where it was
+// last time, and everything enters again.
+func (u *UI) resetMotion() {
+	clear(u.enterAt)
+	for k := range u.tweens {
+		if strings.HasPrefix(k, "y:") {
+			delete(u.tweens, k)
+		}
+	}
+}
+
+// fade scales a rectangle of a premultiplied canvas by k: an element drawn
+// at full strength, then faded as one.
+func (c *canvas) fade(r image.Rectangle, k float64) {
+	if k >= 1 {
+		return
+	}
+	r = r.Intersect(c.img.Rect)
+	kk := uint32(math.Max(0, k)*256 + 0.5)
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		px := words(c.img.Pix[y*c.img.Stride : (y+1)*c.img.Stride])
+		for x := r.Min.X; x < r.Max.X; x++ {
+			if v := px[x]; v != 0 {
+				px[x] = scale(v, kk)
+			}
+		}
+	}
+}
+
+// eyebrow draws small tracked capitals (a card's kind, "KINVAULT WANTS TO
+// RUN") and returns their width.
+func (c *canvas) eyebrow(s string, x, base float32, col color.NRGBA) float32 {
+	f := fEyebrow()
+	x0 := x
+	for _, r := range strings.ToUpper(s) {
+		ch := string(r)
+		c.text(f, ch, x, base, col)
+		x += float32(advance(f, ch))/64 + 0.6
+	}
+	return x - x0 - 0.6
+}
+
+func eyebrowW(s string) float32 {
+	f := fEyebrow()
+	w := float32(0)
+	for _, r := range strings.ToUpper(s) {
+		w += float32(advance(f, string(r)))/64 + 0.6
+	}
+	return max(w-0.6, 0)
+}
