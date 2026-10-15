@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	surfW, surfH = 440, 280
+	surfW, surfH = 580, 380 // room for a dashboard; the input region is only the shape
 	flickerEvery = time.Second / 12
 	idleEvery    = time.Second / 6
 	frameGrace   = 34 * time.Millisecond // a frame callback that never comes doesn't stall us
@@ -33,6 +33,10 @@ type app struct {
 	desk    desktop
 	started time.Time
 	quiet   bool // the current post changed nothing on screen
+
+	allPlugins []Plugin
+	plugins    map[string]Plugin // the running ones, by name
+	detectedAt time.Time         // when dormant plugins last looked for their tools
 }
 
 // Status is what `ember doctor` reports about the running island.
@@ -98,6 +102,7 @@ func (a *app) reloadConfig() bool {
 	a.ui.cfg = a.cfg
 	a.ui.TimeFmt = a.cfg.timeFormat()
 	a.ui.casting = a.desk.casts > 0 && a.cfg.Privacy
+	a.reconcile()
 	return true
 }
 
@@ -235,6 +240,9 @@ func Run() error {
 			}
 			if a.reloadConfig() {
 				a.ui.Invalidate()
+			}
+			if a.ui.now().Sub(a.detectedAt) > redetectEvery { // a tool installed or removed meanwhile
+				a.reconcile()
 			}
 		case <-timer.C:
 			tick = true
@@ -421,13 +429,6 @@ func (a *app) key(k string) {
 	}
 }
 
-// edgeAction runs `edge action <key>` (edge's buttons), if edge is installed.
-func edgeAction(key string) {
-	if _, err := exec.LookPath("edge"); err == nil {
-		go exec.Command("edge", "action", key).Run()
-	}
-}
-
 // command handles keyboard commands: answer the oldest request.
 func (a *app) command(cmd, arg string) {
 	switch cmd {
@@ -439,6 +440,9 @@ func (a *app) command(cmd, arg string) {
 		return
 	case "close":
 		a.ui.pinned, a.ui.suppress = false, a.ui.hover // only while the pointer is on it
+		return
+	case "dash":
+		a.ui.toggleDash(arg)
 		return
 	case "next", "prev":
 		dir := 1
@@ -495,63 +499,6 @@ func (a *app) command(cmd, arg string) {
 }
 
 // ---- edge ----
-
-type edgeCard struct {
-	ID      string `json:"id"`
-	Mood    string `json:"mood"`
-	Title   string `json:"title"`
-	Body    string `json:"body"`
-	Urgent  bool   `json:"urgent"`
-	Bounce  bool   `json:"bounce"`
-	Buttons []struct {
-		Key     string `json:"key"`
-		Label   string `json:"label"`
-		Primary bool   `json:"primary"`
-	} `json:"buttons"`
-}
-
-func (a *app) fromEdge(raw json.RawMessage) {
-	var msg struct {
-		Type   string      `json:"type"`
-		Status *EdgeStatus `json:"status"`
-		ID     string      `json:"id"`
-		Card   *edgeCard   `json:"card"`
-	}
-	if json.Unmarshal(raw, &msg) != nil {
-		return
-	}
-	switch msg.Type {
-	case "status":
-		a.ui.edge = msg.Status
-	case "remove":
-		a.ui.RemoveCard("edge:" + msg.ID)
-	case "card":
-		w := msg.Card
-		if w == nil {
-			return
-		}
-		moods := map[string]mood{"work": moodWork, "wait": moodWait, "happy": moodHappy, "error": moodError, "nudge": moodNudge}
-		c := &Card{ID: "edge:" + w.ID, Kind: "edge", Mood: moods[w.Mood], Title: w.Title, Body: w.Body, Priority: 2}
-		for _, b := range w.Buttons {
-			c.Buttons = append(c.Buttons, Button{Key: b.Key, Label: b.Label, Primary: b.Primary})
-		}
-		if w.Urgent {
-			c.Priority = 5
-		}
-		if len(c.Buttons) == 0 {
-			c.Expires = a.ui.now().Add(7 * time.Second)
-		}
-		c.OnPick = func(k string, _ []int) {
-			if k != "dismiss" {
-				edgeAction(k)
-			}
-		}
-		a.ui.AddCard(c)
-		if w.Bounce {
-			a.ui.Bounce()
-		}
-	}
-}
 
 var _ = url.Parse // used by the hook handlers below
 

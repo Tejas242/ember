@@ -27,6 +27,9 @@ func (u *UI) pointer(e pointerEvent) (redraw, hand bool) {
 			u.dragTo(false)
 			return true, true
 		}
+		if u.dash != "" {
+			u.dashIn = true
+		}
 		if !u.hover {
 			u.hover, u.hoverAt = true, u.now()
 			u.mind.kick(u.now(), 0.15, 0.02) // it notices you
@@ -38,6 +41,10 @@ func (u *UI) pointer(e pointerEvent) (redraw, hand bool) {
 		}
 		u.hover, u.pinned, u.suppress = false, false, false
 		u.leftAt = u.now()
+		if u.dash != "" && u.dashIn { // you looked and moved on
+			u.closeDash()
+			u.suppress = false
+		}
 		u.hoverKey = ""
 		return true, false
 	case "press":
@@ -106,6 +113,8 @@ func (u *UI) press(k string, button int) {
 	}
 	if button == 3 { // right: dismiss — a moment, the open card, an edge note
 		switch {
+		case u.currentView() == vDash:
+			u.closeDash()
 		case u.moment != nil:
 			u.moment = nil
 		case u.currentView() == vExpanded:
@@ -145,6 +154,10 @@ func (u *UI) press(k string, button int) {
 		u.pinned, u.suppress = true, false
 	case k == "panel": // the card's background closes it
 		u.pinned, u.suppress = false, true
+	case k == "dash": // so does a dashboard's
+		u.closeDash()
+	case strings.HasPrefix(k, "dash:"): // a plugin's row in the card: its dashboard
+		u.openDash(strings.TrimPrefix(k, "dash:"))
 	case k == "trail": // the satellite at the pill's end: swap it in
 		if s := u.secondary(u.primary()); s != "" {
 			u.focus, u.focusAt = s, u.now()

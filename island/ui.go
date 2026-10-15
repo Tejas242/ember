@@ -85,18 +85,6 @@ func (s *Session) activity(now time.Time) []float64 {
 	return out
 }
 
-// EdgeStatus is what edge reports about the day (optional).
-type EdgeStatus struct {
-	Today     int    `json:"today"`
-	Need      int    `json:"need"`
-	Streak    int    `json:"streak"`
-	Closed    bool   `json:"closed"`
-	Task      string `json:"task"`
-	URL       string `json:"url"`
-	StartedMs int64  `json:"startedMs"`
-	Pending   bool   `json:"pending"`
-}
-
 // moment is a short-lived compact line: Claude finished, a new track, the
 // volume, a charger plugged in, a screenshot.
 type moment struct {
@@ -126,6 +114,7 @@ const (
 	vCompact view = iota
 	vCard
 	vExpanded
+	vDash // a plugin's dashboard
 )
 
 type hit struct {
@@ -180,7 +169,13 @@ type UI struct {
 	cfg      Config
 	sessions map[string]*Session
 	cards    []*Card
-	edge     *EdgeStatus
+	edge      *EdgeStatus // set by the edge plugin while it runs
+	edgeStats *EdgeStats
+	second    time.Time
+	dash       string               // the open dashboard's plugin, if any
+	dashAt     time.Time            // when it opened: its entrance plays from here
+	dashIn     bool                 // the pointer has been on it: leaving closes it
+	dashboards map[string]Dashboard // by plugin, while the plugin runs
 	track    *Track
 	art      *albumArt
 	moment   *moment
@@ -258,7 +253,7 @@ type UI struct {
 
 func NewUI(w, h int, barH float32) *UI {
 	u := &UI{W: w, H: h, BarH: barH, TimeFmt: "3:04 PM", cv: newCanvas(w, h), content: newCanvas(w, h),
-		prev: image.NewRGBA(image.Rect(0, 0, w, h)), pal: loadPalette(), cfg: DefaultConfig(), sessions: map[string]*Session{},
+		prev: image.NewRGBA(image.Rect(0, 0, w, h)), pal: loadPalette(), cfg: DefaultConfig(), sessions: map[string]*Session{}, dashboards: map[string]Dashboard{},
 		now: time.Now, dirty: true, base: image.NewRGBA(image.Rect(0, 0, w, h))}
 	u.dc = u.content
 	u.light = -1
@@ -377,7 +372,7 @@ func (u *UI) acts() []string {
 	if u.track != nil && u.cfg.Music {
 		out = append(out, "music")
 	}
-	if e := u.edge; e != nil && u.cfg.Edge && (e.Task != "" || e.Closed || e.Need > 0) {
+	if e := u.edge; e != nil && (e.Task != "" || e.Closed || e.Need > 0) {
 		out = append(out, "edge")
 	}
 	return out
@@ -423,7 +418,7 @@ func (u *UI) secondary(primary string) string {
 		return "music"
 	case primary != "claude" && working:
 		return "claude"
-	case primary != "edge" && u.edge != nil && u.edge.StartedMs > 0 && u.cfg.Edge:
+	case primary != "edge" && u.edge != nil && u.edge.StartedMs > 0:
 		return "edge"
 	}
 	return ""
@@ -449,6 +444,9 @@ func (u *UI) cycle(dir int) {
 func (u *UI) currentView() view {
 	if u.top() != nil {
 		return vCard
+	}
+	if u.dash != "" && u.dashboards[u.dash] != nil {
+		return vDash
 	}
 	if u.pinned || u.drag != "" || (u.hover && !u.suppress && u.now().Sub(u.hoverAt) >= u.cfg.HoverDelay) ||
 		(!u.hover && u.lastView == vExpanded && u.now().Sub(u.leftAt) < 200*time.Millisecond) {
@@ -490,6 +488,9 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 	}
 	if m := now.Truncate(time.Minute); !m.Equal(u.minute) {
 		u.minute, u.dirty = m, true
+	}
+	if sec := now.Truncate(time.Second); v == vDash && !sec.Equal(u.second) { // its clocks count seconds
+		u.second, u.dirty = sec, true
 	}
 	tw, th := u.measure(v)
 	if v == vCompact && u.hover && !u.suppress { // anticipation: swell a little under the pointer
@@ -561,6 +562,11 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 		case vExpanded:
 			u.hits = append(u.hits, hit{u.shape.bounds(), "panel"})
 			u.drawExpanded(fx, float32(tw))
+		case vDash:
+			u.hits = append(u.hits, hit{u.shape.bounds(), "dash"})
+			if u.dashboards[u.dash].Draw(u, fx, float32(tw), now.Sub(u.dashAt)) {
+				u.tweening = true
+			}
 		}
 		if u.prevAlive && p < 1 {
 			composite(u.cv, u.prev, u.shape, 1-math.Min(1, p/0.45), 0)
@@ -803,6 +809,8 @@ func (u *UI) viewKey(v view) string {
 		}
 	case vExpanded:
 		return "exp"
+	case vDash:
+		return "dash:" + u.dash
 	}
 	return "pill:" + u.compactLine().key
 }

@@ -33,6 +33,12 @@ func main() {
 			page = os.Args[2]
 		}
 		cmdOrFail(island.Cmd("open", page))
+	case "dash":
+		name := ""
+		if len(os.Args) > 2 {
+			name = os.Args[2]
+		}
+		cmdOrFail(island.Cmd("dash", name))
 	case "answer":
 		if len(os.Args) != 3 {
 			usage()
@@ -76,13 +82,16 @@ const help = `ember: a dynamic island for the top of your screen
   ember close | toggle
   ember next | prev      switch what the pill shows
   ember play             play / pause
+  ember dash [name]      open or close a plugin's dashboard (edge)
 
   ember allow | deny | always   answer the oldest permission request
   ember terminal                hand it back to Claude's own prompt
   ember answer opt:N | submit   answer the oldest question
 
   ember hook <Event>     Claude Code's hook (installed for you)
-  ember edge '<json>'    a status or card from edge
+  ember edge '<json>'    a message for the edge plugin
+
+Plugins: edge (on when edge is installed; [plugins.edge] in the config)
 
 Config: ~/.config/ember/config.toml (re-read on change)
 `

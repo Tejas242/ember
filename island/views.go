@@ -238,6 +238,9 @@ func (u *UI) measure(v view) (float64, float64) {
 		return cardW, float64(u.cardHeight(u.top()))
 	case vExpanded:
 		return expW, float64(u.expandedHeight())
+	case vDash:
+		w, h := u.dashboards[u.dash].Size(u)
+		return w, math.Min(h, float64(u.H-14))
 	}
 	return u.compactWidth(u.compactLine()), float64(u.BarH)
 }

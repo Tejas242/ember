@@ -107,6 +107,9 @@ func (u *UI) musicRow(x, w, y float32) {
 func (u *UI) edgeRow(x, w, y float32) {
 	p, now, e := u.pal, u.now(), u.edge
 	u.rowBox("edge", x, w, y, edgeRowH, p.yellow, 0.06)
+	if u.dashboards["edge"] != nil { // the row opens edge's dashboard; its button still acts
+		u.hits = append(u.hits, hit{image.Rect(int(x+pad-6), int(y), int(x+w-pad+6), int(y+edgeRowH)), "dash:edge"})
+	}
 	u.dc.frame(x+pad, y+edgeRowH/2-7, 14, 14, 7, 1.4, p.yellow)
 	u.dc.circle(x+pad+7, y+edgeRowH/2, 2.5, p.yellow)
 	tx, right := x+pad+22, x+w-pad

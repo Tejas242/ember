@@ -27,7 +27,8 @@ func SockPath() string {
 
 // wire messages, one JSON object per line
 type inMsg struct {
-	Type    string          `json:"type"` // hook | edge | cmd
+	Type    string          `json:"type"` // hook | plugin | edge | cmd
+	Name    string          `json:"name,omitempty"` // plugin: which one
 	Event   string          `json:"event,omitempty"`
 	Wait    bool            `json:"wait,omitempty"`
 	Pids    []int           `json:"pids,omitempty"`
@@ -122,8 +123,10 @@ func (s *server) serve(c *net.UnixConn) {
 		}
 		b, _ := json.Marshal(reply{Output: out})
 		c.Write(append(b, '\n'))
-	case "edge": // a status or card from edge
-		s.posts <- func(a *app) { a.fromEdge(m.Payload) }
+	case "edge": // edge's own address, from before plugins
+		s.posts <- func(a *app) { a.toPlugin("edge", m.Payload) }
+	case "plugin": // a tool talking to its plugin
+		s.posts <- func(a *app) { a.toPlugin(m.Name, m.Payload) }
 	case "cmd": // keyboard: allow / deny / always / terminal / answer <key>
 		s.posts <- func(a *app) { a.command(m.Event, m.ID) }
 	case "status": // `ember doctor` asks what the island is connected to

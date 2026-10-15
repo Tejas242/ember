@@ -280,7 +280,7 @@ func (u *UI) expandedHeight() int {
 	if u.track != nil && u.cfg.Music {
 		h += musicRowH + rowGapX
 	}
-	if e := u.edge; e != nil && u.cfg.Edge && (e.Task != "" || e.Closed) {
+	if e := u.edge; e != nil && (e.Task != "" || e.Closed) {
 		h += edgeRowH + rowGapX
 	}
 	return int(math.Min(float64(h+8), float64(u.H-14)))
@@ -335,7 +335,7 @@ func (u *UI) drawExpanded(x, w float32) {
 		u.musicRow(x, w, y)
 		y += musicRowH + rowGapX
 	}
-	if e := u.edge; e != nil && u.cfg.Edge && (e.Task != "" || e.Closed) {
+	if e := u.edge; e != nil && (e.Task != "" || e.Closed) {
 		u.edgeRow(x, w, y)
 	}
 }
