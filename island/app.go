@@ -32,7 +32,8 @@ type app struct {
 	cfgAt   time.Time // the config file's mtime when read
 	desk    desktop
 	started time.Time
-	quiet   bool // the current post changed nothing on screen
+	quiet   bool                 // the current post changed nothing on screen
+	ended   map[string]time.Time // sessions that ended: a late async hook mustn't bring one back
 
 	allPlugins []Plugin
 	plugins    map[string]Plugin // the running ones, by name
@@ -41,21 +42,21 @@ type app struct {
 
 // Status is what `ember doctor` reports about the running island.
 type Status struct {
-	Pid         int     `json:"pid"`
-	Uptime      string  `json:"uptime"`
-	BarHeight   float32 `json:"barHeight"`
-	Blur        bool    `json:"blur"`
-	CursorShape bool    `json:"cursorShape"`
-	Presence    bool    `json:"presence"`
-	Niri        bool    `json:"niri"`
-	Music       bool    `json:"music"`
-	Track       string  `json:"track,omitempty"`
-	Volume      bool    `json:"volume"`
-	Backlight   bool    `json:"backlight"`
-	Battery     bool    `json:"battery"`
-	Sessions    int     `json:"sessions"`
-	Pending     int     `json:"pending"`
-	Config      string  `json:"config"`
+	Pid         int      `json:"pid"`
+	Uptime      string   `json:"uptime"`
+	BarHeight   float32  `json:"barHeight"`
+	Blur        bool     `json:"blur"`
+	CursorShape bool     `json:"cursorShape"`
+	Presence    bool     `json:"presence"`
+	Niri        bool     `json:"niri"`
+	Music       bool     `json:"music"`
+	Track       string   `json:"track,omitempty"`
+	Volume      bool     `json:"volume"`
+	Backlight   bool     `json:"backlight"`
+	Battery     bool     `json:"battery"`
+	Sessions    int      `json:"sessions"`
+	Pending     int      `json:"pending"`
+	Config      string   `json:"config"`
 	Plugins     []string `json:"plugins"` // running, with a word on each
 }
 
@@ -354,7 +355,7 @@ func (a *app) sweep() bool {
 		quiet := now.Sub(s.Seen)
 		switch {
 		case !slices.ContainsFunc(s.Pids, alive) || (s.State == "idle" && quiet > 3*time.Hour):
-			delete(a.ui.sessions, id)
+			a.forget(id)
 			changed = true
 		case s.State != "idle" && quiet > a.cfg.Settle && !a.hasCard(id):
 			s.State, s.Label = "idle", ""
@@ -365,6 +366,35 @@ func (a *app) sweep() bool {
 		}
 	}
 	return changed
+}
+
+// forget drops a session and what the island knew about it.
+func (a *app) forget(id string) {
+	delete(a.ui.sessions, id)
+	delete(a.ui.watching, id)
+}
+
+// end forgets a session that's over, and keeps it over: hooks are async, so
+// one can still arrive after its SessionEnd.
+func (a *app) end(id string, now time.Time) {
+	a.forget(id)
+	a.ended = remember(a.ended, id, now)
+}
+
+// sameProcess: two hooks' parent chains come from one Claude process. A
+// chain starts at the hook's parent, which is Claude itself or a shell it ran
+// the hook in; that shell has exited by now. So the older chain, less its
+// dead head, is the newer one, give or take the newer one's shell. Sessions
+// in the same terminal share only the chain's tail, and a Claude started
+// from inside another adds more than a shell.
+func sameProcess(old, cur []int) bool {
+	i := 0
+	for i < len(old) && !alive(old[i]) {
+		i++
+	}
+	old = old[i:]
+	d := len(cur) - len(old)
+	return len(old) > 0 && (d == 0 || d == 1) && slices.Equal(cur[d:], old)
 }
 
 // hasCard: a request from this session is still on the island.
@@ -528,7 +558,11 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 	json.Unmarshal(m.Payload, &in)
 	now := a.ui.now()
 	s := a.ui.sessions[in.SessionID]
-	if s == nil && in.SessionID != "" && m.Event != "SessionEnd" {
+	if m.Event == "SessionStart" {
+		delete(a.ended, in.SessionID) // resumed: it's back
+	}
+	_, over := a.ended[in.SessionID]
+	if s == nil && in.SessionID != "" && m.Event != "SessionEnd" && !over {
 		s = &Session{ID: in.SessionID, State: "idle", Since: now}
 		a.ui.sessions[in.SessionID] = s
 	}
@@ -542,6 +576,9 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		}
 	}
 	if s == nil {
+		if m.Event == "SessionEnd" && in.SessionID != "" {
+			a.end(in.SessionID, now)
+		}
 		if answer != nil {
 			answer <- nil
 		}
@@ -555,10 +592,17 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 
 	switch m.Event {
 	case "SessionEnd":
-		delete(a.ui.sessions, in.SessionID)
+		a.end(in.SessionID, now)
 	case "SessionStart":
 		if in.Source == "startup" { // a compaction or a resume keeps its background agents
 			s.Agents, s.asks = nil, nil
+		}
+		if in.Source == "clear" || in.Source == "resume" { // a new session in the same Claude: the old one is over
+			for id, o := range a.ui.sessions {
+				if o != s && sameProcess(o.Pids, m.Pids) {
+					a.end(id, now)
+				}
+			}
 		}
 	case "UserPromptSubmit":
 		s.State, s.Label, s.Plus, s.Minus, s.Since, s.StepAt = "work", "Thinking", 0, 0, now, now
@@ -580,10 +624,10 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		}
 		a.ui.mind.kick(now, 0.35, -0.6) // a start, and a low mood that takes a while to lift
 		if a.ui.mind.away {
-			a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"fail", s.Project, s.ID})
+			a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"fail", a.ui.name(s), s.ID})
 			break
 		}
-		a.ui.Moment(moment{key: "fail:" + s.ID, act: "claude", mood: moodError, text: "Stopped · " + s.Project,
+		a.ui.Moment(moment{key: "fail:" + s.ID, act: "claude", mood: moodError, text: "Stopped · " + a.ui.name(s),
 			sub: strings.ReplaceAll(msg, "_", " "), until: now.Add(8 * time.Second), focus: s.ID})
 	case "AskUserQuestion":
 		if answer != nil {
@@ -640,10 +684,10 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		a.ui.day.done(now, s.Project, took)
 		a.ui.mind.kick(now, 0.2, 0.35) // pleased
 		if a.ui.mind.away {            // tell them when they're back
-			a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"done", s.Project, s.ID})
+			a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"done", a.ui.name(s), s.ID})
 			break
 		}
-		if !a.cfg.Done || slices.Contains(s.Pids, a.focusedPid()) || s.running() > 0 {
+		if !a.cfg.Done || a.looking(s) || s.running() > 0 {
 			break // they're looking at it, or it isn't done: its agents work on
 		}
 		a.done(s, summarize(in.LastMessage), now)
@@ -654,15 +698,20 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 // done shows "Done · project". If another session's note is still up, the
 // two merge into one ("Done · edge, ember") rather than one hiding the other.
 func (a *app) done(s *Session, summary string, now time.Time) {
-	m := moment{key: "done:" + s.ID, act: "claude", mood: moodHappy, text: "Done · " + s.Project,
-		sub: summary, until: now.Add(a.cfg.DoneFor), focus: s.ID}
-	if cur := a.ui.moment; cur != nil && strings.HasPrefix(cur.key, "done") && cur.focus != s.ID && now.Before(cur.until) {
-		names := strings.TrimPrefix(cur.text, "Done · ")
-		n := strings.Count(names, ",") + 2
-		m.key = "done:many"
-		m.text = "Done · " + names + ", " + s.Project
-		m.sub = fmt.Sprintf("%d sessions finished", n)
-		m.until = now.Add(a.cfg.DoneFor + time.Second)
+	name := a.ui.name(s)
+	m := moment{key: "done:" + s.ID, act: "claude", mood: moodHappy, text: "Done · " + name,
+		sub: summary, until: now.Add(a.cfg.DoneFor), focus: s.ID, many: []string{name}}
+	if cur := a.ui.moment; cur != nil && strings.HasPrefix(cur.key, "done") && now.Before(cur.until) {
+		names := cur.many
+		if !slices.Contains(names, name) { // one that finishes again is named once
+			names = append(slices.Clip(names), name)
+		}
+		if len(names) > 1 {
+			m.key, m.many = "done:many", names
+			m.text = "Done · " + strings.Join(names, ", ")
+			m.sub = fmt.Sprintf("%d sessions finished", len(names))
+			m.until = now.Add(a.cfg.DoneFor + time.Second)
+		}
 	}
 	a.ui.Moment(m)
 }
@@ -715,7 +764,7 @@ func (a *app) presence(idle bool) {
 func (a *app) permission(s *Session, in hookInput, tin map[string]any, answer chan<- json.RawMessage) string {
 	a.ui.mind.kick(a.ui.now(), 0.4, -0.05)
 	if a.ui.mind.away {
-		a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"wait", s.Project, s.ID})
+		a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"wait", a.ui.name(s), s.ID})
 	}
 	str := func(k string) string { v, _ := tin[k].(string); return v }
 	if !a.cfg.Answer { // [claude] answer = false: the terminal asks
@@ -723,7 +772,7 @@ func (a *app) permission(s *Session, in hookInput, tin map[string]any, answer ch
 		return ""
 	}
 	c := &Card{ID: "perm:" + s.ID + ":" + fmt.Sprint(time.Now().UnixNano()), Kind: "perm", Mood: moodWait,
-		Meta: s.Project, Priority: 10, Footer: "In terminal", Expires: a.ui.now().Add(a.cfg.Wait)}
+		Meta: a.ui.name(s), Priority: 10, Footer: "In terminal", Expires: a.ui.now().Add(a.cfg.Wait)}
 	switch in.Tool {
 	case "Bash": // Claude says what it wants in words: that's the title; the command is the detail
 		c.Title, c.Code, c.Shell = str("description"), str("command"), true
@@ -805,7 +854,7 @@ type question struct {
 func (a *app) ask(s *Session, in hookInput, tin map[string]any, answer chan<- json.RawMessage) string {
 	a.ui.mind.kick(a.ui.now(), 0.4, 0)
 	if a.ui.mind.away {
-		a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"wait", s.Project, s.ID})
+		a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"wait", a.ui.name(s), s.ID})
 	}
 	var qs []question
 	b, _ := json.Marshal(tin["questions"])
@@ -820,10 +869,10 @@ func (a *app) ask(s *Session, in hookInput, tin map[string]any, answer chan<- js
 	var show func(i int)
 	show = func(i int) {
 		q := qs[i]
-		c := &Card{ID: id, Kind: "ask", Mood: moodWait, Title: q.Question, Meta: s.Project, Priority: 9,
+		c := &Card{ID: id, Kind: "ask", Mood: moodWait, Title: q.Question, Meta: a.ui.name(s), Priority: 9,
 			Multi: q.MultiSelect, Footer: "In terminal", Expires: deadline}
 		if len(qs) > 1 {
-			c.Meta = fmt.Sprintf("%s · %d/%d", s.Project, i+1, len(qs))
+			c.Meta = fmt.Sprintf("%s · %d/%d", a.ui.name(s), i+1, len(qs))
 		}
 		for _, o := range q.Options {
 			if len(c.Options) == 4 {

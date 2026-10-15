@@ -112,14 +112,14 @@ func (u *UI) mainLine() line {
 				l.chip = mins(now.Sub(ags[0].Start))
 			} else {
 				l.text = agentsText(len(ags)) + " working"
-				l.chip = s.Project
+				l.chip = u.name(s)
 			}
 			l.chipCol = p.muted
 			return l
 		}
 		switch s.State {
 		case "wait":
-			return line{key: "claude:wait:" + s.ID, mood: moodWait, text: s.Project + " needs you", textCol: p.blue, more: busy - 1}
+			return line{key: "claude:wait:" + s.ID, mood: moodWait, text: u.name(s) + " needs you", textCol: p.blue, more: busy - 1}
 		case "work":
 			l := line{key: "claude:" + s.ID, mood: moodWork, text: s.Label, plus: s.Plus, minus: s.Minus, textCol: p.fg, more: busy - 1, work: true}
 			if l.text == "" {

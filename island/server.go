@@ -27,7 +27,7 @@ func SockPath() string {
 
 // wire messages, one JSON object per line
 type inMsg struct {
-	Type    string          `json:"type"` // hook | plugin | edge | cmd
+	Type    string          `json:"type"`           // hook | plugin | edge | cmd
 	Name    string          `json:"name,omitempty"` // plugin: which one
 	Event   string          `json:"event,omitempty"`
 	Wait    bool            `json:"wait,omitempty"`
@@ -49,9 +49,9 @@ type hookInput struct {
 	Suggestions json.RawMessage `json:"permission_suggestions"`
 	NotifyType  string          `json:"notification_type"`
 	LastMessage string          `json:"last_assistant_message"`
-	Error       string          `json:"error"`  // StopFailure
-	Prompt      string          `json:"prompt"` // UserPromptSubmit
-	Source      string          `json:"source"` // SessionStart: startup | resume | clear | compact
+	Error       string          `json:"error"`      // StopFailure
+	Prompt      string          `json:"prompt"`     // UserPromptSubmit
+	Source      string          `json:"source"`     // SessionStart: startup | resume | clear | compact
 	AgentID     string          `json:"agent_id"`   // set on every hook a subagent fires
 	AgentType   string          `json:"agent_type"` // Explore, general-purpose, …
 }

@@ -47,7 +47,7 @@ type Session struct {
 	Title                     string // the topic Claude put in its terminal's title
 	Prompt                    string // what you asked this turn, first line
 	Plus, Minus               int
-	Agents                    map[string]*Agent // subagents running, by agent_id
+	Agents                    map[string]*Agent    // subagents running, by agent_id
 	asks                      []agentAsk           // Agent calls waiting for their SubagentStart
 	ended                     map[string]time.Time // agents that stopped before their start arrived
 	Since, Seen               time.Time
@@ -94,8 +94,9 @@ type moment struct {
 	text  string
 	sub   string
 	until time.Time
-	focus string // session to jump to on click
-	open  string // file to open on click
+	focus string   // session to jump to on click
+	open  string   // file to open on click
+	many  []string // the sessions a "Done" names
 
 	icon  string      // drawn where Ember sits (Ember tucks away)
 	tint  color.NRGBA // the icon's colour
@@ -158,32 +159,32 @@ const (
 
 // UI owns all state; only the main loop touches it.
 type UI struct {
-	W, H     int
-	BarH     float32
-	TimeFmt  string
-	cv       *canvas // the frame
-	dc       *canvas // where views draw: the content layer
-	content  *canvas
-	prev     *image.RGBA // content of the view we're leaving
-	pal      palette
-	cfg      Config
-	sessions map[string]*Session
-	cards    []*Card
-	edge      *EdgeStatus // set by the edge plugin while it runs
-	edgeStats *EdgeStats
-	second    time.Time
+	W, H       int
+	BarH       float32
+	TimeFmt    string
+	cv         *canvas // the frame
+	dc         *canvas // where views draw: the content layer
+	content    *canvas
+	prev       *image.RGBA // content of the view we're leaving
+	pal        palette
+	cfg        Config
+	sessions   map[string]*Session
+	cards      []*Card
+	edge       *EdgeStatus // set by the edge plugin while it runs
+	edgeStats  *EdgeStats
+	second     time.Time
 	dash       string               // the open dashboard's plugin, if any
 	dashAt     time.Time            // when it opened: its entrance plays from here
 	dashIn     bool                 // the pointer has been on it: leaving closes it
 	dashboards map[string]Dashboard // by plugin, while the plugin runs
-	track    *Track
-	art      *albumArt
-	moment   *moment
-	under    *moment // a note waiting under an OSD
-	power    *power  // the battery, if there is one
-	casting  bool    // the screen is being shared
-	vol      level   // the default output
-	light    float64 // screen brightness 0..1, -1 if there's no backlight
+	track      *Track
+	art        *albumArt
+	moment     *moment
+	under      *moment // a note waiting under an OSD
+	power      *power  // the battery, if there is one
+	casting    bool    // the screen is being shared
+	vol        level   // the default output
+	light      float64 // screen brightness 0..1, -1 if there's no backlight
 
 	// interaction
 	hover, pinned, suppress bool
@@ -346,6 +347,10 @@ func (u *UI) Moment(m moment) {
 	}
 }
 
+// sessionList ranks the sessions: waiting, working, idle. Within a rank, one
+// whose terminal you aren't looking at comes first (you can see the other),
+// then the newest turn. Not the last one heard from: two sessions working at
+// once both speak every few seconds, and the pill would swap between them.
 func (u *UI) sessionList() []*Session {
 	var out []*Session
 	for _, s := range u.sessions {
@@ -353,12 +358,41 @@ func (u *UI) sessionList() []*Session {
 	}
 	rank := map[string]int{"wait": 3, "work": 2, "idle": 1}
 	sort.Slice(out, func(i, j int) bool {
-		if ri, rj := rank[out[i].status()], rank[out[j].status()]; ri != rj {
-			return ri > rj
+		a, b := out[i], out[j]
+		if ra, rb := rank[a.status()], rank[b.status()]; ra != rb {
+			return ra > rb
 		}
-		return out[i].Seen.After(out[j].Seen)
+		if wa, wb := u.watching[a.ID], u.watching[b.ID]; wa != wb {
+			return wb
+		}
+		if !a.Since.Equal(b.Since) {
+			return a.Since.After(b.Since)
+		}
+		return a.ID < b.ID
 	})
 	return out
+}
+
+// name is what a session is called: its project, unless another session
+// works in the same folder. Then the topic Claude gave it tells them apart
+// ("ember (Fix the flaky test)"), or failing that a number ("ember 2").
+func (u *UI) name(s *Session) string {
+	twin, n := false, 1
+	for _, o := range u.sessions {
+		if o != s && o.Project == s.Project {
+			twin = true
+			if o.ID < s.ID {
+				n++
+			}
+		}
+	}
+	switch {
+	case !twin:
+		return s.Project
+	case s.Title != "":
+		return s.Project + " (" + s.Title + ")"
+	}
+	return fmt.Sprintf("%s %d", s.Project, n)
 }
 
 // ---- activities: what can be shown, and what wins ----
