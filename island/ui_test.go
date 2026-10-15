@@ -27,11 +27,6 @@ func TestExpandedButtonsWinHits(t *testing.T) {
 	u.onKey = func(k string) { got = append(got, k) }
 	u.pinned = true
 	settle(u, &clock)
-	for _, h := range u.hits {
-		if h.key == "music:toggle" {
-			t.Fatal("controls only under the pointer")
-		}
-	}
 	// point at the music row: the right end of the row under the seek line
 	r := u.seekRect
 	if redraw, _ := u.pointer(pointerEvent{kind: "enter", x: float64(r.Max.X - 20), y: float64(r.Min.Y - 16)}); redraw {

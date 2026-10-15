@@ -2,6 +2,7 @@ package island
 
 import (
 	"fmt"
+	xdraw "golang.org/x/image/draw"
 	"image"
 	"image/color"
 	"math"
@@ -16,7 +17,7 @@ import (
 const (
 	cardW   = 380
 	expW    = 380
-	musicH  = 52
+	musicH  = 70
 	edgeH   = 34
 	rowGapX = 6
 	btnH    = 26
@@ -38,70 +39,165 @@ func (u *UI) rowHot(key string, x, w, y, h float32) float64 {
 
 // ---- music ----
 
-// musicRow: the cover on the rail, the song beside it, its progress along
-// the foot. The cover lights the section softly in its own colour; under the
-// pointer the controls replace the equaliser and the line thickens.
+// musicRow: now playing. The cover, a little larger than anything else in
+// the card, sits on a haze of its own colours that washes across the
+// section; the equaliser rides on its corner. Beside it the song, quiet
+// controls that brighten under the pointer, and a scrubber with the time
+// at both ends. A new song fades in; pausing dims the cover and morphs the
+// button.
 func (u *UI) musicRow(x, w, y float32) {
-	p, t := u.pal, u.track
+	p, t, now := u.pal, u.track, u.now()
 	acc := u.accent(p.fg)
 	on := u.rowHot("music", x, w, y, musicH)
-	const art = 24
-	ax, ay := x+pad, y+11
-	if u.art != nil {
-		if u.art.accent.A > 0 { // the cover's light on the island
-			u.cv.glowInside(image.Rect(int(x+2), int(y+1), int(x+w*0.6), int(y+musicH)), ax+art/2, ay+art/2, 110,
-				u.art.accent, (0.13+0.05*on)*u.fadeK*u.rowK)
-		}
-		img := u.art.row
-		u.dc.drawArt(img, int(ax+art/2)-img.Rect.Dx()/2, int(ay+art/2)-img.Rect.Dy()/2, 6, 1)
+	playK := u.tw("music:playing", b2f(t.Playing), b2f(t.Playing))
+	if u.art != nil && u.art.wash != nil { // the cover's light across the section
+		u.washInside(u.art, image.Rect(int(x+2), int(y-4), int(x+w-2), int(y+musicH+4)), (0.3+0.08*on)*u.fadeK*u.rowK)
+	}
+	cx, cy0 := x+pad, y+(musicH-coverS)/2
+	if u.art != nil { // a new cover arrives: it fades in
+		ak := u.tw("art:"+u.art.url, 1, 0)
+		u.dc.roundRect(cx-1, cy0+2, coverS+2, coverS+1, 10, alpha(colorBlack, 0.35*ak)) // a soft shadow under it
+		u.dc.drawArt(u.art.row, int(cx), int(cy0), 9, ak*(0.55+0.45*playK))
 	} else {
-		u.dc.roundRect(ax, ay, art, art, 6, alpha(p.fg, 0.08))
-		u.dc.icon("note", ax+art/2, ay+art/2, 13, p.muted)
+		u.dc.roundRect(cx, cy0, coverS, coverS, 9, alpha(p.fg, 0.07))
+		u.dc.icon("note", cx+coverS/2, cy0+coverS/2, 18, p.muted)
 	}
-	tx := x + textX
+	// the equaliser on the cover's corner, on a small dark lozenge
+	ex, ey := cx+coverS-21, cy0+coverS-15
+	u.dc.roundRect(ex, ey, 18, 12, 6, alpha(colorBlack, 0.5))
+	u.eqLiveS(ex+3.5, ey+10, 8, 2.2, 4, mix(acc, colorWhite, 0.45), t.Playing)
+
+	tx := cx + coverS + 12
 	right := x + w - pad
-	inner := right - tx - 8 - float32(44+56*on)
-	u.dc.text(fBody(), ellipsize(fBody(), t.Title, inner), tx, y+21, p.fg)
-	u.dc.text(fSecond(), ellipsize(fSecond(), t.Artist, inner), tx, y+36, p.muted)
-	if on < 0.99 {
-		k := 1 - on
-		if t.Playing {
-			u.eqLive(right-14, y+21, 9, alpha(acc, k), true)
-		}
-		if t.Length > 0 { // time left ticks by itself: a live part, not baked into the frame
-			ty := y + 36
-			r := image.Rect(int(right-48), int(ty-11), int(right)+2, int(ty+4))
-			u.lives = append(u.lives, live{r: r, draw: func(c *canvas, _ float64) {
-				left := "−" + clock(max(t.Length-t.pos(u.now()), 0))
-				c.text(fCaption(), left, right-measure(fCaption(), left), ty, alpha(p.faint, k))
-			}})
-		}
-	}
-	if on > 0.01 {
-		cy := y + 24
-		for i, k := range []string{"prev", "toggle", "next"} {
-			bx := right - 13 - float32(2-i)*32
-			key := "music:" + k
-			h, d := float32(u.hl(key)), float32(u.pressed(key))
-			if k == "toggle" {
-				u.dc.circle(bx, cy, (13-1.5*d)*float32(0.85+0.15*on), alpha(mix(p.fg, acc, 0.2), on))
-				u.mediaGlyph(k, bx, cy, t.Playing, alpha(p.ink, on), 0.66)
-			} else {
-				if h > 0.01 {
-					u.dc.circle(bx, cy, 12-d, alpha(p.fg, 0.1*float64(h)*on))
-				}
-				u.mediaGlyph(k, bx, cy, t.Playing, alpha(mix(p.muted, p.fg, 0.5+0.5*float64(h)), on), 0.66)
+	// the controls: always there, quiet, brighter under the pointer
+	ccy := y + 27
+	for i, k := range []string{"prev", "toggle", "next"} {
+		bx := right - 12 - float32(2-i)*32
+		key := "music:" + k
+		h, d := float32(u.hl(key)), float32(u.pressed(key))
+		if k == "toggle" { // a disc; pause and play morph into each other
+			r := (14 - 1.6*d) * (1 + 0.04*h)
+			u.dc.circle(bx, ccy, r, mix(mix(p.fg, acc, 0.15), colorWhite, 0.1*float64(h)))
+			gk := 0.6 * (1 - 0.06*d)
+			u.mediaGlyph(k, bx, ccy, true, alpha(p.ink, playK), gk*float32(0.7+0.3*playK))
+			u.mediaGlyph(k, bx+1, ccy, false, alpha(p.ink, 1-playK), gk*float32(0.7+0.3*(1-playK)))
+		} else {
+			if h > 0.01 || d > 0 {
+				u.dc.circle(bx, ccy, 12-d, alpha(p.fg, 0.1*float64(h)+0.08*float64(d)))
 			}
-			u.hits = append(u.hits, hit{image.Rect(int(bx-14), int(cy-14), int(bx+14), int(cy+14)), key})
+			u.mediaGlyph(k, bx, ccy, t.Playing, mix(p.muted, p.fg, 0.35*float64(on)+0.65*float64(h)), 0.6*(1-0.08*d))
 		}
+		u.hits = append(u.hits, hit{image.Rect(int(bx-15), int(ccy-15), int(bx+15), int(ccy+15)), key})
 	}
-	if t.Length > 0 { // the song, along the foot: thickens and drags under the pointer
-		lx, lw := tx, right-tx
-		ly := y + musicH - 6
-		u.seekRect = image.Rect(int(lx), int(ly-5), int(lx+lw), int(ly+5))
+	// the song: a new one rises in
+	e := u.enter("song:"+t.Title+"\x00"+t.Artist, 0, false)
+	ty := rise(e)
+	tw := right - 12 - 2*32 - 22 - tx
+	u.dc.text(fBody(), ellipsize(fBody(), t.Title, tw), tx, y+23+ty, alpha(p.fg, e))
+	u.dc.text(fSecond(), ellipsize(fSecond(), t.Artist, tw), tx, y+38+ty, alpha(p.muted, e))
+	// the scrubber, the time at both ends: it thickens and grows a knob under the pointer, and drags
+	if t.Length > 0 {
+		ly := y + musicH - 13
+		f := fCaption()
+		tw0 := measure(f, "00:00")
+		lx, lw := tx+tw0+6, right-tx-2*tw0-12
+		u.seekRect = image.Rect(int(lx), int(ly-6), int(lx+lw), int(ly+6))
 		h := float32(u.hl("music:seek"))
-		u.progressLive(lx, ly, lw, 2+1.5*h, acc, h)
+		u.progressLive(lx, ly, lw, 3+1.5*h, acc, h)
 		u.hits = append(u.hits, hit{u.seekRect, "music:seek"})
+		r := image.Rect(int(tx)-1, int(ly-10), int(right)+2, int(ly+5))
+		u.lives = append(u.lives, live{r: r, draw: func(c *canvas, _ float64) {
+			pos := min(t.pos(u.now()), t.Length)
+			if u.drag == "music:seek" { // dragging: the times follow the knob
+				pos = time.Duration(u.seekPreview * float64(t.Length))
+			}
+			el, left := clock(max(pos, 0)), "−"+clock(max(t.Length-pos, 0))
+			c.text(f, el, tx+tw0-measure(f, el), ly+3.5, p.faint)
+			c.text(f, left, right-measure(f, left), ly+3.5, p.faint)
+		}})
+	}
+	_ = now
+}
+
+func b2f(b bool) float64 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+var colorBlack = color.NRGBA{0, 0, 0, 255}
+
+// eqLiveS is the equaliser at a given size: bar height h, width bw, pitch.
+func (u *UI) eqLiveS(x, y, h, bw, pitch float32, col color.NRGBA, playing bool) {
+	r := image.Rect(int(x)-1, int(y-h)-1, int(x+3*pitch)+1, int(y)+1)
+	u.eqShown = u.eqShown || playing
+	u.lives = append(u.lives, live{r: r, draw: func(c *canvas, t float64) {
+		lv, heard := u.audio.levels()
+		for i := 0; i < 3; i++ {
+			k := []float64{0.4, 0.75, 0.55}[i]
+			switch {
+			case playing && heard:
+				target := 0.18 + 0.82*lv[i]
+				if target > u.eqLevel[i] {
+					u.eqLevel[i] += (target - u.eqLevel[i]) * 0.7
+				} else {
+					u.eqLevel[i] += (target - u.eqLevel[i]) * 0.25
+				}
+				k = u.eqLevel[i]
+			case playing:
+				k = 0.3 + 0.7*math.Abs(math.Sin(t*(3.7+float64(i)*1.9)+float64(i)*1.3))*(0.75+0.25*math.Sin(t*1.3+float64(i)))
+			}
+			bh := float32(k) * h
+			cc := col
+			if !playing {
+				cc = alpha(col, 0.5)
+			}
+			c.roundRect(x+float32(i)*pitch, y-bh, bw, bh, bw/2, cc)
+		}
+	}})
+}
+
+// washInside lays the cover's haze over the island's body in r: strongest
+// behind the cover, fading toward the right and at every edge.
+func (u *UI) washInside(a *albumArt, r image.Rectangle, strength float64) {
+	r = r.Intersect(u.cv.img.Rect)
+	if r.Empty() || strength <= 0 {
+		return
+	}
+	key := fmt.Sprint(a.url, r.Dx(), r.Dy())
+	if u.washKey != key { // scaled once a cover and a size
+		img := image.NewRGBA(image.Rect(0, 0, r.Dx(), r.Dy()))
+		xdraw.ApproxBiLinear.Scale(img, img.Rect, a.wash, a.wash.Rect, xdraw.Src, nil)
+		u.washImg, u.washKey = img, key
+	}
+	img := u.washImg
+	edge := func(d int, span float32) float32 {
+		f := min(float32(d)/span, 1)
+		return f * f * (3 - 2*f)
+	}
+	w := float32(r.Dx())
+	for yy := 0; yy < r.Dy(); yy++ {
+		row := u.cv.img.Pix[(r.Min.Y+yy)*u.cv.img.Stride:]
+		src := img.Pix[yy*img.Stride:]
+		fy := edge(min(yy, r.Dy()-1-yy), 22) // feathered well in from every edge: light, not a box
+		for xx := 0; xx < r.Dx(); xx++ {
+			i := (r.Min.X + xx) * 4
+			a := row[i+3]
+			if a < 180 {
+				continue
+			}
+			fx := (1 - 0.85*float32(xx)/w) * edge(min(xx, r.Dx()-1-xx), 24)
+			k := float32(strength) * fx * fy
+			if k <= 0.003 {
+				continue
+			}
+			for c := 0; c < 3; c++ {
+				tgt := float32(src[xx*4+c]) * 0.75 * float32(a) / 255 // a little darker than the cover: text stays readable
+				cur := float32(row[i+c])
+				row[i+c] = uint8(cur + (tgt-cur)*k)
+			}
+		}
 	}
 }
 

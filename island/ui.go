@@ -228,6 +228,8 @@ type UI struct {
 	audio       *audio     // the song's levels, while one plays
 	eqShown     bool       // an equaliser is on screen (it listens, so frames come quicker)
 	eqLevel     [3]float64 // its bars, smoothed
+	washImg     *image.RGBA // the cover's haze, scaled to the music section
+	washKey     string
 	gesture     string     // Ember's reaction to what just happened: nod | shake | wince
 	gestureAt   time.Time
 	sleepK      float64 // how asleep the pill looks, 0..1

@@ -142,9 +142,7 @@ func galleryArt() *albumArt {
 			img.Set(x, y, color.NRGBA{uint8(math.Min(255, r)), uint8(math.Min(255, math.Max(0, g))), uint8(math.Min(255, b)), 255})
 		}
 	}
-	a := &albumArt{small: scaleSquare(img, 14), large: scaleSquare(img, 60), row: scaleSquare(img, 24)}
-	a.accent = accentOf(a.large)
-	return a
+	return makeArt(img, "gallery")
 }
 
 // sheet lays shots out in a grid with a label over each, at 2×.

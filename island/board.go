@@ -682,6 +682,9 @@ func (u *UI) sessionLine(s *Session, x, w, y float32) {
 	switch {
 	case s.status() == "work" && !s.Since.IsZero():
 		when = mins(now.Sub(s.Since))
+		if now.Sub(s.Since) < time.Minute {
+			when = "<1m"
+		}
 	case s.State == "wait":
 		when = ago(now.Sub(s.Seen))
 	case s.Recap != nil:

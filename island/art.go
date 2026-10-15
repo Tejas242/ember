@@ -22,8 +22,56 @@ import (
 type albumArt struct {
 	url          string
 	small, large *image.RGBA // 14 px (pill: a disc in a progress ring), 60 px (source of the rest)
-	row          *image.RGBA // 24 px (the card's music section)
+	row          *image.RGBA // 46 px (the card's music section)
+	wash         *image.RGBA // the cover blurred to a haze: the music section's ambient light
 	accent       color.NRGBA // the cover's colour, lifted to read on the dark island; zero if it's grey
+}
+
+const coverS = 46 // the cover in the card
+
+// makeArt prepares a cover at every size the island draws it.
+func makeArt(src image.Image, url string) *albumArt {
+	a := &albumArt{url: url, small: scaleSquare(src, 14), large: scaleSquare(src, 60), row: scaleSquare(src, coverS)}
+	a.accent = accentOf(a.large)
+	a.wash = scaleSquare(a.large, 24) // small and blurred: it's light, not a picture
+	blurRGBA(a.wash, 3, 3)
+	return a
+}
+
+// blurRGBA blurs img in place: passes of a box of radius rad (three ≈ a gaussian).
+func blurRGBA(img *image.RGBA, rad, passes int) {
+	w, h := img.Rect.Dx(), img.Rect.Dy()
+	tmp := make([]uint8, len(img.Pix))
+	for p := 0; p < passes; p++ {
+		for _, horiz := range []bool{true, false} {
+			src, dst := img.Pix, tmp
+			for j := 0; j < map[bool]int{true: h, false: w}[horiz]; j++ {
+				n := map[bool]int{true: w, false: h}[horiz]
+				for i := 0; i < n; i++ {
+					var sum [4]int
+					cnt := 0
+					for k := max(0, i-rad); k <= min(n-1, i+rad); k++ {
+						o := (j*w + k) * 4
+						if !horiz {
+							o = (k*w + j) * 4
+						}
+						for c := 0; c < 4; c++ {
+							sum[c] += int(src[o+c])
+						}
+						cnt++
+					}
+					o := (j*w + i) * 4
+					if !horiz {
+						o = (i*w + j) * 4
+					}
+					for c := 0; c < 4; c++ {
+						dst[o+c] = uint8(sum[c] / cnt)
+					}
+				}
+			}
+			copy(img.Pix, tmp)
+		}
+	}
 }
 
 var artClient = &http.Client{Timeout: 8 * time.Second}
@@ -55,8 +103,7 @@ func loadArt(raw string, done func(*albumArt)) {
 		if err != nil {
 			return
 		}
-		art := &albumArt{url: raw, small: scaleSquare(src, 14), large: scaleSquare(src, 60), row: scaleSquare(src, 24)}
-		art.accent = accentOf(art.large)
+		art := makeArt(src, raw)
 		src, data = nil, nil
 		debug.FreeOSMemory() // a decoded cover can be tens of MB; give it back now
 		done(art)
