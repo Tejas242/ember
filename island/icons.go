@@ -117,6 +117,12 @@ func (c *canvas) icon(name string, cx, cy, s float32, col color.NRGBA) {
 		}
 	case "battery":
 		c.battery(cx-8*u, cy, 8.2*u, 0.22, col, col)
+	case "unplug": // a plug, pulled out: the power's gone
+		c.line(P(6, 1.5), P(6, 4.5), 1.4*u, col)
+		c.line(P(10, 1.5), P(10, 4.5), 1.4*u, col)
+		c.roundRect(cx-4.4*u, cy-3.6*u, 8.8*u, 5.4*u, 1.6*u, col)
+		c.line(P(8, 9.8), P(8, 12), 1.4*u, col)
+		c.arc(cx+2.2*u, cy+4*u, 2.2*u, 1.4*u, math.Pi, math.Pi*1.5, col)
 	case "bolt":
 		c.poly(col, P(9.6, 1), P(3.2, 9.2), P(7.6, 9.2), P(6.4, 15), P(12.8, 6.8), P(8.4, 6.8))
 	case "headphones":

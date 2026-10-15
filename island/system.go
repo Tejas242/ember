@@ -129,7 +129,7 @@ func (a *app) powerChanged(prev, p power) {
 		a.ui.Moment(moment{key: "power", icon: "bolt", tint: a.ui.pal.green, text: text, right: pctText(p.pct),
 			batt: true, pct: p.pct / 100, until: now.Add(3500 * time.Millisecond)})
 	case !charging(p.state) && charging(prev.state):
-		a.ui.Moment(moment{key: "power", icon: "battery", tint: a.ui.pal.fg, text: "On battery", right: pctText(p.pct),
+		a.ui.Moment(moment{key: "power", icon: "unplug", tint: a.ui.pal.fg, text: "On battery", right: pctText(p.pct),
 			batt: true, pct: p.pct / 100, until: now.Add(2500 * time.Millisecond)})
 	case p.state == 4 && prev.state == 1:
 		a.ui.Moment(moment{key: "power", icon: "check", tint: a.ui.pal.green, text: "Fully charged", right: pctText(p.pct),
@@ -141,7 +141,7 @@ func (a *app) powerChanged(prev, p power) {
 				if at <= 10 {
 					tint = a.ui.pal.red
 				}
-				a.ui.Moment(moment{key: "power", icon: "battery", tint: tint, text: "Battery low", right: pctText(p.pct),
+				a.ui.Moment(moment{key: "power", icon: "warning", tint: tint, text: "Battery low", right: pctText(p.pct),
 					batt: true, pct: p.pct / 100, mood: moodNudge, until: now.Add(8 * time.Second)})
 				break
 			}

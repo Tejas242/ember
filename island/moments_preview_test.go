@@ -72,11 +72,14 @@ func TestPreviewMoments(t *testing.T) {
 		{"mic", func(u *UI) {
 			u.Moment(moment{key: "osd:mic", icon: "mic-off", tint: u.pal.red, text: "Microphone muted", osd: true, until: clock.Add(time.Hour)})
 		}},
+		{"on-battery", func(u *UI) {
+			u.Moment(moment{key: "power", icon: "unplug", tint: u.pal.fg, text: "On battery", right: "80%", batt: true, pct: 0.8, until: clock.Add(time.Hour)})
+		}},
 		{"charging", func(u *UI) {
 			u.Moment(moment{key: "power", icon: "bolt", tint: u.pal.green, text: "Charging", right: "73%", batt: true, pct: 0.73, until: clock.Add(time.Hour)})
 		}},
 		{"low", func(u *UI) {
-			u.Moment(moment{key: "power", icon: "battery", tint: u.pal.red, text: "Battery low", right: "9%", batt: true, pct: 0.09, until: clock.Add(time.Hour)})
+			u.Moment(moment{key: "power", icon: "warning", tint: u.pal.red, text: "Battery low", right: "9%", batt: true, pct: 0.09, until: clock.Add(time.Hour)})
 		}},
 		{"headphones", func(u *UI) {
 			u.Moment(moment{key: "device", icon: "headphones", tint: u.pal.blue, text: "WH-1000XM4", sub: "Connected", right: "80%", batt: true, pct: 0.8, until: clock.Add(time.Hour)})
