@@ -32,7 +32,8 @@ type app struct {
 	cfgAt   time.Time // the config file's mtime when read
 	desk    desktop
 	started time.Time
-	quiet   bool // the current post changed nothing on screen
+	quiet   bool                 // the current post changed nothing on screen
+	ended   map[string]time.Time // sessions that ended: a late async hook mustn't bring one back
 }
 
 // Status is what `ember doctor` reports about the running island.
@@ -327,7 +328,7 @@ func (a *app) sweep() bool {
 		quiet := now.Sub(s.Seen)
 		switch {
 		case !slices.ContainsFunc(s.Pids, alive) || (s.State == "idle" && quiet > 3*time.Hour):
-			delete(a.ui.sessions, id)
+			a.forget(id)
 			changed = true
 		case s.State != "idle" && quiet > 30*time.Minute && !a.hasCard(id):
 			s.State, s.Label = "idle", ""
@@ -338,6 +339,35 @@ func (a *app) sweep() bool {
 		}
 	}
 	return changed
+}
+
+// forget drops a session and what the island knew about it.
+func (a *app) forget(id string) {
+	delete(a.ui.sessions, id)
+	delete(a.ui.watching, id)
+}
+
+// end forgets a session that's over, and keeps it over: hooks are async, so
+// one can still arrive after its SessionEnd.
+func (a *app) end(id string, now time.Time) {
+	a.forget(id)
+	a.ended = remember(a.ended, id, now)
+}
+
+// sameProcess: two hooks' parent chains come from one Claude process. A
+// chain starts at the hook's parent, which is Claude itself or a shell it ran
+// the hook in; that shell has exited by now. So the older chain, less its
+// dead head, is the newer one, give or take the newer one's shell. Sessions
+// in the same terminal share only the chain's tail, and a Claude started
+// from inside another adds more than a shell.
+func sameProcess(old, cur []int) bool {
+	i := 0
+	for i < len(old) && !alive(old[i]) {
+		i++
+	}
+	old = old[i:]
+	d := len(cur) - len(old)
+	return len(old) > 0 && (d == 0 || d == 1) && slices.Equal(cur[d:], old)
 }
 
 // hasCard: a request from this session is still on the island.
@@ -562,7 +592,11 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 	json.Unmarshal(m.Payload, &in)
 	now := a.ui.now()
 	s := a.ui.sessions[in.SessionID]
-	if s == nil && in.SessionID != "" && m.Event != "SessionEnd" {
+	if m.Event == "SessionStart" {
+		delete(a.ended, in.SessionID) // resumed: it's back
+	}
+	_, over := a.ended[in.SessionID]
+	if s == nil && in.SessionID != "" && m.Event != "SessionEnd" && !over {
 		s = &Session{ID: in.SessionID, State: "idle", Since: now}
 		a.ui.sessions[in.SessionID] = s
 	}
@@ -576,6 +610,9 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		}
 	}
 	if s == nil {
+		if m.Event == "SessionEnd" && in.SessionID != "" {
+			a.end(in.SessionID, now)
+		}
 		if answer != nil {
 			answer <- nil
 		}
@@ -589,10 +626,17 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 
 	switch m.Event {
 	case "SessionEnd":
-		delete(a.ui.sessions, in.SessionID)
+		a.end(in.SessionID, now)
 	case "SessionStart":
 		if in.Source == "startup" { // a compaction or a resume keeps its background agents
 			s.Agents, s.asks = nil, nil
+		}
+		if in.Source == "clear" || in.Source == "resume" { // a new session in the same Claude: the old one is over
+			for id, o := range a.ui.sessions {
+				if o != s && sameProcess(o.Pids, m.Pids) {
+					a.end(id, now)
+				}
+			}
 		}
 	case "UserPromptSubmit":
 		s.State, s.Label, s.Plus, s.Minus, s.Since, s.StepAt = "work", "Thinking", 0, 0, now, now
