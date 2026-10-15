@@ -107,6 +107,17 @@ func doctor() {
 
 	if cfg := island.ConfigPath(); fileExists(cfg) {
 		line(true, "config", cfg, "")
+		warns, missing := island.CheckConfig(cfg)
+		for _, w := range warns { // a bad value keeps its default: worth a look, not a failure
+			note("config", strings.TrimPrefix(w, "config: "))
+		}
+		if len(missing) > 0 { // install never overwrites the file, so new keys don't reach it
+			more := ""
+			if len(missing) > 6 {
+				missing, more = missing[:6], fmt.Sprintf(" and %d more", len(missing)-6)
+			}
+			note("config", "new settings your file doesn't have: "+strings.Join(missing, ", ")+more+" (see the README's Config)")
+		}
 	} else {
 		note("config", "defaults (ember install writes "+cfg+")")
 	}

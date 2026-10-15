@@ -94,9 +94,17 @@ func (a *app) reloadConfig() bool {
 	if at.IsZero() {
 		a.cfgAt = time.Unix(1, 0) // no file: defaults, and don't look again until one appears
 	}
-	a.cfg = loadConfig(ConfigPath())
+	var warns []string
+	a.cfg, warns = loadConfig(ConfigPath())
+	for _, w := range warns {
+		log.Println(w)
+	}
 	a.ui.cfg = a.cfg
 	a.ui.TimeFmt = a.cfg.timeFormat()
+	a.ui.pal = a.cfg.look(loadPalette())
+	if a.win != nil {
+		a.win.watchIdle(a.cfg.awayAfter())
+	}
 	a.ui.casting = a.desk.casts > 0 && a.cfg.Privacy
 	return true
 }
@@ -229,7 +237,7 @@ func Run() error {
 			}
 			a.ui.habits.save()
 			a.ui.day.save()
-			if p := loadPalette(); p != a.ui.pal { // the wallpaper palette changed
+			if p := a.cfg.look(loadPalette()); p != a.ui.pal { // the wallpaper palette changed
 				a.ui.pal = p
 				a.ui.Invalidate()
 			}
@@ -318,9 +326,9 @@ func minTime(a, b time.Time) time.Time {
 }
 
 // sweep forgets sessions whose Claude process is gone, and settles ones
-// that went silent: a Claude that was killed never says Stop, so after 30
-// minutes without a word "working" becomes idle (a long build still shows
-// its minutes in the pill until then).
+// that went silent: a Claude that was killed never says Stop, so after
+// [claude] settle_min (30) without a word "working" becomes idle (a long
+// build still shows its minutes in the pill until then).
 func (a *app) sweep() bool {
 	changed, now := false, a.ui.now()
 	for id, s := range a.ui.sessions {
@@ -329,11 +337,11 @@ func (a *app) sweep() bool {
 		case !slices.ContainsFunc(s.Pids, alive) || (s.State == "idle" && quiet > 3*time.Hour):
 			delete(a.ui.sessions, id)
 			changed = true
-		case s.State != "idle" && quiet > 30*time.Minute && !a.hasCard(id):
+		case s.State != "idle" && quiet > a.cfg.Settle && !a.hasCard(id):
 			s.State, s.Label = "idle", ""
 			changed = true
 		}
-		if s.sweepAgents(now) {
+		if s.sweepAgents(now, a.cfg.AgentQuiet) {
 			changed = true
 		}
 	}
@@ -689,14 +697,14 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 // two merge into one ("Done · edge, ember") rather than one hiding the other.
 func (a *app) done(s *Session, summary string, now time.Time) {
 	m := moment{key: "done:" + s.ID, act: "claude", mood: moodHappy, text: "Done · " + s.Project,
-		sub: summary, until: now.Add(6 * time.Second), focus: s.ID}
+		sub: summary, until: now.Add(a.cfg.DoneFor), focus: s.ID}
 	if cur := a.ui.moment; cur != nil && strings.HasPrefix(cur.key, "done") && cur.focus != s.ID && now.Before(cur.until) {
 		names := strings.TrimPrefix(cur.text, "Done · ")
 		n := strings.Count(names, ",") + 2
 		m.key = "done:many"
 		m.text = "Done · " + names + ", " + s.Project
 		m.sub = fmt.Sprintf("%d sessions finished", n)
-		m.until = now.Add(7 * time.Second)
+		m.until = now.Add(a.cfg.DoneFor + time.Second)
 	}
 	a.ui.Moment(m)
 }
@@ -752,8 +760,12 @@ func (a *app) permission(s *Session, in hookInput, tin map[string]any, answer ch
 		a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"wait", s.Project, s.ID})
 	}
 	str := func(k string) string { v, _ := tin[k].(string); return v }
+	if !a.cfg.Answer { // [claude] answer = false: the terminal asks
+		answer <- nil
+		return ""
+	}
 	c := &Card{ID: "perm:" + s.ID + ":" + fmt.Sprint(time.Now().UnixNano()), Kind: "perm", Mood: moodWait,
-		Meta: s.Project, Priority: 10, Footer: "In terminal", Expires: a.ui.now().Add(AskTimeout - 5*time.Second)}
+		Meta: s.Project, Priority: 10, Footer: "In terminal", Expires: a.ui.now().Add(a.cfg.Wait)}
 	switch in.Tool {
 	case "Bash": // Claude says what it wants in words: that's the title; the command is the detail
 		c.Title, c.Code, c.Shell = str("description"), str("command"), true
@@ -840,12 +852,12 @@ func (a *app) ask(s *Session, in hookInput, tin map[string]any, answer chan<- js
 	var qs []question
 	b, _ := json.Marshal(tin["questions"])
 	json.Unmarshal(b, &qs)
-	if len(qs) == 0 {
+	if len(qs) == 0 || !a.cfg.Answer {
 		answer <- nil
 		return ""
 	}
 	answers := map[string]string{}
-	deadline := a.ui.now().Add(AskTimeout - 5*time.Second)
+	deadline := a.ui.now().Add(a.cfg.Wait)
 	id := "ask:" + s.ID
 	var show func(i int)
 	show = func(i int) {

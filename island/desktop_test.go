@@ -2,6 +2,7 @@ package island
 
 import (
 	"os"
+	"reflect"
 	"testing"
 )
 
@@ -24,11 +25,11 @@ func TestSessionTitle(t *testing.T) {
 func TestConfigParse(t *testing.T) {
 	p := t.TempDir() + "/config.toml"
 	writeFile(t, p, "clock = \"24h\" # comment\nhover_delay_ms = 100\n[show]\nosd = false\nmusic=false\n")
-	c := loadConfig(p)
-	if !c.Clock24 || c.HoverDelay.Milliseconds() != 100 || c.OSD || c.Music || !c.Claude {
+	c, warns := loadConfig(p)
+	if len(warns) > 0 || !c.Clock24 || c.HoverDelay.Milliseconds() != 100 || c.OSD || c.Music || !c.Claude {
 		t.Fatalf("%+v", c)
 	}
-	if loadConfig(p+".missing") != DefaultConfig() {
+	if c, warns := loadConfig(p + ".missing"); !reflect.DeepEqual(c, DefaultConfig()) || warns != nil {
 		t.Fatal("a missing file means defaults")
 	}
 }
