@@ -154,6 +154,8 @@ func (u *UI) press(k string, button int) {
 		u.pinned, u.suppress = true, false
 	case k == "panel": // the card's background closes it
 		u.pinned, u.suppress = false, true
+	case k == "rows:all": // "Show all" / "Show less"
+		u.allRows = !u.allRows
 	case strings.HasPrefix(k, "s:"), strings.HasPrefix(k, "a:"): // a session or an agent in the card: open or close it
 		u.opened[k] = !u.boardOpen[k]
 	case k == "dash": // so does a dashboard's

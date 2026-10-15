@@ -334,3 +334,50 @@ func TestSessionWindowIsTheNearest(t *testing.T) {
 		t.Fatalf("titles %q, %q", a.ui.sessions["in"].Title, a.ui.sessions["out"].Title)
 	}
 }
+
+// When the card runs out of room it folds the last sessions into a link,
+// never out of reach: "Show all" lists every session on one line, music and
+// edge stepping aside, until the card closes.
+func TestShowAllSessions(t *testing.T) {
+	clock := time.Date(2026, 10, 15, 15, 0, 0, 0, time.Local)
+	a := newTestApp(&clock)
+	for _, s := range []string{"a", "b", "c", "d"} {
+		clock = clock.Add(time.Second)
+		hookAt(a, "UserPromptSubmit", s, "p"+s, map[string]any{"prompt": "fix the thing in " + s})
+		for i := 0; i < 4; i++ {
+			step(a, s, "p"+s, s+".go")
+		}
+	}
+	a.ui.track = &Track{Player: "p", Title: "T", Playing: true, PosAt: clock}
+	a.ui.edge = &EdgeStatus{Today: 1, Need: 1}
+	if _, hidden := a.ui.board(a.ui.brief()); hidden == 0 {
+		t.Fatal("expected the card to fold some sessions away at this size")
+	}
+	found := false
+	a.ui.pinned = true
+	settle(a.ui, &clock)
+	for _, h := range a.ui.hits {
+		found = found || h.key == "rows:all"
+	}
+	if !found {
+		t.Fatal("the folded sessions have no link")
+	}
+	a.ui.press("rows:all", 1)
+	rows, hidden := a.ui.board(a.ui.brief())
+	if hidden != 0 || len(rows) != 4 {
+		t.Fatalf("show all: %d rows, %d still hidden", len(rows), hidden)
+	}
+	for _, r := range rows {
+		if r.open {
+			t.Fatalf("%s is open in the full list", r.s.ID)
+		}
+	}
+	if h := a.ui.expandedHeight(); h > a.ui.H-14 {
+		t.Fatalf("card %d px", h)
+	}
+	a.ui.pinned = false
+	settle(a.ui, &clock)
+	if a.ui.allRows {
+		t.Fatal("show all should end when the card closes")
+	}
+}

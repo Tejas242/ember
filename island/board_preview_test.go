@@ -73,6 +73,12 @@ func TestPreviewBoard(t *testing.T) {
 			work(a, c, "e", "edge", "add a hint ladder")
 			hookAt(a, "Stop", "e", "edge", map[string]any{"last_assistant_message": "Added the ladder."})
 		}},
+		{"show-all", func(a *app, c *time.Time) {
+			for i, n := range []string{"kinvault", "edge", "ember", "dots", "notes"} {
+				work(a, c, fmt.Sprint(i), n, "work on "+n)
+			}
+			a.ui.allRows = true
+		}},
 		{"agents-done", func(a *app, c *time.Time) {
 			work(a, c, "k", "kinvault", "audit the store")
 			agents(a, c, "k", "kinvault", "Map the locking", "Audit the tests")
@@ -94,8 +100,11 @@ func TestPreviewBoard(t *testing.T) {
 		a.ui.track = &Track{Player: "p", Title: "Veridis Quo", Artist: "Daft Punk", Playing: true, Length: 5 * time.Minute, Position: time.Minute, PosAt: clock}
 		a.ui.edge = &EdgeStatus{Today: 1, Need: 1, Streak: 4}
 		a.ui.dashboards["edge"] = edgeDash{}
+		all := a.ui.allRows
 		a.ui.pinned = true
 		settle(a.ui, &clock)
+		a.ui.allRows = all
+		a.ui.Invalidate()
 		for f := 0; f < 90; f++ {
 			clock = clock.Add(time.Second / 60)
 			a.ui.renderDamage()

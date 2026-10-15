@@ -176,6 +176,7 @@ type UI struct {
 	second     time.Time
 	opened     map[string]bool      // rows you opened or closed in the card: s:<session>, a:<session>:<agent>
 	boardOpen  map[string]bool      // how the card last drew them
+	allRows    bool                 // the card shows every session, one line each ("Show all"), until it closes
 	dash       string               // the open dashboard's plugin, if any
 	dashAt     time.Time            // when it opened: its entrance plays from here
 	dashIn     bool                 // the pointer has been on it: leaving closes it
@@ -511,6 +512,9 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 	u.dt = dt
 	v := u.currentView()
 	key := u.viewKey(v)
+	if v != vExpanded {
+		u.allRows = false // "Show all" lasts as long as the card's open
+	}
 	if v != u.lastView || key != u.lastKey {
 		u.transition(v, key, now)
 		// keep what's on screen to cross-fade it out while the new view grows in

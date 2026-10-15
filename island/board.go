@@ -56,9 +56,13 @@ func (l *sessLayout) height() float32 {
 	return h + 8
 }
 
-// footerH is what music and edge take under the sessions.
+// footerH is what music and edge take under the sessions. Showing every
+// session, they step aside.
 func (u *UI) footerH() float32 {
 	h := float32(0)
+	if u.allRows {
+		return h
+	}
 	if u.track != nil && u.cfg.Music {
 		h += musicRowH + rowGapX
 	}
@@ -76,7 +80,7 @@ func (u *UI) board(b brief) (rows []sessLayout, hidden int) {
 		budget -= 46 + rowGapX
 	}
 	list := b.rows
-	if n := 1 + u.cfg.CardOthers; len(list) > n { // [card] others
+	if n := 1 + u.cfg.CardOthers; len(list) > n && !u.allRows { // [card] others
 		hidden, list = len(list)-n, list[:n]
 	}
 	auto := map[string]bool{} // opened by Ember, not by you: these close first
@@ -87,7 +91,7 @@ func (u *UI) board(b brief) (rows []sessLayout, hidden int) {
 			open = s.State == "wait" || (i == 0 && (s.status() != "idle" || (s.Recap != nil && now.Sub(s.Recap.At) < recapFresh)))
 			auto[s.ID] = open
 		}
-		l.open = open
+		l.open = open && !u.allRows // every session: one line each
 		l.agents = append(s.agentList(), reversed(s.Finished)...)
 		for _, ag := range l.agents {
 			l.openAg[ag.ID] = u.opened["a:"+s.ID+":"+ag.ID]
@@ -103,7 +107,7 @@ func (u *UI) board(b brief) (rows []sessLayout, hidden int) {
 		for i := range rows {
 			h += rows[i].height() + sessGap
 		}
-		if hidden > 0 {
+		if hidden > 0 || u.allRows {
 			h += moreH
 		}
 		return h
@@ -200,7 +204,7 @@ func (u *UI) expandedHeight() int {
 	for i := range rows {
 		h += rows[i].height() + sessGap
 	}
-	if hidden > 0 {
+	if hidden > 0 || u.allRows {
 		h += moreH
 	}
 	if len(rows) > 0 {
@@ -243,13 +247,29 @@ func (u *UI) drawExpanded(x, w float32) {
 		u.drawSession(l, x, w, y)
 		y += l.height() + sessGap
 	}
-	if hidden > 0 {
-		t := plural(hidden, "more session")
-		u.dc.text(fCaption(), t, x+(w-measure(fCaption(), t))/2, y+14, p.faint)
+	if hidden > 0 || u.allRows { // a link: every session, one line each, or back
+		t := plural(hidden, "more session") + " · Show all"
+		if u.allRows {
+			t = "Show less"
+			if hidden > 0 { // more than the surface can hold even so
+				t = plural(hidden, "more session") + " · Show less"
+			}
+		}
+		k := u.hl("rows:all")
+		tw := measure(fCaption(), t)
+		tx := x + (w-tw)/2
+		if k > 0.01 {
+			u.dc.roundRect(tx-10, y+2, tw+20, moreH-4, 9, alpha(p.fg, 0.06*k))
+		}
+		u.dc.text(fCaption(), t, tx, y+14, mix(p.faint, p.fg, 0.5*k))
+		u.hits = append(u.hits, hit{image.Rect(int(tx-10), int(y), int(tx+tw+10), int(y+moreH)), "rows:all"})
 		y += moreH
 	}
 	if len(rows) > 0 {
 		y += rowGapX - sessGap
+	}
+	if u.allRows {
+		return
 	}
 	if u.track != nil && u.cfg.Music {
 		u.musicRow(x, w, y)
