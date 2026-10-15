@@ -223,14 +223,14 @@ type UI struct {
 	swell       spring  // the pill's anticipation under the pointer, 0..1
 	prevK       float64 // how visible the view we're leaving was when we left it
 	prevAt      time.Time
-	haloAt      time.Time  // the last frame something waited on you (the halo fades after)
-	meterBump   time.Time  // a key pressed past the meter's end
-	audio       *audio     // the song's levels, while one plays
-	eqShown     bool       // an equaliser is on screen (it listens, so frames come quicker)
-	eqLevel     [3]float64 // its bars, smoothed
+	haloAt      time.Time   // the last frame something waited on you (the halo fades after)
+	meterBump   time.Time   // a key pressed past the meter's end
+	audio       *audio      // the song's levels, while one plays
+	eqShown     bool        // an equaliser is on screen (it listens, so frames come quicker)
+	eqLevel     [3]float64  // its bars, smoothed
 	washImg     *image.RGBA // the cover's haze, scaled to the music section
 	washKey     string
-	gesture     string     // Ember's reaction to what just happened: nod | shake | wince
+	gesture     string // Ember's reaction to what just happened: nod | shake | wince
 	gestureAt   time.Time
 	sleepK      float64 // how asleep the pill looks, 0..1
 	wasAsleep   bool
