@@ -515,10 +515,10 @@ func (edgeDash) year(u *UI, st *EdgeStats, x, y, w float32, age time.Duration) {
 	lastRow := (int(last.Weekday()) + 6) % 7
 	cols := (len(cal) - 1 - lastRow + 6) / 7 // whole weeks before this one
 	cols++
-	pitch := min(float32(8.8), w/float32(cols))
+	pitch := min(float32(8.4), w/float32(cols))
 	cell := pitch - 2
 	gx := x + (w-pitch*float32(cols))/2
-	gy := y + 22
+	gy := y + 21
 	months := map[int]string{}
 	for i, d := range cal {
 		back := len(cal) - 1 - i // days before today
@@ -547,7 +547,7 @@ func (edgeDash) year(u *UI, st *EdgeStats, x, y, w float32, age time.Duration) {
 	}
 	mf := fCaption()
 	for col, m := range months {
-		u.dc.text(mf, m, gx+float32(col)*pitch, gy+7*pitch+11, alpha(p.faint, phase(age, 700, 500*time.Millisecond)))
+		u.dc.text(mf, m, gx+float32(col)*pitch, gy+7*pitch+10, alpha(p.faint, phase(age, 700, 500*time.Millisecond)))
 	}
 }
 
@@ -608,10 +608,10 @@ func (edgeDash) tiles(u *UI, st *EdgeStats, x, y, w float32, age time.Duration) 
 	pct := func(v float64) string { return fmt.Sprintf("%d%%", int(math.Round(v))) }
 	t := st.Totals
 	var ts []tile
-	solo := tile{label: "Solo", sub: "nothing solved yet", format: pct, col: p.green}
+	solo := tile{label: "Solo", sub: "none yet", format: pct, col: p.green}
 	if t.Solved > 0 {
 		solo.value = 100 * float64(t.Solo) / float64(t.Solved)
-		solo.sub = fmt.Sprintf("%d of %d solved", t.Solo, t.Solved)
+		solo.sub = fmt.Sprintf("%d/%d", t.Solo, t.Solved)
 	} else {
 		solo.format = func(float64) string { return "–" }
 	}
@@ -623,7 +623,7 @@ func (edgeDash) tiles(u *UI, st *EdgeStats, x, y, w float32, age time.Duration) 
 	} else {
 		ret.format = func(float64) string { return "–" }
 	}
-	ret.sub = fmt.Sprintf("%d re-solve%s due", r.Due, map[bool]string{true: "", false: "s"}[r.Due == 1])
+	ret.sub = fmt.Sprintf("%d due", r.Due)
 	ts = append(ts, ret)
 	wk := 0
 	for _, d := range st.Week.Days {
@@ -631,7 +631,7 @@ func (edgeDash) tiles(u *UI, st *EdgeStats, x, y, w float32, age time.Duration) 
 	}
 	ts = append(ts, tile{label: "Focus", sub: "this week", value: float64(wk), col: p.yellow,
 		format: func(v float64) string { return mins(time.Duration(v) * time.Second) }})
-	weak := tile{label: "Weakest", sub: "no focus topics", col: p.red, format: func(float64) string { return "–" }}
+	weak := tile{label: "Weakest", sub: "no focus", col: p.red, format: func(float64) string { return "–" }}
 	if tp := weakest(st); tp != "" {
 		weak.format = func(float64) string { return tp }
 		weak.sub = weakSub(st, tp)
@@ -647,12 +647,17 @@ func (edgeDash) tiles(u *UI, st *EdgeStats, x, y, w float32, age time.Duration) 
 		}
 		k := phase(age, time.Duration(900+90*i)*time.Millisecond, 600*time.Millisecond)
 		ty := y + 6*float32(1-k)
-		u.dc.circle(tx+3, ty+8, 3, alpha(tl.col, k))
-		u.dc.eyebrow(tl.label, tx+11, ty+11.5, alpha(p.faint, k))
+		// two lines: what it is, then the number with its context beside it
+		u.dc.circle(tx+3, ty+12, 3, alpha(tl.col, k))
+		u.dc.eyebrow(tl.label, tx+11, ty+15.5, alpha(p.faint, k))
 		v := tl.format(tl.value * phase(age, time.Duration(950+90*i)*time.Millisecond, 800*time.Millisecond))
 		bf := face(fSemiBold, 17)
-		u.dc.text(bf, ellipsize(bf, v, tw-20), tx, ty+31, alpha(p.fg, k))
-		u.dc.text(fCaption(), ellipsize(fCaption(), tl.sub, tw-20), tx, ty+44, alpha(p.muted, k))
+		vw := u.dc.text(bf, ellipsize(bf, v, tw-20), tx, ty+38, alpha(p.fg, k))
+		if room := tw - 20 - vw - 7; room > 30 { // the context only where it fits whole
+			if sub := tl.sub; measure(fCaption(), sub) <= room {
+				u.dc.text(fCaption(), sub, tx+vw+7, ty+37, alpha(p.faint, k))
+			}
+		}
 	}
 }
 
@@ -690,9 +695,9 @@ func weakSub(st *EdgeStats, tag string) string {
 	for _, t := range st.Topics {
 		if t.Tag == tag && t.FocusWeight > 0 {
 			if t.Tasks == 0 {
-				return "not tried yet"
+				return "untried"
 			}
-			return fmt.Sprintf("%d of %d solo", t.Solo, t.Tasks)
+			return fmt.Sprintf("%d/%d solo", t.Solo, t.Tasks)
 		}
 	}
 	return ""
