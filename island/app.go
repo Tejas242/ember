@@ -614,10 +614,10 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		}
 		a.ui.mind.kick(now, 0.35, -0.6) // a start, and a low mood that takes a while to lift
 		if a.ui.mind.away {
-			a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"fail", s.Project, s.ID})
+			a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"fail", a.ui.name(s), s.ID})
 			break
 		}
-		a.ui.Moment(moment{key: "fail:" + s.ID, act: "claude", mood: moodError, text: "Stopped · " + s.Project,
+		a.ui.Moment(moment{key: "fail:" + s.ID, act: "claude", mood: moodError, text: "Stopped · " + a.ui.name(s),
 			sub: strings.ReplaceAll(msg, "_", " "), until: now.Add(8 * time.Second), focus: s.ID})
 	case "AskUserQuestion":
 		if answer != nil {
@@ -749,11 +749,11 @@ func (a *app) presence(idle bool) {
 func (a *app) permission(s *Session, in hookInput, tin map[string]any, answer chan<- json.RawMessage) string {
 	a.ui.mind.kick(a.ui.now(), 0.4, -0.05)
 	if a.ui.mind.away {
-		a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"wait", s.Project, s.ID})
+		a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"wait", a.ui.name(s), s.ID})
 	}
 	str := func(k string) string { v, _ := tin[k].(string); return v }
 	c := &Card{ID: "perm:" + s.ID + ":" + fmt.Sprint(time.Now().UnixNano()), Kind: "perm", Mood: moodWait,
-		Meta: s.Project, Priority: 10, Footer: "In terminal", Expires: a.ui.now().Add(AskTimeout - 5*time.Second)}
+		Meta: a.ui.name(s), Priority: 10, Footer: "In terminal", Expires: a.ui.now().Add(AskTimeout - 5*time.Second)}
 	switch in.Tool {
 	case "Bash": // Claude says what it wants in words: that's the title; the command is the detail
 		c.Title, c.Code, c.Shell = str("description"), str("command"), true
@@ -835,7 +835,7 @@ type question struct {
 func (a *app) ask(s *Session, in hookInput, tin map[string]any, answer chan<- json.RawMessage) string {
 	a.ui.mind.kick(a.ui.now(), 0.4, 0)
 	if a.ui.mind.away {
-		a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"wait", s.Project, s.ID})
+		a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"wait", a.ui.name(s), s.ID})
 	}
 	var qs []question
 	b, _ := json.Marshal(tin["questions"])
@@ -850,10 +850,10 @@ func (a *app) ask(s *Session, in hookInput, tin map[string]any, answer chan<- js
 	var show func(i int)
 	show = func(i int) {
 		q := qs[i]
-		c := &Card{ID: id, Kind: "ask", Mood: moodWait, Title: q.Question, Meta: s.Project, Priority: 9,
+		c := &Card{ID: id, Kind: "ask", Mood: moodWait, Title: q.Question, Meta: a.ui.name(s), Priority: 9,
 			Multi: q.MultiSelect, Footer: "In terminal", Expires: deadline}
 		if len(qs) > 1 {
-			c.Meta = fmt.Sprintf("%s · %d/%d", s.Project, i+1, len(qs))
+			c.Meta = fmt.Sprintf("%s · %d/%d", a.ui.name(s), i+1, len(qs))
 		}
 		for _, o := range q.Options {
 			if len(c.Options) == 4 {

@@ -61,7 +61,7 @@ func (u *UI) brief() brief {
 		if t := s.task(); t != "" {
 			sub = t + " · " + ago(now.Sub(s.Seen))
 		}
-		b = brief{mode: "wait", s: s, mood: moodWait, head: s.Project + " needs you", sub: sub}
+		b = brief{mode: "wait", s: s, mood: moodWait, head: u.name(s) + " needs you", sub: sub}
 	case len(working) > 0:
 		s := working[0]
 		label := s.Label
@@ -74,9 +74,9 @@ func (u *UI) brief() brief {
 		// the headline is the task, in words; the timeline below says how it's going
 		head, sub := s.task(), s.Project+" · "+turnFacts(s, now)
 		if head == "" {
-			head, sub = s.Project+" · "+label, turnFacts(s, now)
+			head, sub = u.name(s)+" · "+label, turnFacts(s, now)
 			if g, ok := gerund(label); ok {
-				head = s.Project + " is " + g
+				head = u.name(s) + " is " + g
 			}
 		}
 		b = brief{mode: "work", s: s, mood: moodWork, head: head, sub: strings.TrimSuffix(sub, " · "), agents: s.agentList()}
@@ -99,7 +99,7 @@ func (u *UI) brief() brief {
 			}
 			head := last.task()
 			if head == "" {
-				head, sub = last.Project+" is done", strings.TrimPrefix(sub, last.Project+" · d")
+				head, sub = u.name(last)+" is done", strings.TrimPrefix(sub, last.Project+" · d")
 				sub = "D" + sub
 			}
 			b = brief{mode: "recap", s: last, mood: m, head: head, sub: sub}
@@ -527,7 +527,7 @@ func (u *UI) otherRow(s *Session, x, w, y float32) {
 	tx, right := x+pad+18, x+w-pad
 	ww := measure(fCaption(), when)
 	u.dc.text(fCaption(), when, right-ww, cy+4, p.faint)
-	pw := u.dc.text(fBody(), ellipsize(fBody(), s.Project, 110), tx, cy+4.5, p.fg)
+	pw := u.dc.text(fBody(), ellipsize(fBody(), u.name(s), 110), tx, cy+4.5, p.fg)
 	u.dc.text(fCaption(), ellipsize(fCaption(), text, right-ww-10-(tx+pw+8)), tx+pw+8, cy+4, p.muted)
 	u.hits = append(u.hits, hit{image.Rect(int(x+pad-6), int(y), int(x+w-pad+6), int(y+otherH)), key})
 }
