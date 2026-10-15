@@ -21,6 +21,7 @@ type Track struct {
 	Length   time.Duration
 	Position time.Duration
 	PosAt    time.Time // when Position was read; it advances from there while playing
+	PausedAt time.Time // when it stopped playing
 }
 
 func (t Track) pos(now time.Time) time.Duration {

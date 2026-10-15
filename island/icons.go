@@ -177,6 +177,10 @@ func (c *canvas) icon(name string, cx, cy, s float32, col color.NRGBA) {
 		c.frame(cx-2.6*u, cy-6*u, 5.2*u, 12*u, 2.6*u, 1.1*u, col)
 	case "agent": // a spark
 		c.poly(col, P(8, 2), P(9.4, 6.6), P(14, 8), P(9.4, 9.4), P(8, 14), P(6.6, 9.4), P(2, 8), P(6.6, 6.6))
+	case "note": // a quaver: music without a cover
+		c.circle(cx-2.4*u, cy+4.2*u, 2.6*u, col)
+		c.line(P(8.1, 12.2), P(8.1, 2.5), 1.4*u, col)
+		c.poly(col, P(7.4, 2), P(13, 4.2), P(13, 6.8), P(7.4, 4.6))
 	case "other":
 		c.circle(cx, cy, 2.2*u, col)
 	case "check":

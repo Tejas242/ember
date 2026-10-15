@@ -36,6 +36,8 @@ type Turn struct {
 // Recap is a finished turn, for the card to tell afterwards.
 type Recap struct {
 	Summary     string        `json:"summary"`
+	Failed      bool          `json:"failed,omitempty"` // it stopped on an error (Error says which)
+	Error       string        `json:"error,omitempty"`
 	At          time.Time     `json:"at"`
 	Took        time.Duration `json:"took"`
 	Steps       int           `json:"steps"`

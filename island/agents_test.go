@@ -44,7 +44,7 @@ func TestSubagentStepsStayTheirs(t *testing.T) {
 	if rows, _ := a.ui.board(b); b.mode != "work" || len(rows) != 1 || len(rows[0].agents) != 1 || !rows[0].open {
 		t.Fatalf("brief %s, rows %+v", b.mode, rows)
 	}
-	if l := a.ui.mainLine(); !l.work || l.agents == 0 {
+	if l := a.ui.mainLine(); !l.work {
 		t.Fatalf("pill %q", l.text)
 	}
 }
@@ -62,7 +62,7 @@ func TestAgentsOutliveTheTurn(t *testing.T) {
 	if s.status() != "work" || a.ui.moment != nil {
 		t.Fatalf("status %s, moment %+v", s.status(), a.ui.moment)
 	}
-	if l := a.ui.mainLine(); !l.work || l.agents == 0 {
+	if l := a.ui.mainLine(); !l.work {
 		t.Fatalf("pill %q", l.text)
 	}
 	b := a.ui.brief()

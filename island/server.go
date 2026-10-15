@@ -48,6 +48,7 @@ type hookInput struct {
 	ToolInput   json.RawMessage `json:"tool_input"`
 	Suggestions json.RawMessage `json:"permission_suggestions"`
 	NotifyType  string          `json:"notification_type"`
+	Message     string          `json:"message"` // Notification
 	LastMessage string          `json:"last_assistant_message"`
 	Error       string          `json:"error"`      // StopFailure
 	Prompt      string          `json:"prompt"`     // UserPromptSubmit

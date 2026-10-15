@@ -45,7 +45,7 @@ func TestBriefWhileWorking(t *testing.T) {
 	if b.mode != "work" || b.head != "ember is reading store.go" { // no informative prompt: the step speaks
 		t.Fatalf("mode %s, head %q", b.mode, b.head)
 	}
-	for _, want := range []string{"2m in", "3 steps", "1 file +3 −1", "1 failed"} {
+	for _, want := range []string{"2m in", "1 file +3 −1", "1 failed"} {
 		if !strings.Contains(b.sub, want) {
 			t.Fatalf("facts %q lack %q", b.sub, want)
 		}
@@ -81,7 +81,7 @@ func TestBriefRecapThenDay(t *testing.T) {
 	clock = clock.Add(9 * time.Minute)
 	hookAt(a, "Stop", "s", "kinvault", map[string]any{"last_assistant_message": "Let me summarise.\nFixed the race in store.go; all 42 tests pass."})
 	b := a.ui.brief()
-	if b.mode != "recap" || b.head != "kinvault is done" || b.sub != "Done just now · took 9m" {
+	if b.mode != "recap" || b.head != "kinvault is done" || b.sub != "Finished just now · took 9m · 1 file +2" {
 		t.Fatalf("%+v", b)
 	}
 	r := a.ui.sessions["s"].Recap

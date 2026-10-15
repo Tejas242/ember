@@ -28,7 +28,7 @@ func mins(d time.Duration) string {
 	if m < 60 {
 		return fmt.Sprintf("%dm", max(m, 0))
 	}
-	return fmt.Sprintf("%dh%02dm", m/60, m%60)
+	return fmt.Sprintf("%dh %02dm", m/60, m%60)
 }
 
 func clock(d time.Duration) string {
@@ -59,7 +59,9 @@ type line struct {
 	textCol  color.NRGBA
 	badge    string // "+2": more sessions than the one named
 	timer    string // how long it has been at it, at the right end
-	agents   int    // subagents running: an amber spark and a count
+	timerCol color.NRGBA
+	subCol   color.NRGBA // the secondary words' colour, if not the usual
+	agents   int         // subagents running: an amber spark and a count
 	chip     string // a quiet value at the right end (edge's minutes, its task)
 	chipCol  color.NRGBA
 	lock     bool
@@ -102,9 +104,7 @@ func (u *UI) mainLine() line {
 		// the pill names a session and says how long it has been at it; what
 		// it's doing step by step is the card's job
 		var waiting, working []*Session
-		agents := 0
 		for _, x := range ss {
-			agents += x.running()
 			switch {
 			case x.State == "wait":
 				waiting = append(waiting, x)
@@ -114,17 +114,24 @@ func (u *UI) mainLine() line {
 		}
 		switch {
 		case len(waiting) == 1:
-			return line{key: "claude:wait", mood: moodWait, text: u.name(waiting[0]) + " needs you", textCol: p.blue, halo: true}
+			return line{key: "claude:wait", mood: moodWait, text: u.short(waiting[0]) + " needs you", textCol: p.blue, halo: true}
 		case len(waiting) > 1:
 			return line{key: "claude:wait", mood: moodWait, text: fmt.Sprintf("%d sessions need you", len(waiting)), textCol: p.blue, halo: true}
 		case len(working) > 0:
 			s := working[0]
-			l := line{key: "claude:work", mood: moodWork, text: u.name(s), textCol: p.fg, work: true, agents: agents}
+			// subagents are detail of the same work: the card has them
+			l := line{key: "claude:work", mood: moodWork, text: u.short(s), textCol: p.fg, work: true, timerCol: p.muted}
 			if len(working) > 1 {
 				l.badge = fmt.Sprintf("+%d", len(working)-1)
 			}
 			if d := now.Sub(s.Since); !s.Since.IsZero() && d >= time.Minute {
 				l.timer = mins(d)
+			}
+			if stalled(s, now) { // nothing heard for a while: it may be stuck
+				l.timerCol = p.yellow
+				if l.timer == "" {
+					l.timer = mins(now.Sub(s.Since))
+				}
 			}
 			return l
 		}
@@ -154,7 +161,38 @@ func (u *UI) mainLine() line {
 	if e := u.edge; e != nil && e.Closed {
 		l.lock = true
 	}
+	// what finished or stopped while you weren't looking stays, quietly,
+	// beside the time until you've seen it
+	var done, failed []*Session
+	for _, s := range ss {
+		if !s.Unseen.IsZero() && s.Recap != nil && u.cfg.Claude {
+			if s.Recap.Failed {
+				failed = append(failed, s)
+			} else {
+				done = append(done, s)
+			}
+		}
+	}
+	switch {
+	case len(failed) == 1:
+		l.sub, l.subCol = u.short(failed[0])+" stopped", mix(p.red, p.muted, 0.2)
+	case len(failed) > 1:
+		l.sub, l.subCol = fmt.Sprintf("%d stopped", len(failed)), mix(p.red, p.muted, 0.2)
+	case len(done) == 1:
+		l.sub, l.subCol = u.short(done[0])+" done", mix(p.green, p.muted, 0.35)
+	case len(done) > 1:
+		l.sub, l.subCol = fmt.Sprintf("%d done", len(done)), mix(p.green, p.muted, 0.35)
+	}
+	if l.sub != "" {
+		l.key = "clock:" + l.sub
+	}
 	return l
+}
+
+// stalled: a session working that hasn't been heard from in three minutes,
+// a long build, or a hang. Either way, worth a look.
+func stalled(s *Session, now time.Time) bool {
+	return s.State == "work" && now.Sub(s.Seen) > 3*time.Minute
 }
 
 func agentsText(n int) string {
@@ -226,7 +264,7 @@ func (u *UI) pillLayout(l line, h float32) (left, right []seg, w float32) {
 	if l.timer != "" {
 		tw := tabWidth(fTimer(), l.timer)
 		right = append(right, seg{w: tw, gap: 8, draw: func(x float32) {
-			u.rollText(u.dc, "pill:timer", l.timer, fTimer(), x+tw, base, p.muted)
+			u.rollText(u.dc, "pill:timer", l.timer, fTimer(), x+tw, base, l.timerCol)
 		}})
 	}
 	if l.agents > 0 {
@@ -345,7 +383,11 @@ func (u *UI) pillLayout(l line, h float32) (left, right []seg, w float32) {
 			}
 			x += measure(fPill(), text)
 			if subW > 0 {
-				u.dc.text(fPillSub(), ellipsize(fPillSub(), l.sub, subW-8), x+8, base, p.muted)
+				col := p.muted
+				if l.subCol.A > 0 {
+					col = l.subCol
+				}
+				u.dc.text(fPillSub(), ellipsize(fPillSub(), l.sub, subW-8), x+8, base, col)
 				x += subW
 			}
 			if l.badge != "" { // more sessions than the one named

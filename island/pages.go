@@ -56,7 +56,7 @@ func (u *UI) musicRow(x, w, y float32) {
 		u.dc.drawArt(img, int(ax+art/2)-img.Rect.Dx()/2, int(ay+art/2)-img.Rect.Dy()/2, 7, 1)
 	} else {
 		u.dc.roundRect(ax, ay, art, art, 7, alpha(p.fg, 0.08))
-		u.dc.icon("volume", ax+art/2, ay+art/2, 13, p.muted)
+		u.dc.icon("note", ax+art/2, ay+art/2, 13, p.muted)
 	}
 	tx := x + textX
 	right := x + w - pad
@@ -286,7 +286,7 @@ func eyebrowOf(c *Card) string {
 	case "ask":
 		return "Question"
 	case "edge":
-		return "edge"
+		return "Practice"
 	}
 	return "Permission"
 }
@@ -295,14 +295,35 @@ func (u *UI) cardTitle(c *Card) []string {
 	return wrap(fTitle(), c.Title, cardW-textX-pad, 2)
 }
 
+// codeLines wraps a command to its box: at spaces, continuation lines
+// indented, four lines at most. Longer, it keeps the start and the end (the
+// end is where a "&& rm -rf" would hide) and says the middle is left out.
 func codeLines(code string, w float32) []string {
 	f := fMonoS()
 	var out []string
 	for _, ln := range strings.Split(strings.TrimSpace(code), "\n") {
-		out = append(out, ellipsize(f, ln, w))
-		if len(out) == 3 {
-			break
+		cur, ind := "", ""
+		for _, word := range strings.Fields(ln) {
+			try := word
+			if cur != "" {
+				try = cur + " " + word
+			}
+			if measure(f, ind+try) <= w || cur == "" {
+				cur = try
+				continue
+			}
+			out = append(out, ind+cur)
+			cur, ind = word, "  "
 		}
+		if cur != "" || ind == "" {
+			out = append(out, ind+cur)
+		}
+	}
+	for i := range out {
+		out[i] = ellipsize(f, out[i], w)
+	}
+	if len(out) > 4 {
+		out = []string{out[0], out[1], "  …", out[len(out)-1]}
 	}
 	return out
 }
@@ -324,10 +345,13 @@ func (u *UI) cardHeight(c *Card) int {
 	if c.Code != "" {
 		h += 10 + 12 + 15*len(codeLines(c.Code, inner-20))
 	}
+	if c.Note != "" {
+		h += 18
+	}
 	if len(c.Options) > 0 {
 		h += 10 + len(c.Options)*optH
 	}
-	if len(c.Buttons) > 0 {
+	if len(c.Buttons) > 0 || c.Footer != "" {
 		h += 12 + btnH
 	}
 	return min(h+14, u.H-14)
@@ -369,13 +393,6 @@ func (u *UI) drawCard(c *Card, x, w float32) {
 			u.dc.line(pt{cx + 3, cy - 3}, pt{cx - 3, cy + 3}, 1.3, col)
 			u.hits = append(u.hits, hit{image.Rect(int(cx-11), int(cy-11), int(cx+11), int(cy+11)), key})
 			r -= 22
-		}
-		if len(c.Buttons) == 0 && c.Footer != "" { // no buttons: "In terminal" sits up here
-			key := "btn:footer"
-			fw := measure(fCaption(), c.Footer)
-			u.dc.text(fCaption(), c.Footer, r-fw, y+19, mix(p.faint, p.fg, 0.2+0.6*u.hl(key)))
-			u.hits = append(u.hits, hit{image.Rect(int(r-fw-4), int(y+6), int(r+4), int(y+26)), key})
-			r -= fw + 12
 		}
 		if meta := u.cardMeta(c); meta != "" {
 			mm := ellipsize(fCaption(), meta, 140)
@@ -428,12 +445,18 @@ func (u *UI) drawCard(c *Card, x, w float32) {
 					continue
 				}
 				cx := x + pad + 10
-				for _, r := range shellTokens(p, ln) {
+				for _, r := range shellTokens(p, ln, !strings.HasPrefix(ln, "  ")) {
 					cx += u.dc.text(fMonoS(), r.s, cx, by, r.col)
 				}
 			}
 		})
 		y += bh
+		i++
+	}
+	if c.Note != "" { // what "Always" would allow, before you press it
+		note := ellipsize(fCaption(), c.Note, right-x-pad)
+		u.item("c:note", i, x, w, y, 18, func(y float32) { u.dc.text(fCaption(), note, x+pad+2, y+14, p.faint) })
+		y += 18
 		i++
 	}
 	if len(c.Options) > 0 { // one grouped list, hairlines between, a number to press
@@ -476,7 +499,7 @@ func (u *UI) drawCard(c *Card, x, w float32) {
 			i++
 		}
 	}
-	if len(c.Buttons) > 0 {
+	if len(c.Buttons) > 0 || c.Footer != "" {
 		y += 12
 		u.item("c:buttons", i, x, w, y, btnH, func(y float32) {
 			u.buttonRow(c.Buttons, "btn:", x, w, y, c.Footer, u.primaryOf(c))

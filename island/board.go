@@ -51,10 +51,7 @@ func (l *sessLayout) height() float32 {
 	case "wait":
 		h += waitBtnH
 	case "recap":
-		if len(l.recap) > 0 {
-			return float32(len(l.recap))*recapLineH + 4 + 16 + 4
-		}
-		return 16 + 4
+		return float32(max(len(l.recap), 1))*recapLineH + 10
 	}
 	h += float32(len(l.steps)) * stepH
 	for _, ag := range l.agents {
@@ -78,13 +75,20 @@ func (u *UI) footerH() float32 {
 	if u.allRows {
 		return h
 	}
-	if u.track != nil && u.cfg.Music {
+	if u.musicShown() {
 		h += divH + musicH
 	}
 	if u.edgeRowShown() {
 		h += divH + edgeH
 	}
 	return h
+}
+
+// musicShown: the song has a section while it plays, and for a quarter
+// of an hour after you pause it; then it steps out of the way.
+func (u *UI) musicShown() bool {
+	t := u.track
+	return t != nil && u.cfg.Music && (t.Playing || t.PausedAt.IsZero() || u.now().Sub(t.PausedAt) < 15*time.Minute)
 }
 
 // board lays out the sessions to fit the room the surface has: rows[0] is
@@ -106,8 +110,14 @@ func (u *UI) board(b brief) (rows []sessLayout, hidden int) {
 		}
 		hero.steps = transcript(b.s, hero.agents, keep)
 	}
-	if b.mode == "recap" && b.s.Recap.Summary != "" {
-		hero.recap = wrap(fSecond(), b.s.Recap.Summary, expW-textX-pad, 3)
+	if b.mode == "recap" {
+		say := b.s.Recap.Summary
+		if b.s.Recap.Failed {
+			say = b.s.Recap.Error
+		}
+		if say != "" {
+			hero.recap = wrap(fSecond(), say, expW-textX-pad, 3)
+		}
 	}
 	rows = append(rows, hero)
 	var others []*Session
@@ -285,7 +295,7 @@ func (u *UI) drawExpanded(x, w float32) {
 	if u.allRows {
 		return
 	}
-	if u.track != nil && u.cfg.Music {
+	if u.musicShown() {
 		u.divider(x, w, y)
 		y += divH
 		u.item("music", i, x, w, y, musicH, func(y float32) { u.musicRow(x, w, y) })
@@ -371,25 +381,33 @@ func (u *UI) heroBody(l *sessLayout, x, w, y float32, i *int) float32 {
 	right := x + w - pad
 	switch l.mode {
 	case "wait":
-		u.item("wait:"+s.ID, *i, x, w, y, waitBtnH, func(y float32) { u.goThere(s, tx, y+5) })
+		u.item("wait:"+s.ID, *i, x, w, y, waitBtnH, func(y float32) { u.goThere(s, tx, y+4) })
 		y += waitBtnH
 		*i++
 	case "recap":
 		r := s.Recap
 		col := p.green
-		if r.Failures > 0 && strings.Contains(strings.ToLower(r.Summary), "fail") {
+		switch {
+		case r.Failed:
+			col = p.red
+		case r.troubled():
 			col = p.yellow
 		}
 		h := l.height()
 		u.item("recap:"+s.ID, *i, x, w, y, h, func(y float32) {
-			if n := len(l.recap); n > 0 { // the rail turns into a bar beside Claude's words
-				u.dc.roundRect(gx-1, y-6, 2, float32(n)*recapLineH+2, 1, alpha(col, 0.7))
-				for j, ln := range l.recap {
-					u.dc.text(fSecond(), ln, tx, y+8+float32(j)*recapLineH, p.secondary())
-				}
-				y += float32(n)*recapLineH + 4
+			lines := l.recap
+			if len(lines) == 0 {
+				lines = []string{"Nothing to report"}
 			}
-			u.facts(recapFacts(r), tx, y+12, right-tx, p.faint)
+			// the rail turns into a bar beside Claude's words: green, amber if it admits a failure, red if it stopped
+			u.dc.roundRect(gx-1, y+1, 2, float32(len(lines))*recapLineH-2, 1, alpha(col, 0.75))
+			tc := p.secondary()
+			if r.Failed {
+				tc = mix(p.red, p.fg, 0.35)
+			}
+			for j, ln := range lines {
+				u.dc.text(fSecond(), ln, tx, y+12+float32(j)*recapLineH, tc)
+			}
 		})
 		*i++
 		return top + h
@@ -476,6 +494,8 @@ func (u *UI) step(s *Session, st Step, newest bool, gx, tx, right, cy float32) {
 	rx := right
 	when := strings.TrimSuffix(ago(now.Sub(st.At)), " ago")
 	switch {
+	case current && stalled(s, now):
+		when = "quiet " + mins(now.Sub(s.Seen))
 	case current:
 		d := now.Sub(st.At)
 		when = mins(d)
@@ -492,7 +512,11 @@ func (u *UI) step(s *Session, st Step, newest bool, gx, tx, right, cy float32) {
 		wc = p.red
 	}
 	if current { // the seconds roll
-		rx -= u.rollText(u.dc, "step:"+s.ID, when, fCaption(), rx, cy+4, p.muted) + 10
+		wc := p.muted
+		if stalled(s, now) {
+			wc = p.yellow
+		}
+		rx -= u.rollText(u.dc, "step:"+s.ID, when, fCaption(), rx, cy+4, wc) + 10
 	} else {
 		ww := measure(fCaption(), when)
 		u.dc.text(fCaption(), when, rx-ww, cy+4, wc)
@@ -593,13 +617,16 @@ func (u *UI) sessionLine(s *Session, x, w, y float32) {
 	case s.status() == "work" && !s.Since.IsZero():
 		when = mins(now.Sub(s.Since))
 	case s.State == "wait":
-		when = strings.TrimSuffix(ago(now.Sub(s.Seen)), " ago")
+		when = ago(now.Sub(s.Seen))
 	case s.Recap != nil:
-		when = strings.TrimSuffix(ago(now.Sub(s.Recap.At)), " ago")
+		when = ago(now.Sub(s.Recap.At))
+	}
+	if k > 0.01 { // under the pointer, a chevron says "open this here"
+		u.chevron(right-3, cy, 0, alpha(mix(p.faint, p.fg, 0.5), k))
 	}
 	if when != "" {
 		ww := measure(fCaption(), when)
-		u.dc.text(fCaption(), when, rx-ww, base-0.5, p.faint)
+		u.dc.text(fCaption(), when, rx-ww-12*float32(k), base-0.5, alpha(p.faint, 1-0.6*k))
 		rx -= ww + 10
 	}
 	if n := s.running(); n > 0 {
@@ -610,11 +637,15 @@ func (u *UI) sessionLine(s *Session, x, w, y float32) {
 		rx -= tw + 22
 	}
 	tx := x + textX
-	nw := u.dc.text(fBody(), ellipsize(fBody(), u.name(s), (rx-tx)*0.45), tx, base, p.fg)
+	nw := u.dc.text(fBody(), ellipsize(fBody(), u.short(s), (rx-tx)*0.45), tx, base, p.fg)
+	verb, verbCol := "", p.fg
 	what, col := "Idle", p.faint
 	switch {
 	case s.State == "wait":
-		what, col = "Waiting for your answer", p.blue
+		what, col = "Needs you", p.blue
+		if s.Asking != "" {
+			verb, verbCol, what, col = "Needs you", p.blue, s.Asking, p.muted
+		}
 	case s.State == "work":
 		what, col = s.Label, p.muted
 		if what == "" {
@@ -622,18 +653,34 @@ func (u *UI) sessionLine(s *Session, x, w, y float32) {
 		}
 	case s.running() > 0:
 		what, col = agentsText(s.running())+" working", p.muted
+	case s.Recap != nil && s.Recap.Failed:
+		verb, verbCol, what, col = "Stopped", p.red, s.Recap.Error, p.muted
 	case s.Recap != nil && now.Sub(s.Recap.At) < recapFresh:
-		what, col = s.task(), p.muted
+		verb, verbCol, what, col = "Done", p.green, firstClause(s.Recap.Summary), p.muted
 		if what == "" {
-			what = "Done"
+			what = s.task()
 		}
 	}
 	ax := tx + nw + 8
+	if verb != "" {
+		ax += u.dc.text(fSecond(), verb, ax, base, verbCol)
+		if what != "" {
+			ax += u.dc.text(fSecond(), " · ", ax, base, p.faint)
+		}
+	}
 	t := ellipsize(fSecond(), what, rx-ax)
 	u.dc.text(fSecond(), t, ax, base, col)
 	if s.State == "work" {
 		u.shimmerLive(fSecond(), t, ax, base, mix(p.fg, colorWhite, 0.25))
 	}
+}
+
+// firstClause: a summary's opening, up to its first comma, colon or stop.
+func firstClause(s string) string {
+	if i := strings.IndexAny(s, ",:;."); i > 12 {
+		return s[:i]
+	}
+	return s
 }
 
 // moreLink: "2 more" / "Show less", centred, quiet.
@@ -682,9 +729,12 @@ func (u *UI) sessionGlyph(s *Session, gx, gy float32) {
 				c.circle(gx+10*float32(math.Cos(b)), gy+10*float32(math.Sin(b)), 1.3, p.yellow)
 			}
 		}})
+	case s.Recap != nil && s.Recap.Failed:
+		u.dc.line(pt{gx - 3, gy - 3}, pt{gx + 3, gy + 3}, 1.6, p.red)
+		u.dc.line(pt{gx + 3, gy - 3}, pt{gx - 3, gy + 3}, 1.6, p.red)
 	case s.Recap != nil && now.Sub(s.Recap.At) < recapFresh:
 		col := p.green
-		if s.Recap.Failures > 0 && strings.Contains(strings.ToLower(s.Recap.Summary), "fail") {
+		if s.Recap.troubled() {
 			col = p.yellow
 		}
 		u.dc.icon("check", gx, gy, 10, col)
@@ -772,7 +822,7 @@ func (u *UI) goThere(s *Session, x, y float32) float32 {
 	key := "focus:" + s.ID
 	k, d := float32(u.hl(key)), float32(u.pressed(key))
 	f := face(fSemiBold, 12)
-	t := "Go to terminal"
+	t := "Answer in terminal"
 	tw := measure(f, t)
 	w := tw + 26 + 12
 	in := 1.5 * d

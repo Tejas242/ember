@@ -82,7 +82,7 @@ func (*edgePlugin) Message(a *app, raw json.RawMessage) {
 			return
 		}
 		moods := map[string]mood{"work": moodWork, "wait": moodWait, "happy": moodHappy, "error": moodError, "nudge": moodNudge}
-		c := &Card{ID: "edge:" + w.ID, Kind: "edge", Mood: moods[w.Mood], Title: w.Title, Body: w.Body, Priority: 2}
+		c := &Card{ID: "edge:" + w.ID, Kind: "edge", Mood: moods[w.Mood], Eyebrow: "Practice", Title: w.Title, Body: w.Body, Priority: 2}
 		for _, b := range w.Buttons {
 			c.Buttons = append(c.Buttons, Button{Key: b.Key, Label: b.Label, Primary: b.Primary})
 		}

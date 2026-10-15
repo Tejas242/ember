@@ -409,6 +409,12 @@ func (a *app) hasCard(session string) bool {
 
 func (a *app) setTrack(t *Track) {
 	prev := a.track
+	if t != nil && !t.Playing { // when it stopped: a song paused long ago leaves the card
+		t.PausedAt = a.ui.now()
+		if prev != nil && !prev.Playing && prev.Title == t.Title && !prev.PausedAt.IsZero() {
+			t.PausedAt = prev.PausedAt
+		}
+	}
 	a.track, a.ui.track = t, t
 	if t != nil && t.Playing && (prev == nil || prev.Title != t.Title) {
 		a.ui.mind.novel["music"] = a.ui.now()
@@ -606,7 +612,7 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		}
 	case "UserPromptSubmit":
 		s.State, s.Label, s.Plus, s.Minus, s.Since, s.StepAt = "work", "Thinking", 0, 0, now, now
-		s.Turn, s.Finished = Turn{}, nil
+		s.Turn, s.Finished, s.Recap, s.Unseen, s.Asking = Turn{}, nil, nil, time.Time{}, ""
 		s.Prompt = firstLine(strings.TrimSpace(in.Prompt))
 		a.ui.mind.kick(now, 0.25, 0.05)
 		a.ui.mind.novel["claude"] = now
@@ -618,17 +624,24 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		}
 	case "StopFailure":
 		s.State, s.Label = "idle", ""
-		msg := in.Error
-		if msg == "" {
-			msg = "unknown error"
+		msg := friendlyError(in.Error)
+		took := now.Sub(s.Since)
+		if s.Since.IsZero() {
+			took = 0
+		}
+		s.Turn.finish(false)
+		s.Recap = &Recap{Failed: true, Error: msg, At: now, Took: took, Steps: s.Turn.Count,
+			Files: len(s.Turn.Files), Plus: s.Turn.Plus, Minus: s.Turn.Minus, Failures: s.Turn.Failures}
+		if !a.looking(s) {
+			s.Unseen = now
 		}
 		a.ui.mind.kick(now, 0.35, -0.6) // a start, and a low mood that takes a while to lift
 		if a.ui.mind.away {
 			a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"fail", a.ui.name(s), s.ID})
 			break
 		}
-		a.ui.Moment(moment{key: "fail:" + s.ID, act: "claude", mood: moodError, verb: "Stopped", text: a.ui.name(s),
-			sub: strings.ReplaceAll(msg, "_", " "), until: now.Add(8 * time.Second), focus: s.ID})
+		a.ui.Moment(moment{key: "fail:" + s.ID, act: "claude", mood: moodError, verb: "Stopped", text: a.ui.short(s),
+			sub: msg, until: now.Add(8 * time.Second), focus: s.ID})
 	case "AskUserQuestion":
 		if answer != nil {
 			s.State = "wait"
@@ -655,6 +668,7 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		if s.State == "wait" {
 			s.State = "work"
 		}
+		s.Asking = ""
 		s.Turn.finish(false)
 	case "PostToolUseFailure":
 		s.Turn.finish(true)
@@ -670,6 +684,9 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		// can't show). idle_prompt is just "Claude is done": not a request.
 		if in.NotifyType == "permission_prompt" || in.NotifyType == "elicitation_dialog" {
 			s.State = "wait"
+			if s.Asking == "" {
+				s.Asking = in.Message
+			}
 		}
 	case "Stop":
 		s.State, s.Label = "idle", ""
@@ -682,6 +699,10 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		s.Recap = &Recap{Summary: summarize(in.LastMessage), At: now, Took: took, Steps: s.Turn.Count,
 			Files: len(s.Turn.Files), Plus: s.Turn.Plus, Minus: s.Turn.Minus, Failures: s.Turn.Failures}
 		a.ui.day.done(now, s.Project, took)
+		s.Asking = ""
+		if !a.looking(s) {
+			s.Unseen = now // it stays in the pill, quietly, until you've seen it
+		}
 		a.ui.mind.kick(now, 0.2, 0.35) // pleased
 		if a.ui.mind.away {            // tell them when they're back
 			a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"done", a.ui.name(s), s.ID})
@@ -698,7 +719,7 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 // done shows "Done · project". If another session's note is still up, the
 // two merge into one ("Done · edge, ember") rather than one hiding the other.
 func (a *app) done(s *Session, summary string, now time.Time) {
-	name := a.ui.name(s)
+	name := a.ui.short(s)
 	m := moment{key: "done:" + s.ID, act: "claude", mood: moodHappy, verb: "Done", text: name,
 		sub: summary, until: now.Add(a.cfg.DoneFor), focus: s.ID, many: []string{name}}
 	if cur := a.ui.moment; cur != nil && strings.HasPrefix(cur.key, "done") && now.Before(cur.until) {
@@ -772,7 +793,7 @@ func (a *app) permission(s *Session, in hookInput, tin map[string]any, answer ch
 		return ""
 	}
 	c := &Card{ID: "perm:" + s.ID + ":" + fmt.Sprint(time.Now().UnixNano()), Kind: "perm", Mood: moodWait,
-		Eyebrow: a.ui.name(s) + " wants to " + wants(in.Tool), Priority: 10, Footer: "In terminal", Expires: a.ui.now().Add(a.cfg.Wait)}
+		Eyebrow: a.ui.short(s) + " wants to " + wants(in.Tool), Priority: 10, Footer: "Answer in terminal", Expires: a.ui.now().Add(a.cfg.Wait)}
 	switch in.Tool {
 	case "Bash": // Claude says what it wants in words: that's the title; the command is the detail
 		c.Title, c.Code, c.Shell = str("description"), str("command"), true
@@ -803,6 +824,7 @@ func (a *app) permission(s *Session, in hookInput, tin map[string]any, answer ch
 	c.Buttons = []Button{{Key: "deny", Label: "Deny", Danger: true}}
 	if len(in.Suggestions) > 2 && string(in.Suggestions) != "null" {
 		c.Buttons = append(c.Buttons, Button{Key: "always", Label: "Always"})
+		c.Note = alwaysNote(in.Suggestions)
 	}
 	c.Buttons = append(c.Buttons, Button{Key: "allow", Label: "Allow", Primary: true})
 	decide := func(decision map[string]any) {
@@ -820,12 +842,85 @@ func (a *app) permission(s *Session, in hookInput, tin map[string]any, answer ch
 		case "deny":
 			decide(map[string]any{"behavior": "deny", "message": "Denied from Ember."})
 		default: // In terminal: no decision, Claude asks there
+			s.Asking = asking(c)
 			answer <- nil
 		}
 	}
-	c.OnExpire = func() { answer <- nil }
+	c.OnExpire = func() { s.Asking = asking(c); answer <- nil }
 	a.ui.AddCard(c)
 	return c.ID
+}
+
+// asking is what a request handed to the terminal was about, for the card.
+func asking(c *Card) string {
+	if c.Shell && c.Code != "" {
+		return "Wants to run " + firstLine(c.Code)
+	}
+	return c.Title
+}
+
+// alwaysNote says what "Always" would allow from now on, from the rules
+// Claude suggests: "Always allows go test:* in this project".
+func alwaysNote(raw json.RawMessage) string {
+	var sugg []struct {
+		Type  string `json:"type"`
+		Rules []struct {
+			Tool    string `json:"toolName"`
+			Content string `json:"ruleContent"`
+		} `json:"rules"`
+		Destination string `json:"destination"`
+	}
+	if json.Unmarshal(raw, &sugg) != nil {
+		return ""
+	}
+	var what []string
+	where := ""
+	for _, sg := range sugg {
+		for _, r := range sg.Rules {
+			switch {
+			case r.Content != "" && r.Tool == "Bash":
+				what = append(what, r.Content)
+			case r.Content != "":
+				what = append(what, r.Tool+" "+r.Content)
+			default:
+				what = append(what, "every "+r.Tool+" call")
+			}
+		}
+		switch sg.Destination {
+		case "userSettings":
+			where = " everywhere"
+		case "projectSettings", "localSettings":
+			where = " in this project"
+		case "session":
+			where = " this session"
+		}
+	}
+	if len(what) == 0 {
+		if len(sugg) > 0 && sugg[0].Type == "setMode" {
+			return "Always switches to accepting edits"
+		}
+		return ""
+	}
+	return "Always allows " + strings.Join(what, ", ") + where
+}
+
+// friendlyError turns StopFailure's code into words, the same everywhere.
+func friendlyError(code string) string {
+	switch c := strings.ToLower(code); {
+	case strings.Contains(c, "rate"):
+		return "Rate limited"
+	case strings.Contains(c, "overload"), strings.Contains(c, "server"), strings.Contains(c, "api"):
+		return "API error, try again"
+	case strings.Contains(c, "auth"):
+		return "Signed out, run /login"
+	case strings.Contains(c, "billing"), strings.Contains(c, "credit"):
+		return "Billing problem"
+	case strings.Contains(c, "max_output"), strings.Contains(c, "token"):
+		return "Reply hit the length limit"
+	case c == "":
+		return "Stopped unexpectedly"
+	}
+	return strings.ToUpper(code[:1]) + strings.ReplaceAll(code[1:], "_", " ")
 }
 
 // wants is what a tool asks to do, for a request's eyebrow.
@@ -890,8 +985,8 @@ func (a *app) ask(s *Session, in hookInput, tin map[string]any, answer chan<- js
 	var show func(i int)
 	show = func(i int) {
 		q := qs[i]
-		c := &Card{ID: id, Kind: "ask", Mood: moodWait, Title: q.Question, Eyebrow: a.ui.name(s) + " asks", Priority: 9,
-			Multi: q.MultiSelect, Footer: "In terminal", Expires: deadline}
+		c := &Card{ID: id, Kind: "ask", Mood: moodWait, Title: q.Question, Eyebrow: a.ui.short(s) + " asks", Priority: 9,
+			Multi: q.MultiSelect, Footer: "Answer in terminal", Expires: deadline}
 		if len(qs) > 1 {
 			c.Meta = fmt.Sprintf("%d of %d", i+1, len(qs))
 		}
@@ -906,6 +1001,7 @@ func (a *app) ask(s *Session, in hookInput, tin map[string]any, answer chan<- js
 		}
 		c.OnPick = func(k string, picked []int) {
 			if k == "footer" || k == "dismiss" || (k == "submit" && len(picked) == 0) {
+				s.Asking = "Asks: " + q.Question
 				answer <- nil
 				return
 			}
@@ -924,7 +1020,7 @@ func (a *app) ask(s *Session, in hookInput, tin map[string]any, answer chan<- js
 				"updatedInput": map[string]any{"questions": tin["questions"], "answers": answers}}})
 			answer <- b
 		}
-		c.OnExpire = func() { answer <- nil }
+		c.OnExpire = func() { s.Asking = "Asks: " + q.Question; answer <- nil }
 		a.ui.AddCard(c)
 	}
 	show(0)

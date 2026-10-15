@@ -245,7 +245,7 @@ func (u *UI) shimmerLive(f fontFace, s string, x, base float32, col color.NRGBA)
 
 // shellTokens splits a command line into coloured runs: the program, flags,
 // strings, the rest.
-func shellTokens(p palette, ln string) []struct {
+func shellTokens(p palette, ln string, first bool) []struct {
 	s   string
 	col color.NRGBA
 } {
@@ -254,7 +254,6 @@ func shellTokens(p palette, ln string) []struct {
 		col color.NRGBA
 	}
 	var out []run
-	first := true
 	i := 0
 	for i < len(ln) {
 		j := i

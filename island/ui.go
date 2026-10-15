@@ -2,6 +2,7 @@ package island
 
 import (
 	"fmt"
+	"strings"
 	"image"
 	"image/color"
 	"math"
@@ -33,6 +34,7 @@ type Card struct {
 	Options  []Option
 	Multi    bool
 	Footer   string
+	Note     string // a quiet line under the detail: what "Always" would allow
 	Expires  time.Time
 	Priority int
 	OnPick   func(key string, picked []int)
@@ -57,6 +59,8 @@ type Session struct {
 	Pids                      []int
 	Turn                      Turn       // what this prompt has led to so far
 	Recap                     *Recap     // the last finished turn
+	Unseen                    time.Time  // it finished or stopped while you weren't looking at it
+	Asking                    string     // what it waits on you for, when it asks in the terminal
 	Bins                      [30]int64  // activity: 30 bins of 20 s (bin numbers)
 	Counts                    [30]uint16 // tool calls in each bin
 }
@@ -412,6 +416,20 @@ func (u *UI) name(s *Session) string {
 	return fmt.Sprintf("%s %d", s.Project, n)
 }
 
+// short is a session's name kept short: a twin's topic is cut so the pill
+// and an eyebrow keep room for what matters ("ember (Redesign the…)").
+func (u *UI) short(s *Session) string {
+	n := u.name(s)
+	if i := strings.Index(n, " ("); i > 0 && len([]rune(n)) > i+20 {
+		t := []rune(strings.TrimSuffix(n[i+2:], ")"))
+		if len(t) > 15 {
+			t = append([]rune(strings.TrimRight(string(t[:15]), " ")), '…')
+		}
+		n = n[:i] + " (" + string(t) + ")"
+	}
+	return n
+}
+
 // ---- activities: what can be shown, and what wins ----
 
 // acts lists the activities that have something to say, in a stable order.
@@ -527,6 +545,11 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 	key := u.viewKey(v)
 	if v != vExpanded {
 		u.allRows, u.hero = false, "" // "Show all" and the hero you picked last as long as the card's open
+	}
+	for _, s := range u.sessions { // an outcome you've now seen leaves the pill
+		if !s.Unseen.IsZero() && (u.watching[s.ID] || now.Sub(s.Unseen) > 30*time.Minute || (v == vExpanded && now.Sub(u.trAt) > time.Second)) {
+			s.Unseen, u.dirty = time.Time{}, true
+		}
 	}
 	if v != u.lastView || key != u.lastKey {
 		u.transition(v, key, now)

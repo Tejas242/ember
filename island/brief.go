@@ -73,10 +73,14 @@ func (u *UI) brief() brief {
 	case s.State == "wait":
 		b.mode, b.mood = "wait", moodWait
 		b.head = u.name(s) + " needs you"
-		b.sub = "Asking in the terminal · " + ago(now.Sub(s.Seen))
-		if t := s.task(); t != "" {
-			b.sub = t + " · " + ago(now.Sub(s.Seen))
+		what := s.Asking
+		if what == "" {
+			what = s.task()
 		}
+		if what == "" {
+			what = "Asking in the terminal"
+		}
+		b.sub = what + " · waiting " + mins(now.Sub(s.Seen))
 	case s.status() == "work":
 		label := s.Label
 		if label == "" {
@@ -97,16 +101,34 @@ func (u *UI) brief() brief {
 	case s.Recap != nil:
 		r := s.Recap
 		b.mode, b.mood = "recap", moodHappy
-		if r.Failures > 0 && strings.Contains(strings.ToLower(r.Summary), "fail") {
+		verb := "finished "
+		switch {
+		case r.Failed:
+			b.mood, verb = moodError, "stopped "
+		case r.troubled():
 			b.mood = moodNudge
 		}
-		b.sub = s.Project + " · done " + ago(now.Sub(r.At))
-		if r.Took > 0 {
-			b.sub += " · took " + mins(r.Took)
+		// one line: where, when, how long, what it changed
+		parts := []string{s.Project, verb + ago(now.Sub(r.At))}
+		if r.Took >= time.Minute {
+			parts = append(parts, "took "+mins(r.Took))
 		}
+		if r.Files > 0 {
+			f := plural(r.Files, "file")
+			if r.Plus > 0 || r.Minus > 0 {
+				f += " " + diffText(r.Plus, r.Minus)
+			}
+			parts = append(parts, f)
+		}
+		b.sub = strings.Join(parts, " · ")
 		b.head = s.task()
 		if b.head == "" {
-			b.head, b.sub = u.name(s)+" is done", "D"+strings.TrimPrefix(b.sub, s.Project+" · d")
+			b.head = u.name(s) + " is done"
+			if r.Failed {
+				b.head = u.name(s) + " stopped"
+			}
+			rest := strings.TrimPrefix(b.sub, s.Project+" · ")
+			b.sub = strings.ToUpper(rest[:1]) + rest[1:]
 		}
 	default:
 		b.mode, b.mood = "idle", moodIdle
@@ -119,15 +141,21 @@ func (u *UI) brief() brief {
 	return b
 }
 
-// turnFacts: "4m in · 9 steps · 3 files +58 −12 · 1 failed".
+// troubled: the turn ended, and Claude's own words admit a failure (a
+// step that failed and was then fixed is just how agents work).
+func (r *Recap) troubled() bool {
+	return r.Failed || (r.Failures > 0 && strings.Contains(strings.ToLower(r.Summary), "fail"))
+}
+
+// turnFacts: "4m in · 3 files +58 −12 · 1 failed".
 func turnFacts(s *Session, now time.Time) string {
 	t := s.Turn
 	var parts []string
 	if !s.Since.IsZero() {
 		parts = append(parts, mins(now.Sub(s.Since))+" in")
 	}
-	if t.Count > 0 {
-		parts = append(parts, plural(t.Count, "step"))
+	if stalled(s, now) {
+		parts = append(parts, "quiet "+mins(now.Sub(s.Seen)))
 	}
 	if n := len(t.Files); n > 0 {
 		f := plural(n, "file")
