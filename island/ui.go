@@ -106,8 +106,9 @@ type moment struct {
 	text  string
 	sub   string
 	until time.Time
-	focus string // session to jump to on click
-	open  string // file to open on click
+	focus string   // session to jump to on click
+	open  string   // file to open on click
+	many  []string // the sessions a "Done" names
 
 	icon  string      // drawn where Ember sits (Ember tucks away)
 	tint  color.NRGBA // the icon's colour

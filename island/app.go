@@ -688,15 +688,20 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 // done shows "Done · project". If another session's note is still up, the
 // two merge into one ("Done · edge, ember") rather than one hiding the other.
 func (a *app) done(s *Session, summary string, now time.Time) {
-	m := moment{key: "done:" + s.ID, act: "claude", mood: moodHappy, text: "Done · " + s.Project,
-		sub: summary, until: now.Add(6 * time.Second), focus: s.ID}
-	if cur := a.ui.moment; cur != nil && strings.HasPrefix(cur.key, "done") && cur.focus != s.ID && now.Before(cur.until) {
-		names := strings.TrimPrefix(cur.text, "Done · ")
-		n := strings.Count(names, ",") + 2
-		m.key = "done:many"
-		m.text = "Done · " + names + ", " + s.Project
-		m.sub = fmt.Sprintf("%d sessions finished", n)
-		m.until = now.Add(7 * time.Second)
+	name := a.ui.name(s)
+	m := moment{key: "done:" + s.ID, act: "claude", mood: moodHappy, text: "Done · " + name,
+		sub: summary, until: now.Add(6 * time.Second), focus: s.ID, many: []string{name}}
+	if cur := a.ui.moment; cur != nil && strings.HasPrefix(cur.key, "done") && now.Before(cur.until) {
+		names := cur.many
+		if !slices.Contains(names, name) { // one that finishes again is named once
+			names = append(slices.Clip(names), name)
+		}
+		if len(names) > 1 {
+			m.key, m.many = "done:many", names
+			m.text = "Done · " + strings.Join(names, ", ")
+			m.sub = fmt.Sprintf("%d sessions finished", len(names))
+			m.until = now.Add(7 * time.Second)
+		}
 	}
 	a.ui.Moment(m)
 }
