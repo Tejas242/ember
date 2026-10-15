@@ -182,7 +182,6 @@ binds {
     Mod+Shift+Y { spawn "ember" "allow"; }
     Mod+Shift+N { spawn "ember" "deny"; }
     Mod+Shift+C { spawn "ember" "toggle"; }
-    Mod+D       { spawn "ember" "dash" "edge"; }
 }
 ```
 
