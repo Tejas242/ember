@@ -39,7 +39,7 @@ func TestFailedTurnIsNotASuccess(t *testing.T) {
 func TestCommandKeepsItsTail(t *testing.T) {
 	cmd := "cd ~/Gems/kinvault && go build ./... && go test -race -count=1 ./store/... ./index/... ./wal/... && ./scripts/deploy.sh --prod && rm -rf /tmp/kv-build-cache"
 	lines := codeLines(cmd, 300)
-	if len(lines) > 4 || !strings.Contains(strings.Join(lines[len(lines)-2:], " "), "rm -rf /tmp/kv-build-cache") {
+	if len(lines) > 4 || !strings.Contains(strings.Join(strings.Fields(strings.Join(lines[len(lines)-2:], " ")), " "), "rm -rf /tmp/kv-build-cache") {
 		t.Fatalf("%q", lines)
 	}
 	for _, ln := range lines[1:] {
