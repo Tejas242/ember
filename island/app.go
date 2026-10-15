@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image"
 	"log"
+	"math"
 	"net/url"
 	"os"
 	"os/exec"
@@ -312,8 +313,16 @@ func (a *app) nextWake(animating bool) time.Duration {
 	next := u.nextBlink()
 	if u.continuous() {
 		next = now.Add(flickerEvery)
-		if u.shimmering() {
-			next = now.Add(time.Second / 20) // the label's light moves smoothly
+		if u.lastView != vCompact {
+			next = now.Add(time.Second / 24) // the card's pulses and orbits: only their squares repaint
+		}
+		if u.shimmering() { // a band of light crosses smoothly, then rests
+			if t := now.Sub(u.start).Seconds(); shimmerPassing(t) {
+				next = now.Add(time.Second / 40)
+			} else {
+				rest := time.Duration((shimmerEvery - math.Mod(t, shimmerEvery)) * float64(time.Second))
+				next = minTime(next, now.Add(rest))
+			}
 		}
 	} else if u.mind.asleep {
 		next = now.Add(time.Second / 4) // slow breaths, drifting z's

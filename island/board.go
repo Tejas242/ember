@@ -244,14 +244,24 @@ func (u *UI) expandedHeight() int {
 // i-th after the ones before it) and gliding to its place when it moves.
 // Its live parts wait until it has arrived.
 func (u *UI) item(key string, i int, x, w, y, h float32, draw func(y float32)) {
-	e := u.enter(key, i)
-	gy := u.glide(key, y) + rise(e)
+	u.itemAs(key, key, i, x, w, y, h, draw)
+}
+
+// itemAs is item with its own glide key: one thing in two roles (a
+// session as the hero's headline and as a line) glides between them.
+func (u *UI) itemAs(key, glideKey string, i int, x, w, y, h float32, draw func(y float32)) {
+	known := u.gliding(glideKey) && u.enterAt[key].IsZero()
+	e := u.enter(key, i, known)
+	gy := float32(math.Round(float64(u.glide(glideKey, y) + rise(e)))) // whole pixels: text and shapes move together
 	nl := len(u.lives)
 	u.rowK = e
 	draw(gy)
 	u.rowK = 1
 	if e < 0.999 {
-		u.lives = u.lives[:nl]
+		for j := nl; j < len(u.lives); j++ { // its live parts arrive with it
+			f := u.lives[j].draw
+			u.lives[j].draw = func(c *canvas, t float64) { c.k = math.Max(e, 0.001); f(c, t); c.k = 0 }
+		}
 		u.dc.fade(image.Rect(int(x), int(gy)-2, int(x+w), int(gy+h)+2), e)
 	}
 }
@@ -474,19 +484,23 @@ func (u *UI) step(s *Session, st Step, newest bool, gx, tx, right, cy float32) {
 	p, now := u.pal, u.now()
 	current := newest && !st.Done && s.State == "work"
 	col, txtCol, f := p.muted, p.secondary(), fSecond()
+	cur := u.tw(fmt.Sprintf("cur:%s:%d", s.ID, st.At.UnixNano()), map[bool]float64{true: 1}[current], map[bool]float64{true: 1}[current])
 	switch {
 	case st.Failed:
 		col, txtCol = p.red, mix(p.red, p.fg, 0.35)
-	case current:
-		col, txtCol, f = p.green, p.fg, fBody()
+	case cur > 0.001: // the live step's colours ease away when it's over
+		col, txtCol = mix(col, p.green, cur), mix(txtCol, p.fg, cur)
+		if current {
+			f = fBody()
+		}
 	}
 	u.dc.circle(gx, cy, 7.5, color2(p))
 	u.dc.icon(st.Kind, gx, cy, 11, col)
 	if current {
-		u.lives = append(u.lives, live{image.Rect(int(gx-12), int(cy-12), int(gx+13), int(cy+13)), func(c *canvas, t float64) {
-			q := math.Mod(t/1.6, 1)
-			r := 6 + 5*float32(easeOut(q))
-			c.frame(gx-r, cy-r, 2*r, 2*r, r, 1, alpha(p.green, 0.45*(1-q)))
+		u.lives = append(u.lives, live{r: image.Rect(int(gx-12), int(cy-12), int(gx+13), int(cy+13)), draw: func(c *canvas, t float64) {
+			q := math.Mod(t/beat, 1)
+			r := 7.5 + 4.5*float32(easeOut(q))
+			c.frame(gx-r, cy-r, 2*r, 2*r, r, 1, alpha(p.green, 0.45*(1-q)*math.Min(1, q*6)))
 		}})
 	}
 	rx := right
@@ -509,12 +523,16 @@ func (u *UI) step(s *Session, st Step, newest bool, gx, tx, right, cy float32) {
 	if st.Failed {
 		wc = p.red
 	}
-	if current { // the seconds roll
+	if current && !strings.HasSuffix(when, "s") { // minutes roll; seconds just tick
 		wc := p.muted
 		if stalled(s, now) {
 			wc = p.yellow
 		}
 		rx -= u.rollText(u.dc, "step:"+s.ID, when, fCaption(), rx, cy+4, wc) + 10
+	} else if current {
+		ww := measure(fCaption(), when)
+		u.dc.text(fCaption(), when, rx-ww, cy+4, p.muted)
+		rx -= ww + 10
 	} else {
 		ww := measure(fCaption(), when)
 		u.dc.text(fCaption(), when, rx-ww, cy+4, wc)
@@ -560,7 +578,7 @@ func (u *UI) agentRow(s *Session, ag *Agent, open bool, gx, tx, right, cy float3
 	if done {
 		u.dc.icon("check", ix, cy, 10, alpha(p.green, 0.8))
 	} else {
-		u.lives = append(u.lives, live{image.Rect(int(ix-7), int(cy-7), int(ix+8), int(cy+8)), func(c *canvas, t float64) {
+		u.lives = append(u.lives, live{r: image.Rect(int(ix-7), int(cy-7), int(ix+8), int(cy+8)), draw: func(c *canvas, t float64) {
 			sparkle(c, ix, cy, 5.5, t, p.yellow)
 		}})
 	}
@@ -703,6 +721,10 @@ func (u *UI) moreLink(hidden int, x, w, y float32) {
 
 // ---- the glyphs ----
 
+// beat is the one rhythm every pulse keeps (rings, the halo, orbits), so
+// the island breathes together instead of flickering in many tempos.
+const beat = 1.6
+
 // sessionGlyph says a session's state at a glance. Working: an orbit with a
 // bead going round it, and a smaller satellite per subagent on an outer
 // track. Waiting: a blue pulse. Done: a check. Idle: an empty ring.
@@ -711,16 +733,16 @@ func (u *UI) sessionGlyph(s *Session, gx, gy float32) {
 	switch {
 	case s.State == "wait":
 		u.dc.circle(gx, gy, 3.6, p.blue)
-		u.lives = append(u.lives, live{image.Rect(int(gx-12), int(gy-12), int(gx+13), int(gy+13)), func(c *canvas, t float64) {
-			q := math.Mod(t/1.4, 1)
-			r := 4.5 + 6*float32(easeOut(q))
-			c.frame(gx-r, gy-r, 2*r, 2*r, r, 1.2, alpha(p.blue, 0.6*(1-q)))
+		u.lives = append(u.lives, live{r: image.Rect(int(gx-12), int(gy-12), int(gx+13), int(gy+13)), draw: func(c *canvas, t float64) {
+			q := math.Mod(t/beat, 1)
+			r := 4 + 6*float32(easeOut(q))
+			c.frame(gx-r, gy-r, 2*r, 2*r, r, 1.2, alpha(p.blue, 0.6*(1-q)*math.Min(1, q*6)))
 		}})
 	case s.status() == "work":
 		u.dc.arc(gx, gy, 6, 1.1, 0, 2*math.Pi, alpha(p.green, 0.4))
 		n := min(s.running(), 4)
-		u.lives = append(u.lives, live{image.Rect(int(gx-12), int(gy-12), int(gx+13), int(gy+13)), func(c *canvas, t float64) {
-			a := t * 2.6
+		u.lives = append(u.lives, live{r: image.Rect(int(gx-12), int(gy-12), int(gx+13), int(gy+13)), draw: func(c *canvas, t float64) {
+			a := t * 2 * math.Pi / (2 * beat) // one turn every two beats
 			c.circle(gx+6*float32(math.Cos(a)), gy+6*float32(math.Sin(a)), 1.9, p.green)
 			for i := 0; i < n; i++ { // the subagents, round the other way
 				b := -t*1.7 + float64(i)*2*math.Pi/float64(n)

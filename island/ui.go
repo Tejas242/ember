@@ -2,11 +2,11 @@ package island
 
 import (
 	"fmt"
-	"strings"
 	"image"
 	"image/color"
 	"math"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -142,14 +142,15 @@ func (s *spring) stepK(target, dt, k, d float64) {
 }
 
 func (s *spring) settled(target float64) bool {
-	return math.Abs(target-s.x) < 0.35 && math.Abs(s.v) < 3
+	return math.Abs(target-s.x) < 0.5 && math.Abs(s.v) < 3
 }
 
 // live is a part of the frame that animates by itself (the equaliser, a
 // progress bar). Steady frames restore just these rectangles and redraw them.
 type live struct {
-	r    image.Rectangle
-	draw func(c *canvas, t float64)
+	r       image.Rectangle
+	draw    func(c *canvas, t float64)
+	outside bool // it lives outside the island (the halo): it needn't wait for the shape
 }
 
 // emberSpot is where the current view wants Ember.
@@ -160,7 +161,7 @@ type emberSpot struct {
 }
 
 const (
-	fadeIn    = 230 * time.Millisecond
+	fadeIn    = 160 * time.Millisecond
 	slideTime = 260 * time.Millisecond
 	focusHold = 90 * time.Second // a scroll-picked activity stays this long
 )
@@ -203,6 +204,9 @@ type UI struct {
 	hoverAt, leftAt         time.Time
 	mx, my                  float64
 	hoverKey, pressKey      string
+	downKey                 string // the control under a button that's held down: it acts on release
+	downBtn                 int
+	staggerAt               time.Time // a click that rearranged the card: what arrives is staggered from here
 	pressAt                 time.Time
 	hits                    []hit
 	onKey                   func(key string)
@@ -216,7 +220,11 @@ type UI struct {
 
 	// animation
 	sw, sh, bub spring
-	meter       spring // a moment's level bar
+	swell       spring  // the pill's anticipation under the pointer, 0..1
+	prevK       float64 // how visible the view we're leaving was when we left it
+	prevAt      time.Time
+	haloAt      time.Time // the last frame something waited on you (the halo fades after)
+	meter       spring    // a moment's level bar
 	meterKey    string
 	tweens      map[string]*tween
 	enterAt     map[string]time.Time // when each element of the current view began to arrive
@@ -553,9 +561,11 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 	}
 	if v != u.lastView || key != u.lastKey {
 		u.transition(v, key, now)
-		// keep what's on screen to cross-fade it out while the new view grows in
+		// keep what's on screen to cross-fade it out while the new view grows in,
+		// from as visible as it had got (an open interrupted halfway is half there)
 		copy(u.prev.Pix, u.content.img.Pix)
 		u.prevAlive = !u.trAt.IsZero()
+		u.prevK, u.prevAt = easeOut(float64(now.Sub(u.trAt))/float64(fadeIn)), now
 		if v != u.lastView {
 			u.resetMotion()
 		}
@@ -573,14 +583,30 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 		u.second, u.dirty = sec, true
 	}
 	tw, th := u.measure(v)
-	if v == vCompact && u.hover && !u.suppress { // anticipation: swell a little under the pointer
-		tw, th = tw+10, th+2
+	swell := 0.0
+	if v == vCompact && u.hover && !u.suppress { // anticipation: the pill swells under the pointer (its content stays put)
+		swell = 1
 	}
+	u.swell.stepK(swell, dt, 700, 42)
 	if u.sw.x == 0 {
 		u.sw.x, u.sh.x = tw, th
 	}
-	u.sw.step(tw, dt)
-	u.sh.step(th, dt)
+	// opening, the width leads without overshoot and the drop overshoots a
+	// little; closing, the card folds up first, critically damped
+	switch grow := th > u.sh.x+0.5; {
+	case grow && v == vCard: // a request arrives: an overshoot you catch from the corner of your eye
+		u.sw.stepK(tw, dt, 420, 39)
+		u.sh.stepK(th, dt, 300, 26)
+	case grow:
+		u.sw.stepK(tw, dt, 420, 39)
+		u.sh.stepK(th, dt, 300, 28)
+	case th < u.sh.x-0.5:
+		u.sw.stepK(tw, dt, 420, 41)
+		u.sh.stepK(th, dt, 600, 49)
+	default: // the same height: a pill changing width, with a little life
+		u.sw.stepK(tw, dt, 380, 32)
+		u.sh.stepK(th, dt, 600, 49)
+	}
 	bt := 0.0 // (the old bubble beside the pill: gone, the pill has a trailing slot)
 	if on := v == vCompact && u.secondary(u.primary()) != ""; on != u.trailOn {
 		u.trailOn = on
@@ -597,19 +623,28 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 		}
 	}
 	u.meter.stepK(mt, dt, 420, 40)
-	settled := u.sw.settled(tw) && u.sh.settled(th) && u.bub.settled(bt) && math.Abs(u.meter.x-mt) < 0.003
+	settled := u.sw.settled(tw) && u.sh.settled(th) && u.bub.settled(bt) && math.Abs(u.meter.x-mt) < 0.003 &&
+		math.Abs(u.swell.x-swell) < 0.01 && math.Abs(u.swell.v) < 0.1
 	if settled {
 		u.sw.x, u.sh.x, u.sw.v, u.sh.v, u.bub.x, u.bub.v = tw, th, 0, 0, bt, 0
+		u.swell.x, u.swell.v = swell, 0
 		u.meter.x, u.meter.v = mt, 0
 	}
+	if v == vCompact && u.sh.x > th+24 { // closing: the pill's words wait until the card has nearly folded
+		u.trAt = now
+	}
+	if v != vCompact && u.lastView == v && u.sw.x < tw*0.75 && now.Sub(u.prevAt) < 300*time.Millisecond {
+		u.trAt = now // opening: the card's words wait until the shape is mostly open, so no line starts clipped
+	}
 	p := easeOut(float64(now.Sub(u.trAt)) / float64(fadeIn))
+	leaving := u.prevK * (1 - math.Min(1, float64(now.Sub(u.prevAt))/float64(90*time.Millisecond)))
 	sliding := now.Sub(u.slideAt) < slideTime
 	flashing := now.Sub(u.pressAt) < 160*time.Millisecond
 	t := now.Sub(u.start).Seconds()
 
 	// Ember (blinks, glances, gliding to a new spot) and other live parts only
 	// need their own rectangles repainted: that's the cheap path below.
-	full := u.dirty || !settled || p < 1 || sliding || flashing || u.tweening
+	full := u.dirty || !settled || p < 1 || leaving > 0 || sliding || flashing || u.tweening
 	u.lastFull = full
 	if full {
 		u.dirty, u.tweening = false, false
@@ -620,7 +655,7 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 		u.hits, u.lives = u.hits[:0], u.lives[:0]
 		u.spot = emberSpot{}
 		// the shape, at its current (springing) size
-		w, h := float32(u.sw.x), float32(u.sh.x)
+		w, h := float32(u.sw.x+8*u.swell.x), float32(u.sh.x+2*u.swell.x)
 		x := (float32(u.W) - w) / 2
 		rb := min(h/2, 12)
 		if v != vCompact {
@@ -634,9 +669,9 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 		u.fadeK = p
 		fx := (float32(u.W) - float32(tw)) / 2
 		switch v {
-		case vCompact:
+		case vCompact: // the pill's ends ride the live shape: words never sit where the shape isn't
 			u.hits = append(u.hits, hit{u.shape.bounds(), "pill"})
-			u.drawCompact(fx, float32(tw), float32(th))
+			u.drawCompact((float32(u.W)-float32(u.sw.x))/2, float32(u.sw.x), float32(th))
 		case vCard:
 			u.drawCard(u.top(), fx, float32(tw))
 		case vExpanded:
@@ -648,8 +683,8 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 				u.tweening = true
 			}
 		}
-		if u.prevAlive && p < 1 { // the old view leaves quickly, drifting up
-			composite(u.cv, u.prev, u.shape, 1-math.Min(1, p/0.45), 0, -int(math.Round(3*p)))
+		if u.prevAlive && leaving > 0 { // the old view leaves quickly, drifting up
+			composite(u.cv, u.prev, u.shape, leaving, 0, -int(math.Round(3*(1-leaving/math.Max(u.prevK, 0.01)))))
 		}
 		composite(u.cv, u.content.img, u.shape, p, 0, 0)
 		copy(u.base.Pix, u.cv.img.Pix)
@@ -658,13 +693,13 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 		damage = b.Union(u.lastBounds).Intersect(u.cv.img.Rect)
 		u.lastBounds = b
 		for _, l := range u.lives {
-			if settled || u.shape.contains(l.r) || u.bubble.Inset(-2).Intersect(l.r) == l.r { // appear once the shape reaches them
+			if settled || l.outside || u.shape.contains(l.r) || u.bubble.Inset(-2).Intersect(l.r) == l.r { // appear once the shape reaches them
 				l.draw(u.cv, t)
 			}
 		}
 		u.drawEmber(t, now)
 		u.lastEmber = u.emberRect()
-		return u.moving(settled, p, sliding, flashing), damage
+		return u.moving(settled, p, sliding, flashing) || leaving > 0, damage
 	}
 	u.stepEmber(dt, now)
 	er := u.emberRect()
@@ -803,9 +838,12 @@ func (u *UI) stepEmber(dt float64, now time.Time) {
 	if u.ex.x == 0 {
 		u.ex.x, u.ey.x, u.es.x = float64(u.spot.x), float64(u.spot.y), float64(u.spot.s)
 	}
-	u.ex.stepK(float64(u.spot.x), dt, 260, 28)
-	u.ey.stepK(float64(u.spot.y), dt, 260, 28)
-	u.es.stepK(float64(u.spot.s), dt, 260, 28)
+	if u.lastView == vCompact && math.Abs(u.ey.x-float64(u.spot.y)) < 1 && math.Abs(u.ex.x-float64(u.spot.x)) < 60 {
+		u.ex.x, u.ex.v = float64(u.spot.x), 0 // in the pill Ember sits in its slot, which rides the shape's edge
+	}
+	u.ex.stepK(float64(u.spot.x), dt, 600, 49) // critically damped and quick: Ember keeps up with the shape
+	u.ey.stepK(float64(u.spot.y), dt, 600, 49)
+	u.es.stepK(float64(u.spot.s), dt, 600, 49)
 	u.look.stepK(u.lookTarget(now), dt, 160, 22)
 	// colour: the mood's, pulled toward red by a bad mood, lifted by a good one
 	target := u.pal.moodColor(u.spot.mood)
@@ -881,7 +919,10 @@ func (u *UI) nextBlink() time.Time { return u.mind.blinkAt }
 
 // shimmering: the pill's label is lit while Claude works.
 func (u *UI) shimmering() bool {
-	return u.lastView == vCompact && u.primary() == "claude" && u.compactLine().work
+	if u.lastView != vCompact {
+		return u.lastView == vExpanded && u.senses().working
+	}
+	return u.primary() == "claude" && u.compactLine().work
 }
 
 // viewKey changes when what's on screen changes identity (a cross-fade).
@@ -891,8 +932,8 @@ func (u *UI) viewKey(v view) string {
 		if c := u.top(); c != nil {
 			return fmt.Sprint("card:", c.ID, c.Title)
 		}
-	case vExpanded:
-		return "exp"
+	case vExpanded: // a hero you pick cross-fades the card: the lines that stay glide
+		return "exp:" + u.hero
 	case vDash:
 		return "dash:" + u.dash
 	}

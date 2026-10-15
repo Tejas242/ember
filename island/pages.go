@@ -71,7 +71,7 @@ func (u *UI) musicRow(x, w, y float32) {
 		if t.Length > 0 { // time left ticks by itself: a live part, not baked into the frame
 			ty := y + 36
 			r := image.Rect(int(right-48), int(ty-11), int(right)+2, int(ty+4))
-			u.lives = append(u.lives, live{r, func(c *canvas, _ float64) {
+			u.lives = append(u.lives, live{r: r, draw: func(c *canvas, _ float64) {
 				left := "−" + clock(max(t.Length-t.pos(u.now()), 0))
 				c.text(fCaption(), left, right-measure(fCaption(), left), ty, alpha(p.faint, k))
 			}})
@@ -510,7 +510,7 @@ func (u *UI) drawCard(c *Card, x, w float32) {
 		total := c.Expires.Sub(c.Born).Seconds()
 		bottom := float32(u.cardHeight(c)) - 1.5
 		lx, lw := x+radCard, w-2*radCard
-		u.lives = append(u.lives, live{image.Rect(int(lx)-2, int(bottom)-3, int(lx+lw)+2, int(bottom)+3), func(cv *canvas, _ float64) {
+		u.lives = append(u.lives, live{r: image.Rect(int(lx)-2, int(bottom)-3, int(lx+lw)+2, int(bottom)+3), draw: func(cv *canvas, _ float64) {
 			left := c.Expires.Sub(u.now()).Seconds()
 			k := float32(math.Max(0, math.Min(1, left/total)))
 			late := math.Max(0, math.Min(1, (15-left)/1.5)) // the last fifteen seconds turn amber, easing in

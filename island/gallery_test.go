@@ -399,16 +399,16 @@ func TestGallery(t *testing.T) {
 	}
 	reqs := []galleryShot{
 		req("a command", &Card{ID: "p", Kind: "perm", Mood: moodWait, Eyebrow: "kinvault wants to run", Title: "Run the store tests with the race detector",
-			Code: "go test -race ./store/... -run TestRepair -count=1", Shell: true, Buttons: perm(), Footer: "In terminal"}, nil),
+			Code: "go test -race ./store/... -run TestRepair -count=1", Shell: true, Buttons: perm(), Footer: "Answer in terminal"}, nil),
 		req("an edit, two more waiting", &Card{ID: "e", Kind: "perm", Mood: moodWait, Eyebrow: "ember wants to edit", Title: "Edit board.go",
-			Body: "~/Gems/ember/island  ·  +48 −112", Buttons: perm(), Footer: "In terminal"}, func(g *galleryScene) {
+			Body: "~/Gems/ember/island  ·  +48 −112", Buttons: perm(), Footer: "Answer in terminal"}, func(g *galleryScene) {
 			g.a.ui.AddCard(&Card{ID: "x1", Priority: -1})
 			g.a.ui.AddCard(&Card{ID: "x2", Priority: -1})
 		}),
 		req("a question", &Card{ID: "q", Kind: "ask", Mood: moodWait, Eyebrow: "kinvault asks", Meta: "1 of 2", Title: "Which storage engine should the index use?",
-			Options: []Option{{"Pebble", "LSM, battle tested"}, {"bbolt", "B+tree, one file"}, {"Roll our own", "Append-only log and an index"}}, Footer: "In terminal"}, nil),
+			Options: []Option{{"Pebble", "LSM, battle tested"}, {"bbolt", "B+tree, one file"}, {"Roll our own", "Append-only log and an index"}}, Footer: "Answer in terminal"}, nil),
 		req("several answers, the last seconds", &Card{ID: "m", Kind: "ask", Mood: moodWait, Eyebrow: "edge asks", Title: "Which topics should the ladder cover?", Multi: true,
-			Options: []Option{{"Graphs", ""}, {"Dynamic programming", ""}, {"Binary search", ""}}, Buttons: []Button{{Key: "submit", Label: "Submit", Primary: true}}, Footer: "In terminal",
+			Options: []Option{{"Graphs", ""}, {"Dynamic programming", ""}, {"Binary search", ""}}, Buttons: []Button{{Key: "submit", Label: "Submit", Primary: true}}, Footer: "Answer in terminal",
 			picked: map[int]bool{0: true, 2: true}, Expires: time.Date(2026, 10, 15, 17, 24, 12, 0, time.Local)}, nil),
 		req("edge's nudge", &Card{ID: "edge:1", Kind: "edge", Mood: moodNudge, Eyebrow: "edge", Title: "Today's problem is waiting",
 			Body: "1360E · Polygon, rated 1400. Claude unlocks when it's solved.", Buttons: []Button{{Key: "later", Label: "Later"}, {Key: "start", Label: "Start", Primary: true}}}, nil),

@@ -15,7 +15,6 @@ import (
 
 const maxComp = 400
 
-
 func short(task string) string {
 	if i := strings.Index(task, " · "); i > 0 {
 		return task[:i]
@@ -62,7 +61,7 @@ type line struct {
 	timerCol color.NRGBA
 	subCol   color.NRGBA // the secondary words' colour, if not the usual
 	agents   int         // subagents running: an amber spark and a count
-	chip     string // a quiet value at the right end (edge's minutes, its task)
+	chip     string      // a quiet value at the right end (edge's minutes, its task)
 	chipCol  color.NRGBA
 	lock     bool
 	music    bool
@@ -313,6 +312,16 @@ func (u *UI) pillLayout(l line, h float32) (left, right []seg, w float32) {
 			u.dc.battery(x, cy, 9, float32(m.pct), alpha(p.fg, 0.45), m.tint)
 		}})
 	}
+	if m := u.moment; l.verb == "Done" && m != nil { // a check strokes itself in at the end
+		at := m.at
+		right = append(right, seg{w: 10, gap: 10, draw: func(x float32) {
+			k := float64(u.now().Sub(at)-checkDelay) / float64(checkTime)
+			if k < 1 {
+				u.tweening = true
+			}
+			strokeCheck(u.dc, x, cy, 10, float32(easeOut(k)), p.green)
+		}})
+	}
 	if u.casting { // someone can see your screen
 		right = append(right, seg{w: 7, gap: 8, draw: func(x float32) { u.dc.circle(x+3.5, cy, 3.2, mix(p.red, p.yellow, 0.35)) }})
 	}
@@ -443,24 +452,54 @@ func (u *UI) drawCompact(x, w, h float32) {
 		u.progressLive(x+12, h-1, w-24, 1, u.accent(p.fg), 0)
 	}
 	if l.halo {
-		u.haloLive(p.blue)
+		u.haloAt = now
 	}
-	if m := u.moment; m != nil && l.m == nil && m.mood == moodHappy && now.Sub(m.at) < sweepTime {
-		u.sweepLive(m.at, p.green)
+	if k := 1 - float64(now.Sub(u.haloAt))/float64(300*time.Millisecond); k > 0 { // and it fades when the wait is over
+		if !l.halo {
+			u.tweening = true
+		}
+		u.haloLive(p.blue, math.Min(1, k))
+	}
+	if m := u.moment; m != nil && l.m == nil && m.mood == moodHappy && now.Sub(m.at) < sweepDelay+sweepTime {
+		u.sweepLive(m.at.Add(sweepDelay), p.green)
 	}
 }
 
-const sweepTime = 900 * time.Millisecond
+const (
+	sweepDelay = 180 * time.Millisecond // the shape has mostly arrived
+	sweepTime  = 700 * time.Millisecond
+	checkDelay = 175 * time.Millisecond // Ember's bounce at its top
+	checkTime  = 320 * time.Millisecond
+)
+
+// strokeCheck draws a check mark in a box of size s at (x, cy), stroked
+// as far as k (0..1) along its path: it draws itself.
+func strokeCheck(c *canvas, x, cy, s, k float32, col color.NRGBA) {
+	if k <= 0 {
+		return
+	}
+	a, b, d := pt{x + s*0.08, cy + s*0.02}, pt{x + s*0.38, cy + s*0.3}, pt{x + s*0.95, cy - s*0.34}
+	l1 := float32(math.Hypot(float64(b.x-a.x), float64(b.y-a.y)))
+	l2 := float32(math.Hypot(float64(d.x-b.x), float64(d.y-b.y)))
+	at := k * (l1 + l2)
+	lerp := func(p, q pt, t float32) pt { return pt{p.x + (q.x-p.x)*t, p.y + (q.y-p.y)*t} }
+	if at <= l1 {
+		c.line(a, lerp(a, b, at/l1), 1.6, col)
+		return
+	}
+	c.line(a, b, 1.6, col)
+	c.line(b, lerp(b, d, (at-l1)/l2), 1.6, col)
+}
 
 // haloLive: a soft light breathes around the pill while something waits
 // on you. It lives outside the body, so it repaints alone.
-func (u *UI) haloLive(col color.NRGBA) {
+func (u *UI) haloLive(col color.NRGBA, out float64) {
 	n := u.shape
 	since := u.trAt
-	u.lives = append(u.lives, live{n.bounds().Inset(-12), func(c *canvas, t float64) {
-		in := math.Min(1, u.now().Sub(since).Seconds()/0.6) // it comes up gently
-		b := 0.4 + 0.6*(0.5+0.5*math.Sin(t*2*math.Pi/1.6))
-		top := int(u.BarH / 2) // in the bar the island is part of the bar: no rim there
+	u.lives = append(u.lives, live{r: n.bounds().Inset(-12), outside: true, draw: func(c *canvas, t float64) {
+		in := math.Min(1, u.now().Sub(since).Seconds()/0.6) * out // it comes up gently
+		b := 0.4 + 0.6*(0.5+0.5*math.Sin(t*2*math.Pi/beat))
+		top := int(u.BarH / 2)    // in the bar the island is part of the bar: no rim there
 		for i := 8; i >= 2; i-- { // the light spilling out
 			a := 110 * math.Exp(-math.Pow(float64(i)/3.6, 2)) * b * in
 			c.fillNotch(n, float32(i)*1.4, alpha(col, a/255), &n, 0, top)
@@ -473,19 +512,19 @@ func (u *UI) haloLive(col color.NRGBA) {
 func (u *UI) sweepLive(at time.Time, col color.NRGBA) {
 	n := u.shape
 	u.tweening = true // a single pass at the full frame rate
-	u.lives = append(u.lives, live{n.interior(), func(c *canvas, _ float64) {
+	u.lives = append(u.lives, live{r: n.interior(), draw: func(c *canvas, _ float64) {
 		k := u.now().Sub(at).Seconds() / sweepTime.Seconds()
-		if k >= 1 {
+		if k < 0 || k >= 1 {
 			return
 		}
-		e := easeOut(k)
+		e := easeInOut(k)
 		cx := float64(n.x) - 40 + e*float64(n.w+80)
 		r := n.interior().Intersect(c.img.Rect)
 		for y := r.Min.Y; y < r.Max.Y; y++ {
 			row := c.img.Pix[y*c.img.Stride:]
 			for x := max(r.Min.X, int(cx-36)); x < min(r.Max.X, int(cx+36)); x++ {
 				d := math.Abs(float64(x)-cx) / 18
-				a := 0.16 * math.Exp(-d*d) * (1 - k)
+				a := 0.22 * math.Exp(-d*d) * math.Sin(math.Pi*k)
 				i := x * 4
 				for ch, v := range [3]uint8{col.R, col.G, col.B} {
 					row[i+ch] = uint8(float64(row[i+ch])*(1-a) + float64(v)*a)
@@ -515,7 +554,7 @@ func (u *UI) drawTrail(act string, x, cy, h float32) {
 		if u.art != nil {
 			u.dc.drawArt(u.art.small, int(x+1), int(cy-8), 8, 1) // a round disc
 			if u.track != nil && u.track.Playing {
-				u.lives = append(u.lives, live{image.Rect(int(x)-2, int(cy-11), int(x+20), int(cy+11)), func(c *canvas, t float64) {
+				u.lives = append(u.lives, live{r: image.Rect(int(x)-2, int(cy-11), int(x+20), int(cy+11)), draw: func(c *canvas, t float64) {
 					a := t * 2.2 // a dot orbiting the disc: it's spinning
 					c.circle(x+9+6.4*float32(math.Cos(a)), cy+6.4*float32(math.Sin(a)), 1.2, alpha(colorWhite, 0.85))
 				}})
@@ -529,7 +568,7 @@ func (u *UI) drawTrail(act string, x, cy, h float32) {
 			m = moodWait
 		}
 		col := p.moodColor(m)
-		u.lives = append(u.lives, live{image.Rect(int(x), 0, int(x+19), int(h)), func(c *canvas, t float64) {
+		u.lives = append(u.lives, live{r: image.Rect(int(x), 0, int(x+19), int(h)), draw: func(c *canvas, t float64) {
 			c.ember(p, x+9, cy+1, 11+k, m, t, 0, 0, col, 1, 0)
 		}})
 	case "edge":
@@ -544,7 +583,7 @@ func (u *UI) drawTrail(act string, x, cy, h float32) {
 // eqLive registers the little equaliser at (x, y) (bottom-left), height h.
 func (u *UI) eqLive(x, y, h float32, col color.NRGBA, playing bool) {
 	r := image.Rect(int(x)-1, int(y-h)-1, int(x+16)+1, int(y)+1)
-	u.lives = append(u.lives, live{r, func(c *canvas, t float64) {
+	u.lives = append(u.lives, live{r: r, draw: func(c *canvas, t float64) {
 		for i := 0; i < 3; i++ {
 			k := []float64{0.4, 0.75, 0.55}[i] // paused: still bars, not dots
 			if playing {
@@ -567,7 +606,7 @@ func (u *UI) progressLive(x, y, w, th float32, col color.NRGBA, knob float32) {
 		return
 	}
 	r := image.Rect(int(x)-8, int(y-th)-8, int(x+w)+9, int(y+th)+9)
-	u.lives = append(u.lives, live{r, func(c *canvas, _ float64) {
+	u.lives = append(u.lives, live{r: r, draw: func(c *canvas, _ float64) {
 		k := float32(math.Min(1, float64(t.pos(u.now()))/float64(t.Length)))
 		if u.drag == "music:seek" {
 			k = float32(u.seekPreview)
@@ -630,4 +669,3 @@ func powerText(pw *power) string {
 	}
 	return ""
 }
-

@@ -109,7 +109,7 @@ func (edgeDash) header(u *UI, st *EdgeStats, x, w float32, age time.Duration) {
 	f := face(fSemiBold, 12)
 	u.dc.text(f, n, cx-measure(f, n)/2, cy+4.5, p.fg)
 	if st.Current != nil && !st.Current.Started.IsZero() { // working on it: the ring breathes
-		u.lives = append(u.lives, live{image.Rect(int(cx-r-9), int(cy-r-9), int(cx+r+10), int(cy+r+10)), func(c *canvas, tt float64) {
+		u.lives = append(u.lives, live{r: image.Rect(int(cx-r-9), int(cy-r-9), int(cx+r+10), int(cy+r+10)), draw: func(c *canvas, tt float64) {
 			k := math.Mod(tt/2.2, 1)
 			rr := r + 3 + 5*float32(k)
 			c.frame(cx-rr, cy-rr, 2*rr, 2*rr, rr, 1.2, alpha(ring, 0.45*(1-k)))
@@ -146,7 +146,7 @@ func (edgeDash) header(u *UI, st *EdgeStats, x, w float32, age time.Duration) {
 	u.dc.text(fCaption(), cap, rx-cw, 48, p.faint)
 	fx, fy := rx-nw-12, float32(28)
 	hot := st.Streak.Current > 0
-	u.lives = append(u.lives, live{image.Rect(int(fx-10), int(fy-17), int(fx+10), int(fy+10)), func(c *canvas, tt float64) {
+	u.lives = append(u.lives, live{r: image.Rect(int(fx-10), int(fy-17), int(fx+10), int(fy+10)), draw: func(c *canvas, tt float64) {
 		flame(c, fx, fy, 9, tt, hot, p)
 	}})
 }
@@ -388,7 +388,7 @@ func (edgeDash) rating(u *UI, st *EdgeStats, x, y, w float32, age time.Duration)
 	if reveal >= float32(len(pts)-1) { // the latest contest glows
 		last := pts[len(pts)-1]
 		u.dc.circle(last.x, last.y, 3, p.blue)
-		u.lives = append(u.lives, live{image.Rect(int(last.x-9), int(last.y-9), int(last.x+10), int(last.y+10)), func(c *canvas, t float64) {
+		u.lives = append(u.lives, live{r: image.Rect(int(last.x-9), int(last.y-9), int(last.x+10), int(last.y+10)), draw: func(c *canvas, t float64) {
 			k := math.Mod(t/1.8, 1)
 			rr := 3 + 5*float32(k)
 			c.frame(last.x-rr, last.y-rr, 2*rr, 2*rr, rr, 1, alpha(p.blue, 0.5*(1-k)))

@@ -82,7 +82,11 @@ type tween struct {
 
 // tw eases the value under key toward target and returns it. A new key
 // starts at from. Keys nobody asks for fade out of the table.
-func (u *UI) tw(key string, target, from float64) float64 {
+func (u *UI) tw(key string, target, from float64) float64 { return u.twK(key, target, from, 520) }
+
+// twK is tw with its own stiffness k (critically damped): 2500 is ~50 ms,
+// 1600 ~95 ms, 520 ~250 ms to settle.
+func (u *UI) twK(key string, target, from, k float64) float64 {
 	t := u.tweens[key]
 	if t == nil {
 		t = &tween{x: from}
@@ -93,7 +97,7 @@ func (u *UI) tw(key string, target, from float64) float64 {
 		dt := u.dt
 		for dt > 0 { // critically damped, stepped finely for stability
 			h := math.Min(dt, 1.0/120)
-			t.v += ((target-t.x)*520 - t.v*2*math.Sqrt(520)) * h
+			t.v += ((target-t.x)*k - t.v*2*math.Sqrt(k)) * h
 			t.x += t.v * h
 			dt -= h
 		}
@@ -109,24 +113,28 @@ func (u *UI) tw(key string, target, from float64) float64 {
 
 // hl is the eased highlight (0..1) of a hoverable control.
 func (u *UI) hl(key string) float64 {
-	on := 0.0
+	on, k := 0.0, 520.0 // it leaves slowly
 	if u.hoverKey == key || u.drag == key {
-		on = 1
+		on, k = 1, 1600 // and arrives quickly
 	}
-	return u.tw("hl:"+key, on, 0)
+	return u.twK("hl:"+key, on, 0, k)
 }
 
-// pressed is a brief 0..1 dip after a click on key.
+// pressed is how far key is pushed in, 0..1: in at once while the button is
+// held, out gently after. A click from elsewhere (a command) flashes it.
 func (u *UI) pressed(key string) float64 {
-	if u.pressKey != key {
-		return 0
+	held, k := 0.0, 520.0
+	if u.downKey == key {
+		held, k = 1, 2500
 	}
-	t := u.now().Sub(u.pressAt).Seconds()
-	if t > 0.22 {
-		return 0
+	d := u.twK("pr:"+key, held, 0, k)
+	if u.pressKey == key && u.downKey == "" {
+		if t := u.now().Sub(u.pressAt).Seconds(); t < 0.22 {
+			u.tweening = true
+			d = math.Max(d, math.Sin(t/0.22*math.Pi))
+		}
 	}
-	u.tweening = true
-	return math.Sin(t / 0.22 * math.Pi)
+	return d
 }
 
 func (u *UI) gcTweens() {
@@ -167,6 +175,13 @@ func (u *UI) rollText(c *canvas, key, s string, f fontFace, rx, base float32, co
 	}
 	e := float32(easeOut(k))
 	w := tabWidth(f, s)
+	if k < 1 { // the digits roll inside their own line
+		met := f.Metrics()
+		asc, desc := met.Ascent.Ceil(), met.Descent.Ceil()
+		c.clipR = image.Rect(int(rx-w)-8, int(base)-asc-1, int(rx)+2, int(base)+desc+1)
+		defer func() { c.clipR = image.Rectangle{} }()
+	}
+	travel := float32(f.Metrics().Ascent.Ceil()) * 0.8
 	// align old and new from the right, character by character
 	newR, oldR := []rune(s), []rune(r.old)
 	x := rx
@@ -192,16 +207,32 @@ func (u *UI) rollText(c *canvas, key, s string, f fontFace, rx, base float32, co
 			continue
 		}
 		if o != 0 {
-			c.text(f, string(o), x+(cw-measure(f, string(o)))/2, base-8*e, alpha(col, 1-float64(e)))
+			c.text(f, string(o), x+(cw-measure(f, string(o)))/2, base-travel*e, alpha(col, 1-float64(e)))
 		}
 		if n != 0 {
-			c.text(f, string(n), x+(cw-measure(f, string(n)))/2, base+8*(1-e), alpha(col, float64(e)))
+			c.text(f, string(n), x+(cw-measure(f, string(n)))/2, base+travel*(1-e), alpha(col, float64(e)))
 		}
 	}
 	return w
 }
 
 // ---- the shimmer on a label while Claude thinks ----
+
+const (
+	shimmerEvery = 2.4 // seconds between passes
+	shimmerPass  = 1.0 // a pass takes this long
+)
+
+func easeInOut(x float64) float64 {
+	x = math.Max(0, math.Min(1, x))
+	if x < 0.5 {
+		return 4 * x * x * x
+	}
+	return 1 - math.Pow(-2*x+2, 3)/2
+}
+
+// shimmering: a shimmer's band is crossing right now (frames should come quickly).
+func shimmerPassing(t float64) bool { return math.Mod(t, shimmerEvery) < shimmerPass }
 
 // shimmerLive sweeps a soft band of light across text already drawn at
 // (x, base): the label looks lit from inside while work is going on.
@@ -210,10 +241,17 @@ func (u *UI) shimmerLive(f fontFace, s string, x, base float32, col color.NRGBA)
 	px, py := int(math.Round(float64(x)))-1, int(math.Round(float64(base)))-m.asc
 	r := image.Rect(px, py, px+m.m.Rect.Dx(), py+m.m.Rect.Dy())
 	w := float64(r.Dx())
-	u.lives = append(u.lives, live{r.Inset(-1), func(c *canvas, t float64) {
-		span := w + 120
-		center := math.Mod(t*95, span+160) - 60                              // a pass every couple of seconds, with a rest
-		x0, x1 := max(0, int(center-80)), min(m.m.Rect.Dx(), int(center+80)) // the band is ~3σ wide
+	u.lives = append(u.lives, live{r: r.Inset(-1), draw: func(c *canvas, t float64) {
+		ph := math.Mod(t, shimmerEvery) // every shimmer passes at once, then rests
+		if ph >= shimmerPass {
+			return
+		}
+		center := -40 + easeInOut(ph/shimmerPass)*(w+80)
+		x0, x1 := max(0, int(center-42)), min(m.m.Rect.Dx(), int(center+42))
+		fk := 1.0
+		if c.k > 0 {
+			fk = c.k
+		}
 		for yy := 0; yy < m.m.Rect.Dy(); yy++ {
 			row := c.img.Pix[(py+yy)*c.img.Stride:]
 			for xx := x0; xx < x1; xx++ {
@@ -221,11 +259,11 @@ func (u *UI) shimmerLive(f fontFace, s string, x, base float32, col color.NRGBA)
 				if a == 0 {
 					continue
 				}
-				d := math.Abs(float64(xx)-center) / 26
+				d := math.Abs(float64(xx)-center) / 14
 				if d >= 3 {
 					continue
 				}
-				k := band[int(d*85)] * a / 255
+				k := band[int(d*85)] * a / 255 * fk
 				if k < 0.01 {
 					continue
 				}
@@ -321,21 +359,29 @@ var band = func() (t [256]float64) {
 // ---- entrances: rows arrive one after another ----
 
 const (
-	enterTime  = 220 * time.Millisecond
-	enterStep  = 28 * time.Millisecond // between one row and the next
-	enterRise  = 6                     // px a row rises as it fades in
+	enterTime  = 200 * time.Millisecond
+	enterStep  = 24 * time.Millisecond // between one row and the next
+	enterRise  = 4                     // px a row rises as it fades in
+	enterMax   = 6                     // rows after this many arrive together
 	glideStiff = 520
 )
 
 // enter is how far the i-th element of the current view has arrived, 0..1.
 // Elements a view gains later (a new session while the card is open) arrive
 // on their own when they first appear.
-func (u *UI) enter(key string, i int) float64 {
+func (u *UI) enter(key string, i int, known bool) float64 {
 	at, ok := u.enterAt[key]
 	if !ok {
 		at = u.now()
-		if d := u.trAt.Add(time.Duration(i) * enterStep); u.now().Sub(u.trAt) < fadeIn {
-			at = d // part of the view's own entrance: staggered
+		base := u.trAt
+		if u.staggerAt.After(base) {
+			base = u.staggerAt
+		}
+		if d := base.Add(time.Duration(min(i, enterMax)) * enterStep); u.now().Sub(base) < fadeIn {
+			at = d // part of an entrance: staggered
+		}
+		if known { // it was on screen a moment ago in another role: it's already half there
+			at = at.Add(-enterTime * 3 / 10)
 		}
 		u.enterAt[key] = at
 	}
@@ -355,13 +401,19 @@ func (u *UI) glide(key string, y float32) float32 {
 	return float32(u.tw("y:"+key, float64(y), float64(y)))
 }
 
+// gliding reports whether key has a position from before.
+func (u *UI) gliding(key string) bool { return u.tweens["y:"+key] != nil }
+
 // resetMotion: a view opens fresh, so nothing glides from where it was
 // last time, and everything enters again.
 func (u *UI) resetMotion() {
 	clear(u.enterAt)
+	clear(u.rolls) // a timer doesn't roll from what it said last time
 	for k := range u.tweens {
-		if strings.HasPrefix(k, "y:") {
-			delete(u.tweens, k)
+		for _, pre := range []string{"y:", "hl:", "row:", "chev:", "pr:", "cur:"} {
+			if strings.HasPrefix(k, pre) {
+				delete(u.tweens, k)
+			}
 		}
 	}
 }

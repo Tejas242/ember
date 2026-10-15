@@ -56,7 +56,9 @@ func (u *UI) pointer(e pointerEvent) (redraw, hand bool) {
 			u.dragTo(false)
 			return true, true
 		}
-		u.press(k, e.button)
+		// a control goes in under the finger now and acts when it's let go
+		// over the same control: you can still slide off a button you regret
+		u.downKey, u.downBtn = k, e.button
 		return true, false
 	case "release":
 		u.mx, u.my = e.x, e.y
@@ -65,6 +67,14 @@ func (u *UI) pointer(e pointerEvent) (redraw, hand bool) {
 			u.drag = ""
 			if k := u.hitAt(e.x, e.y); k == "" { // let go outside the island
 				u.hover, u.hoverKey, u.leftAt = false, "", u.now()
+			}
+			return true, false
+		}
+		if k, down := u.hitAt(e.x, e.y), u.downKey; down != "" || k == "" {
+			u.downKey = ""
+			if k == down {
+				u.press(k, u.downBtn)
+				u.pressKey = "" // it was held in: no second flash
 			}
 		}
 		return true, false
@@ -157,7 +167,7 @@ func (u *UI) press(k string, button int) {
 	case k == "rows:all": // "Show all" / "Show less"
 		u.allRows = !u.allRows
 	case strings.HasPrefix(k, "s:"): // another session in the card: it becomes the hero
-		u.hero = strings.TrimPrefix(k, "s:")
+		u.hero, u.staggerAt = strings.TrimPrefix(k, "s:"), u.now()
 	case strings.HasPrefix(k, "a:"): // an agent on the branch: open or close its steps
 		u.opened[k] = !u.shownOpen[k]
 	case k == "dash": // so does a dashboard's

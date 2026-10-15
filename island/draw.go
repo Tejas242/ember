@@ -160,9 +160,19 @@ type canvas struct {
 	img     *image.RGBA
 	r       *vector.Rasterizer
 	masks   map[maskKey]*textMask
-	bodyRow []byte  // a row of the island's body colour, to copy
-	clip    *notch  // when set, fills stay inside this shape
-	bodyPx  [4]byte // the pixel bodyRow is made of
+	bodyRow []byte          // a row of the island's body colour, to copy
+	clip    *notch          // when set, fills stay inside this shape
+	bodyPx  [4]byte         // the pixel bodyRow is made of
+	k       float64         // when set (0..1), everything drawn is faded by it: a live part arriving with its row
+	clipR   image.Rectangle // when set, text stays inside it (a rolling digit)
+}
+
+// fadeCol applies the canvas's fade to col.
+func (c *canvas) fadeCol(col color.NRGBA) color.NRGBA {
+	if c.k > 0 && c.k < 1 {
+		col.A = uint8(float64(col.A) * c.k)
+	}
+	return col
 }
 
 type maskKey struct {
@@ -193,6 +203,7 @@ func (c *canvas) fillPath(x0, y0, x1, y1 float32, col color.NRGBA, path func(r *
 	bx, by := max(int(math.Floor(float64(x0)))-1, b.Min.X), max(int(math.Floor(float64(y0)))-1, b.Min.Y)
 	bw := min(int(math.Ceil(float64(x1)))+1, b.Max.X) - bx
 	bh := min(int(math.Ceil(float64(y1)))+1, b.Max.Y) - by
+	col = c.fadeCol(col)
 	if bw <= 0 || bh <= 0 || col.A == 0 {
 		return
 	}
@@ -227,6 +238,7 @@ func (c *canvas) roundRect(x, y, w, h, rad float32, col color.NRGBA) {
 // roundRectHole skips pixels inside hole: shadows and borders don't need to
 // paint the interior that the fill covers anyway.
 func (c *canvas) roundRectHole(x, y, w, h, rad float32, col color.NRGBA, hole image.Rectangle) {
+	col = c.fadeCol(col)
 	if col.A == 0 || w <= 0 || h <= 0 {
 		return
 	}
@@ -365,9 +377,17 @@ func (c *canvas) text(f font.Face, s string, x, y float32, col color.NRGBA) floa
 		return 0
 	}
 	m := c.mask(f, s)
+	col = c.fadeCol(col)
 	if col.A > 0 {
 		px, py := int(math.Round(float64(x)))-1, int(math.Round(float64(y)))-m.asc
-		draw.DrawMask(c.img, image.Rect(px, py, px+m.m.Rect.Dx(), py+m.m.Rect.Dy()), image.NewUniform(col), image.Point{}, m.m, image.Point{}, draw.Over)
+		dr := image.Rect(px, py, px+m.m.Rect.Dx(), py+m.m.Rect.Dy())
+		r := dr
+		if !c.clipR.Empty() {
+			r = dr.Intersect(c.clipR)
+		}
+		if !r.Empty() {
+			draw.DrawMask(c.img, r, image.NewUniform(col), image.Point{}, m.m, r.Min.Sub(dr.Min), draw.Over)
+		}
 	}
 	return float32(m.w)
 }

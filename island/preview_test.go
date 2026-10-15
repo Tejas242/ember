@@ -114,12 +114,12 @@ func TestPreview(t *testing.T) {
 	u.AddCard(&Card{ID: "p", Kind: "perm", Mood: moodWait, Title: "Run the store tests with the race detector", Eyebrow: "kinvault wants to run", Shell: true,
 		Code:    "go test -race ./store/... -run TestRepair -count=1",
 		Buttons: []Button{{Key: "deny", Label: "Deny", Danger: true}, {Key: "always", Label: "Always"}, {Key: "allow", Label: "Allow", Primary: true}},
-		Footer:  "In terminal"})
+		Footer:  "Answer in terminal"})
 	save("7-permission", u)
 
 	u = mk()
 	u.AddCard(&Card{ID: "q", Kind: "ask", Mood: moodWait, Title: "Which storage engine?", Eyebrow: "kinvault asks", Meta: "1 of 2",
 		Options: []Option{{"Pebble", "LSM, battle tested"}, {"bbolt", "B+tree, single file"}, {"Roll our own", "Append-only log + index"}},
-		Footer:  "In terminal"})
+		Footer:  "Answer in terminal"})
 	save("8-question", u)
 }
