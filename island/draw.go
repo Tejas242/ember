@@ -103,7 +103,7 @@ func loadPalette() palette {
 	base := mix(bg, black, 0.45)
 	return palette{
 		bg: base, raised: mix(base, fg, 0.07), line: mix(base, fg, 0.13),
-		fg: fg, muted: mix(fg, base, 0.42), faint: mix(fg, base, 0.66),
+		fg: fg, muted: mix(fg, base, 0.36), faint: mix(fg, base, 0.5),
 		green: col["normal.green"], blue: col["normal.blue"], red: col["normal.red"],
 		yellow: mix(col["normal.yellow"], color.NRGBA{0xff, 0xc4, 0x6b, 255}, 0.7), // warm amber, whatever the wallpaper
 		ink:    base, island: color.NRGBA{base.R, base.G, base.B, 222},
@@ -548,10 +548,14 @@ func (c *canvas) emberX(p palette, cx, cy, s float32, m mood, t float64, e expr,
 func (c *canvas) glowInside(r image.Rectangle, cx, cy, rad float32, col color.NRGBA, strength float64) {
 	r = r.Intersect(c.img.Rect)
 	inv2 := 1 / (rad * rad)
-	st := uint32(strength * 256)
+	edge := func(d int) float32 { // light fades out toward the rectangle's edges: no seams
+		f := min(float32(d)/14, 1)
+		return f * f * (3 - 2*f)
+	}
 	for y := r.Min.Y; y < r.Max.Y; y++ {
 		row := c.img.Pix[y*c.img.Stride:]
 		dy := float32(y) + 0.5 - cy
+		fy := edge(min(y-r.Min.Y, r.Max.Y-1-y))
 		for x := r.Min.X; x < r.Max.X; x++ {
 			i := x * 4
 			if row[i+3] < 180 {
@@ -562,6 +566,7 @@ func (c *canvas) glowInside(r image.Rectangle, cx, cy, rad float32, col color.NR
 			if d >= 1 {
 				continue
 			}
+			st := uint32(float32(strength*256) * fy * edge(min(x-r.Min.X, r.Max.X-1-x)))
 			k := falloff[int(d*255)] * st // (1-d)², from the table, in 1/256ths
 			if k == 0 {
 				continue

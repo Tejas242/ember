@@ -446,14 +446,12 @@ func (u *UI) heroBody(l *sessLayout, x, w, y float32, i *int) float32 {
 				if st.Failed {
 					col = p.red
 				}
-				u.dc.icon(st.Kind, tx+20, sy, 9, col)
-				f := face(fRegular, 11)
-				u.dc.text(f, ellipsize(f, st.Text, right-tx-30), tx+30, sy+3.5, mix(p.fg, p.bg, 0.4))
+				u.dc.icon(st.Kind, tx+4, sy, 9, col)
+				u.dc.text(fCaption(), ellipsize(fCaption(), st.Text, right-tx-14), tx+14, sy+3.5, p.muted)
 				yy += agentStepH
 			}
 			if open && ag.Summary != "" {
-				f := face(fRegular, 11)
-				u.dc.text(f, ellipsize(f, "→ "+ag.Summary, right-tx-20), tx+20, yy+agentStepH/2+3.5, p.muted)
+				u.dc.text(fCaption(), ellipsize(fCaption(), "→ "+ag.Summary, right-tx-14), tx+14, yy+agentStepH/2+3.5, p.muted)
 			}
 		})
 		railEnd = y + agentH/2 - 7 // the branch leaves the rail here
@@ -475,7 +473,7 @@ func (u *UI) heroBody(l *sessLayout, x, w, y float32, i *int) float32 {
 func (u *UI) step(s *Session, st Step, newest bool, gx, tx, right, cy float32) {
 	p, now := u.pal, u.now()
 	current := newest && !st.Done && s.State == "work"
-	col, txtCol, f := p.faint, p.secondary(), fSecond()
+	col, txtCol, f := p.muted, p.secondary(), fSecond()
 	switch {
 	case st.Failed:
 		col, txtCol = p.red, mix(p.red, p.fg, 0.35)
@@ -483,7 +481,7 @@ func (u *UI) step(s *Session, st Step, newest bool, gx, tx, right, cy float32) {
 		col, txtCol, f = p.green, p.fg, fBody()
 	}
 	u.dc.circle(gx, cy, 7.5, color2(p))
-	u.dc.icon(st.Kind, gx, cy, 10, col)
+	u.dc.icon(st.Kind, gx, cy, 11, col)
 	if current {
 		u.lives = append(u.lives, live{image.Rect(int(gx-12), int(cy-12), int(gx+13), int(cy+13)), func(c *canvas, t float64) {
 			q := math.Mod(t/1.6, 1)
@@ -581,7 +579,7 @@ func (u *UI) agentRow(s *Session, ag *Agent, open bool, gx, tx, right, cy float3
 	ww := measure(fCaption(), when)
 	u.dc.text(fCaption(), when, rx-ww, cy+4, p.faint)
 	rx -= ww + 10
-	nf := face(fMedium, 12)
+	nf := fBody()
 	nx := tx + 14
 	name := ellipsize(nf, ag.name(), (rx-nx)*0.6)
 	if ag.Label == "" || done {
@@ -719,7 +717,7 @@ func (u *UI) sessionGlyph(s *Session, gx, gy float32) {
 			c.frame(gx-r, gy-r, 2*r, 2*r, r, 1.2, alpha(p.blue, 0.6*(1-q)))
 		}})
 	case s.status() == "work":
-		u.dc.arc(gx, gy, 6, 1.1, 0, 2*math.Pi, alpha(p.green, 0.25))
+		u.dc.arc(gx, gy, 6, 1.1, 0, 2*math.Pi, alpha(p.green, 0.4))
 		n := min(s.running(), 4)
 		u.lives = append(u.lives, live{image.Rect(int(gx-12), int(gy-12), int(gx+13), int(gy+13)), func(c *canvas, t float64) {
 			a := t * 2.6
@@ -812,7 +810,7 @@ func (u *UI) dayStory(x, w, y float32) {
 	}
 	for _, h := range []int{0, 6, 12, 18} {
 		lbl := map[int]string{0: "12a", 6: "6a", 12: "12p", 18: "6p"}[h]
-		u.dc.text(face(fRegular, 9.5), lbl, bx+float32(h)*slot+(slot-bwid)/2, y+40, p.faint)
+		u.dc.text(fCaption(), lbl, bx+float32(h)*slot+(slot-bwid)/2, y+40, p.faint)
 	}
 }
 

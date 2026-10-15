@@ -45,17 +45,17 @@ func (u *UI) musicRow(x, w, y float32) {
 	p, t := u.pal, u.track
 	acc := u.accent(p.fg)
 	on := u.rowHot("music", x, w, y, musicH)
-	const art = 28
-	ax, ay := x+railX-art/2, y+9
+	const art = 24
+	ax, ay := x+pad, y+11
 	if u.art != nil {
 		if u.art.accent.A > 0 { // the cover's light on the island
-			u.cv.glowInside(image.Rect(int(x+2), int(y-6), int(x+w/2), int(y+musicH+6)), ax+art/2, ay+art/2, 96,
+			u.cv.glowInside(image.Rect(int(x+2), int(y+1), int(x+w*0.6), int(y+musicH)), ax+art/2, ay+art/2, 110,
 				u.art.accent, (0.13+0.05*on)*u.fadeK*u.rowK)
 		}
 		img := u.art.row
-		u.dc.drawArt(img, int(ax+art/2)-img.Rect.Dx()/2, int(ay+art/2)-img.Rect.Dy()/2, 7, 1)
+		u.dc.drawArt(img, int(ax+art/2)-img.Rect.Dx()/2, int(ay+art/2)-img.Rect.Dy()/2, 6, 1)
 	} else {
-		u.dc.roundRect(ax, ay, art, art, 7, alpha(p.fg, 0.08))
+		u.dc.roundRect(ax, ay, art, art, 6, alpha(p.fg, 0.08))
 		u.dc.icon("note", ax+art/2, ay+art/2, 13, p.muted)
 	}
 	tx := x + textX
@@ -132,8 +132,8 @@ func (u *UI) edgeRow(x, w, y float32) {
 	}
 	cy := y + edgeH/2
 	gx := x + railX
-	u.dc.frame(gx-6.5, cy-6.5, 13, 13, 6.5, 1.3, p.yellow)
-	u.dc.circle(gx, cy, 2.3, p.yellow)
+	u.dc.frame(gx-6, cy-6, 12, 12, 6, 1.2, alpha(p.yellow, 0.85))
+	u.dc.circle(gx, cy, 2, alpha(p.yellow, 0.85))
 	tx, right := x+textX, x+w-pad
 	var btn Button
 	sub := fmt.Sprintf("%d/%d today · %d-day streak", e.Today, e.Need, e.Streak)
@@ -148,11 +148,11 @@ func (u *UI) edgeRow(x, w, y float32) {
 		}
 	}
 	if btn.Key != "" {
-		bw := u.pillButton(btn, "btn:edge:"+btn.Key, right, cy-11, 22, p.yellow)
+		bw := u.pillButton(btn, "btn:edge:"+btn.Key, right, cy-btnH/2, btnH, p.yellow)
 		right -= bw + 10
 	} else if u.dashboards["edge"] != nil { // the line opens the dashboard: say so
-		u.dc.icon("chart", right-6, cy, 12, mix(p.faint, p.yellow, 0.3+0.7*on))
-		right -= 20
+		u.chevron(right-3, cy, 0, mix(p.faint, p.fg, 0.4*on))
+		right -= 16
 	}
 	task := e.Task
 	if task == "" {
@@ -167,8 +167,8 @@ func (u *UI) edgeRow(x, w, y float32) {
 // reports its width.
 func (u *UI) pillButton(b Button, key string, right, y, h float32, tint color.NRGBA) float32 {
 	p := u.pal
-	f := face(fSemiBold, 11.5)
-	bw := measure(f, b.Label) + 22
+	f := face(fSemiBold, 12)
+	bw := measure(f, b.Label) + 28
 	x := right - bw
 	k, d := u.hl(key), u.pressed(key)
 	fill, txt := alpha(tint, 0.16+0.1*k), mix(tint, p.fg, 0.2)
@@ -177,7 +177,7 @@ func (u *UI) pillButton(b Button, key string, right, y, h float32, tint color.NR
 	}
 	in := float32(1.2 * d)
 	u.dc.roundRect(x+in, y+in, bw-2*in, h-2*in, h/2, fill)
-	u.dc.text(f, b.Label, x+11, y+h/2+4, txt)
+	u.dc.text(f, b.Label, x+14, y+h/2+4.2, txt)
 	u.hits = append(u.hits, hit{image.Rect(int(x), int(y), int(x+bw), int(y+h)), key})
 	return bw
 }
@@ -244,7 +244,7 @@ func (u *UI) buttonRow(btns []Button, prefix string, x, w, y float32, footer str
 		case b.Primary:
 			fill, txt = mix(primary, colorWhite, 0.14*h), p.ink
 		case b.Danger:
-			fill, txt = alpha(p.red, 0.09+0.09*h), mix(p.red, p.fg, 0.1)
+			fill, txt = alpha(p.fg, 0.07+0.06*h), mix(p.red, p.fg, 0.1)
 		default:
 			fill, txt = alpha(p.fg, 0.07+0.06*h), p.fg
 		}
@@ -255,7 +255,7 @@ func (u *UI) buttonRow(btns []Button, prefix string, x, w, y float32, footer str
 		u.dc.roundRect(bx+in, y+in, bw-2*in, btnH-2*in, btnH/2, fill)
 		u.dc.text(bf, b.Label, bx+14, y+btnH/2+4.2, txt)
 		u.hits = append(u.hits, hit{image.Rect(int(bx), int(y), int(bx+bw), int(y+btnH)), key})
-		bx -= 6
+		bx -= 8
 	}
 	if footer != "" {
 		key := prefix + "footer"
@@ -373,7 +373,7 @@ func (u *UI) drawCard(c *Card, x, w float32) {
 		return
 	}
 	p := u.pal
-	u.spot = emberSpot{x: x + railX, y: 28, s: 16, mood: c.Mood, show: true}
+	u.spot = emberSpot{x: x + railX, y: 28, s: 18, mood: c.Mood, show: true}
 	inner := w - 2*pad
 	right := x + w - pad
 	tx := x + textX
@@ -468,11 +468,11 @@ func (u *UI) drawCard(c *Card, x, w float32) {
 				h, d := u.hl(key), u.pressed(key)
 				picked := c.picked[j]
 				if picked {
-					u.panel(x+pad, y, inner, optH, radRow, alpha(u.primaryOf(c), 0.16))
+					u.panel(x+pad, y, inner, optH, radRow, alpha(u.primaryOf(c), 0.07+0.03*h))
 				} else if h > 0.01 || d > 0 {
 					u.panel(x+pad, y, inner, optH, radRow, alpha(p.fg, 0.05*h+0.06*d))
 				}
-				if j > 0 && !picked && !c.picked[j-1] {
+				if j > 0 {
 					u.dc.roundRect(x+pad+32, y, inner-32-10, 1, 0.5, p.hair())
 				}
 				bx, by := x+pad+16, y+optH/2
@@ -508,16 +508,15 @@ func (u *UI) drawCard(c *Card, x, w float32) {
 	// how long it will wait for you: a hairline that drains along the bottom
 	if !c.Expires.IsZero() && !c.Born.IsZero() {
 		total := c.Expires.Sub(c.Born).Seconds()
-		bottom := float32(u.cardHeight(c)) - 2.5
+		bottom := float32(u.cardHeight(c)) - 1.5
 		lx, lw := x+radCard, w-2*radCard
 		u.lives = append(u.lives, live{image.Rect(int(lx)-2, int(bottom)-3, int(lx+lw)+2, int(bottom)+3), func(cv *canvas, _ float64) {
 			left := c.Expires.Sub(u.now()).Seconds()
 			k := float32(math.Max(0, math.Min(1, left/total)))
-			col := alpha(p.fg, 0.2)
-			if left < 15 {
-				col = alpha(p.yellow, 0.8)
-			}
-			cv.roundRect(lx+lw*(1-k)/2, bottom-1, lw*k, 2, 1, col)
+			late := math.Max(0, math.Min(1, (15-left)/1.5)) // the last fifteen seconds turn amber, easing in
+			col := mix(alpha(p.fg, 0.12), alpha(p.yellow, 0.8), late)
+			th := 1 + 0.5*float32(late)
+			cv.roundRect(lx+lw*(1-k)/2, bottom+1-th, lw*k, th, th/2, col)
 		}})
 	}
 }

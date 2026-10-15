@@ -216,7 +216,7 @@ var (
 	fPill    = func() fontFace { return face(fMedium, 12.5) }
 	fPillSub = func() fontFace { return face(fRegular, 12) }
 	fPillVal = func() fontFace { return face(fSemiBold, 12) }
-	fTimer   = func() fontFace { return face(fMedium, 11.5) }
+	fTimer   = func() fontFace { return face(fMedium, 11) }
 	fBadge   = func() fontFace { return face(fSemiBold, 10) }
 )
 
@@ -253,7 +253,7 @@ func (u *UI) pillLayout(l line, h float32) (left, right []seg, w float32) {
 			u.dc.icon(m.icon, x+8, cy, 15, m.tint)
 			u.spot = emberSpot{x: x + 8, y: cy + 1, s: 0, mood: l.mood, show: true} // Ember tucks into the icon
 		case l.music && u.art != nil:
-			u.dc.drawArt(u.art.small, int(x-1), int(cy-9), 5, 1)
+			u.dc.drawArt(u.art.small, int(x), int(cy-8), 4, 1)
 			u.spot = emberSpot{x: x + 8, y: cy + 1, s: 0, mood: moodIdle, show: true} // Ember tucks into the cover
 		default:
 			u.spot = emberSpot{x: x + 8, y: cy + 1, s: 14, mood: l.mood, show: true}
@@ -440,7 +440,7 @@ func (u *UI) drawCompact(x, w, h float32) {
 		rx -= s.gap
 	}
 	if l.music && u.track != nil { // the song, as a hairline along the pill's rim
-		u.progressLive(x+16, h-2.5, w-32, 1.5, u.accent(p.fg), 0)
+		u.progressLive(x+12, h-1, w-24, 1, u.accent(p.fg), 0)
 	}
 	if l.halo {
 		u.haloLive(p.blue)
@@ -460,11 +460,12 @@ func (u *UI) haloLive(col color.NRGBA) {
 	u.lives = append(u.lives, live{n.bounds().Inset(-12), func(c *canvas, t float64) {
 		in := math.Min(1, u.now().Sub(since).Seconds()/0.6) // it comes up gently
 		b := 0.4 + 0.6*(0.5+0.5*math.Sin(t*2*math.Pi/1.6))
+		top := int(u.BarH / 2) // in the bar the island is part of the bar: no rim there
 		for i := 8; i >= 2; i-- { // the light spilling out
-			a := 70 * math.Exp(-math.Pow(float64(i)/3.6, 2)) * b * in
-			c.fillNotch(n, float32(i)*1.4, alpha(col, a/255), &n, 0, 0)
+			a := 110 * math.Exp(-math.Pow(float64(i)/3.6, 2)) * b * in
+			c.fillNotch(n, float32(i)*1.4, alpha(col, a/255), &n, 0, top)
 		}
-		c.fillNotch(n, 1.1, alpha(col, (0.35+0.5*b)*in), &n, 0, 0) // and a lit rim
+		c.fillNotch(n, 1.1, alpha(col, (0.2+0.35*b)*in), &n, 0, top) // and a lit rim
 	}})
 }
 
@@ -512,11 +513,11 @@ func (u *UI) drawTrail(act string, x, cy, h float32) {
 	switch act {
 	case "music":
 		if u.art != nil {
-			u.dc.drawArt(u.art.small, int(x), int(cy-9), 9, 1) // a round disc
+			u.dc.drawArt(u.art.small, int(x+1), int(cy-8), 8, 1) // a round disc
 			if u.track != nil && u.track.Playing {
 				u.lives = append(u.lives, live{image.Rect(int(x)-2, int(cy-11), int(x+20), int(cy+11)), func(c *canvas, t float64) {
 					a := t * 2.2 // a dot orbiting the disc: it's spinning
-					c.circle(x+9+7.2*float32(math.Cos(a)), cy+7.2*float32(math.Sin(a)), 1.3, alpha(colorWhite, 0.85))
+					c.circle(x+9+6.4*float32(math.Cos(a)), cy+6.4*float32(math.Sin(a)), 1.2, alpha(colorWhite, 0.85))
 				}})
 			}
 		} else {
@@ -545,12 +546,16 @@ func (u *UI) eqLive(x, y, h float32, col color.NRGBA, playing bool) {
 	r := image.Rect(int(x)-1, int(y-h)-1, int(x+16)+1, int(y)+1)
 	u.lives = append(u.lives, live{r, func(c *canvas, t float64) {
 		for i := 0; i < 3; i++ {
-			k := 0.22
+			k := []float64{0.4, 0.75, 0.55}[i] // paused: still bars, not dots
 			if playing {
 				k = 0.3 + 0.7*math.Abs(math.Sin(t*(3.7+float64(i)*1.9)+float64(i)*1.3))*(0.75+0.25*math.Sin(t*1.3+float64(i)))
 			}
 			bh := float32(k) * h
-			c.roundRect(x+float32(i)*5.5, y-bh, 3, bh, 1.5, col)
+			cc := col
+			if !playing {
+				cc = alpha(col, 0.45)
+			}
+			c.roundRect(x+float32(i)*5.5, y-bh, 3, bh, 1.5, cc)
 		}
 	}})
 }

@@ -35,7 +35,7 @@ var (
 )
 
 // secondary is text one step quieter than fg: steps, artists, summaries.
-func (p palette) secondary() color.NRGBA { return mix(p.fg, p.bg, 0.3) }
+func (p palette) secondary() color.NRGBA { return p.muted }
 
 // hair is a divider.
 func (p palette) hair() color.NRGBA { return alpha(p.fg, 0.07) }

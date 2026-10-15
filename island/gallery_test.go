@@ -141,7 +141,7 @@ func galleryArt() *albumArt {
 			img.Set(x, y, color.NRGBA{uint8(math.Min(255, r)), uint8(math.Min(255, math.Max(0, g))), uint8(math.Min(255, b)), 255})
 		}
 	}
-	a := &albumArt{small: scaleSquare(img, 18), large: scaleSquare(img, 60), row: scaleSquare(img, 28)}
+	a := &albumArt{small: scaleSquare(img, 16), large: scaleSquare(img, 60), row: scaleSquare(img, 24)}
 	a.accent = accentOf(a.large)
 	return a
 }
