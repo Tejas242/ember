@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -74,6 +73,15 @@ func (a *app) raise(why string) {
 	log.Println(why + ": raising the island above the bar")
 	a.win.raise()
 	a.ui.Invalidate()
+	go func() { // the bar may have changed too: take its new look
+		b := readBar()
+		a.posts <- func(a *app) {
+			if b.h != a.ui.BarH {
+				a.ui.BarH = b.h
+				a.ui.Invalidate()
+			}
+		}
+	}()
 }
 
 // reloadConfig applies ~/.config/ember/config.toml if it changed.
@@ -93,17 +101,47 @@ func (a *app) reloadConfig() bool {
 	return true
 }
 
-// barHeight reads Noctalia's bar thickness so the pill matches it exactly.
-func barHeight() float32 {
+// barLook is what the island takes from Noctalia's bar: its thickness, so
+// the pill sits on the bar's line and dips just below it.
+type barLook struct{ h float32 }
+
+// readBar reads [bar.default] from Noctalia's merged config.
+func readBar() barLook {
+	b := barLook{24}
 	out, err := exec.Command("noctalia", "config", "export").Output()
-	if err == nil {
-		if m := regexp.MustCompile(`(?m)^\s*thickness\s*=\s*([0-9.]+)`).FindSubmatch(out); m != nil {
-			if v, err := strconv.ParseFloat(string(m[1]), 32); err == nil && v >= 16 && v <= 64 {
-				return float32(v)
+	if err != nil {
+		return b
+	}
+	return parseBar(string(out), b)
+}
+
+func parseBar(cfg string, b barLook) barLook {
+	section := ""
+	for _, ln := range strings.Split(cfg, "\n") {
+		ln = strings.TrimSpace(ln)
+		if strings.HasPrefix(ln, "[") {
+			section = strings.Trim(ln, "[]")
+			continue
+		}
+		if section != "bar.default" {
+			continue
+		}
+		k, v, ok := strings.Cut(ln, "=")
+		if !ok {
+			continue
+		}
+		f, err := strconv.ParseFloat(strings.TrimSpace(v), 32)
+		if err != nil {
+			continue
+		}
+		switch strings.TrimSpace(k) {
+		case "thickness":
+			if f >= 16 && f <= 64 {
+				b.h = float32(f)
 			}
 		}
 	}
-	return 24
+	return b
 }
 
 // Run opens the island and serves until the compositor goes away.
@@ -116,7 +154,8 @@ func Run() error {
 	if err != nil {
 		return err
 	}
-	a := &app{ui: NewUI(surfW, surfH, barHeight()), win: win, posts: posts, started: time.Now()}
+	bar := readBar()
+	a := &app{ui: NewUI(surfW, surfH, bar.h), win: win, posts: posts, started: time.Now()}
 	a.ui.onKey = a.key
 	a.ui.habits = loadHabits()
 	a.ui.day = loadDay(time.Now())
