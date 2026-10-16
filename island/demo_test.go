@@ -396,8 +396,28 @@ func TestDemo(t *testing.T) {
 	})
 }
 
-// TestBanner draws the README's banner and the social preview: the island
-// hanging from a bar over the dusk wallpaper, the flame large, the name.
+// tracked draws s with its letters set track px apart beyond their kerned
+// advance (negative tightens), and returns its width.
+func tracked(c *canvas, f fontFace, s string, x, base, track float32, col color.NRGBA, draw bool) float32 {
+	x0 := x
+	prev := rune(-1)
+	for _, r := range s {
+		if prev >= 0 {
+			x += float32(f.Kern(prev, r)) / 64
+		}
+		if draw {
+			c.text(f, string(r), x, base, col)
+		}
+		adv, _ := f.GlyphAdvance(r)
+		x += float32(adv)/64 + track
+		prev = r
+	}
+	return x - x0 - track
+}
+
+// TestBanner draws the README's header and the social preview in Ember's own
+// language: the dark island hanging from a bar, the flame, tracked small
+// capitals, hairlines, and the real card, drawn by the real renderer.
 func TestBanner(t *testing.T) {
 	if os.Getenv("EMBER_DEMO") == "" {
 		t.Skip("set EMBER_DEMO")
@@ -406,44 +426,111 @@ func TestBanner(t *testing.T) {
 	for _, sz := range []struct {
 		name string
 		w, h int // at 1x; drawn at 2x
-	}{{"banner", 840, 280}, {"social", 640, 320}} {
+	}{{"banner", 840, 300}, {"social", 640, 320}} {
+		W, H := sz.w*2, sz.h*2
+		big := newCanvas(W, H)
+		p := loadPalette()
+		// the ground: near black, a faint grain, the island's light pooling under it
+		bg := color.NRGBA{9, 11, 10, 255}
+		draw.Draw(big.img, big.img.Rect, image.NewUniform(bg), image.Point{}, draw.Src)
+		rng := rand.New(rand.NewSource(3))
+		cardX := float32(W) - 880
+		if sz.name == "social" {
+			cardX = float32(W) - 640
+		}
+		big.glow(big.img.Rect, cardX+380, 40, 760, p.green, 0.07)
+		big.glow(big.img.Rect, float32(W)*0.12, float32(H)*1.05, 620, mix(p.yellow, p.red, 0.4), 0.06)
+		for i := 0; i < len(big.img.Pix); i += 4 {
+			n := uint8(rng.Intn(5))
+			for c := 0; c < 3; c++ {
+				big.img.Pix[i+c] += n
+			}
+		}
+		// a dot grid, the pixels it's drawn in, fading out from the card
+		for y := 30; y < H; y += 24 {
+			for x := 18; x < W; x += 24 {
+				dx, dy := float64(x)-float64(cardX+380), float64(y)-60
+				k := math.Exp(-(dx*dx + dy*dy) / (900 * 900))
+				big.circle(float32(x), float32(y), 1.1, alpha(colorWhite, 0.06*k))
+			}
+		}
+		// the bar, a glass strip with the island hanging from it
+		big.roundRect(0, 0, float32(W), 44, 0, color.NRGBA{22, 25, 24, 255})
+		big.roundRect(0, 44, float32(W), 1, 0, alpha(colorWhite, 0.06))
+
+		// the real card: a session at work, rendered at 1x and set in place
 		g := newScene()
-		g.a.ui.pal = loadPalette()
-		g.music(true)
+		g.a.ui.pal = p
 		g.work("k", "kinvault", "fix the race in the store's compaction path", 4)
-		g.clock = g.clock.Add(3 * time.Minute)
-		hookAt(g.a, "PreToolUse", "k", "kinvault", map[string]any{"tool_name": "Read", "tool_input": map[string]any{"file_path": "/x/a.go"}})
+		g.agent("k", "kinvault", "a1", "Map the store's locking", 2)
+		g.a.ui.pinned = true
 		g.run(2 * time.Second)
 		u := g.a.ui
-		bg := demoWallpaper()
-		out := image.NewRGBA(image.Rect(0, 0, sz.w, sz.h))
-		ox := (bg.Rect.Dx() - sz.w) / 2
-		draw.Draw(out, out.Rect, bg, image.Pt(ox, 260), draw.Src)
-		draw.Draw(out, image.Rect(0, 0, sz.w, 22), bg, image.Pt(ox, 0), draw.Src) // the bar stays on top
-		sx := (sz.w - surfW) / 2
-		for _, r := range u.shape.blurRects() {
-			boxBlur(out, r.Add(image.Pt(sx, 0)).Inset(-1), 9)
-		}
-		draw.Draw(out, image.Rect(sx, 0, sx+surfW, 40), u.cv.img, image.Point{}, draw.Over)
-		big := newCanvas(sz.w*2, sz.h*2)
-		xdraw.CatmullRom.Scale(big.img, big.img.Rect, out, out.Rect, xdraw.Src, nil)
-		// the flame and the name, drawn at full resolution
-		p := u.pal
-		cy := float32(sz.h) * 1.12
-		title := face(fSemiBold, 104)
-		tw := measure(title, "Ember")
-		fs := float32(120)
-		x0 := (float32(sz.w*2) - (fs*0.9 + 28 + tw)) / 2
-		big.glow(big.img.Rect, x0+fs*0.45, cy-fs*0.1, fs*1.6, p.green, 0.10)
-		big.emberX(p, x0+fs*0.45, cy, fs, moodWork, 1.3, expr{lids: 1, energy: 0.7, look: 0.25}, p.green, 1)
-		big.text(title, "Ember", x0+fs*0.9+28, cy+36, colorWhite)
-		tag := "A living dynamic island for Wayland that knows what Claude Code is doing"
-		tf := face(fRegular, 27)
+		sh := u.shape
+		src := image.NewRGBA(image.Rect(0, 0, int(sh.w)+40, int(sh.h)+30))
+		draw.Draw(src, src.Rect, u.cv.img, image.Pt(int(sh.x)-20, 0), draw.Src)
+		cs := 2.0 // the card's scale: crisp at 2x, smaller on the social card
 		if sz.name == "social" {
-			tag = "A living dynamic island for Wayland and Claude Code"
+			cs = 1.45
 		}
-		big.text(tf, tag, (float32(sz.w*2)-measure(tf, tag))/2, cy+110, color.NRGBA{226, 230, 238, 220})
-		f, _ := os.Create(filepath.Join(os.Getenv("EMBER_DEMO"), "..", sz.name+".png"))
+		card := image.NewRGBA(image.Rect(0, 0, int(float64(src.Rect.Dx())*cs), int(float64(src.Rect.Dy())*cs)))
+		xdraw.CatmullRom.Scale(card, card.Rect, src, src.Rect, xdraw.Over, nil)
+		cx := W - card.Rect.Dx() - 36 // inside the right margin
+		draw.Draw(big.img, card.Rect.Add(image.Pt(cx, 0)), card, image.Point{}, draw.Over)
+
+		// the name, on the left (on the social card, centred under the island)
+		eyebrow := face(fSemiBold, 19)
+		title := face(fSemiBold, 148)
+		tag := face(fRegular, 31)
+		mono := face(fMono, 21)
+		lx, top := float32(104), float32(176)
+		lines := []string{"Knows what Claude Code is doing, asks before", "it runs anything, and plays your music."}
+		if sz.name == "social" {
+			title, tag = face(fSemiBold, 128), face(fRegular, 29)
+			lx, top = 84, 230
+			lines = []string{"Knows what Claude Code is doing,", "asks before it runs anything,", "and plays your music."}
+		}
+		center := func(float32) float32 { return lx }
+		eb := "A DYNAMIC ISLAND FOR WAYLAND"
+		ebw := tracked(big, eyebrow, eb, 0, 0, 3.2, p.fg, false)
+		ex := center(ebw + 26)
+		strokeGlyph := func(x, y float32) { // the flame, small, before the eyebrow
+			big.emberX(p, x+9, y-6, 22, moodWork, 0.8, expr{lids: 1, energy: 0.6}, p.green, 1)
+		}
+		strokeGlyph(ex, top)
+		tracked(big, eyebrow, eb, ex+26, top, 3.2, mix(p.green, p.fg, 0.45), true)
+		tw := tracked(big, title, "Ember", 0, 0, -5, colorWhite, false)
+		tb := float32(150)
+		if sz.name == "social" {
+			tb = 132
+		}
+		tracked(big, title, "Ember", center(tw)-6, top+tb, -5, color.NRGBA{244, 247, 242, 255}, true)
+		y := top + 214
+		if sz.name == "social" {
+			y = top + 192
+		}
+		for _, ln := range lines {
+			lw := tracked(big, tag, ln, 0, 0, -0.3, colorWhite, false)
+			tracked(big, tag, ln, center(lw), y, -0.3, color.NRGBA{190, 198, 190, 255}, true)
+			y += 44
+		}
+		if sz.name == "banner" {
+			// the facts, in mono, between hairlines
+			y += 20
+			big.roundRect(lx, y, 520, 1, 0.5, alpha(colorWhite, 0.09))
+			x := lx
+			for i, fct := range []string{"one go binary", "drawn in software", "~9 MB", "no polling"} {
+				if i > 0 {
+					big.circle(x+12, y+34, 2.2, alpha(p.green, 0.7))
+					x += 26
+				}
+				x += big.text(mono, fct, x, y+41, color.NRGBA{140, 150, 142, 255})
+			}
+		}
+		f, err := os.Create(filepath.Join(os.Getenv("EMBER_DEMO"), "..", sz.name+".png"))
+		if err != nil {
+			t.Fatal(err)
+		}
 		png.Encode(f, big.img)
 		f.Close()
 	}

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/banner.png" alt="Ember: a living dynamic island for Wayland" width="840">
+  <img src="docs/banner.png" alt="Ember, a dynamic island for Wayland: the name and tagline beside the real card, hanging from a bar, showing a Claude Code session at work with its timeline and a subagent" width="840">
 </p>
 
 <p align="center">
