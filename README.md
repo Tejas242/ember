@@ -256,6 +256,10 @@ notes and buttons on the island, and it has a dashboard (`ember dash edge`, or c
 - **solo rate, retention, focus and your weakest focus topic**
 - **contest rounds**: the one you're in or held to next, the last three as rows of problem letters, the week streak
 
+<p align="center">
+  <img src="docs/demo/edge.webp" alt="An evening with edge on the island: a problem offered and started, a wrong answer, the accept, then a contest round counting down, filling in its letters and settling into upsolves" width="760">
+</p>
+
 During a contest round edge holds you to, the pill is the round: its name, a letter per problem filled in as verdicts
 land, the time left and the lock (edge keeps Claude off while it runs). Before it, a countdown; after, what's owed.
 
