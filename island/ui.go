@@ -496,7 +496,7 @@ func (u *UI) acts() []string {
 	if u.track != nil && u.cfg.Music {
 		out = append(out, "music")
 	}
-	if e := u.edge; e != nil && (e.Task != "" || e.Closed || e.Need > 0) {
+	if e := u.edge; e != nil && (e.Task != "" || e.Closed || e.Need > 0 || e.Round != nil) {
 		out = append(out, "edge")
 	}
 	return out
@@ -542,6 +542,8 @@ func (u *UI) secondary(primary string) string {
 		return "music"
 	case primary != "claude" && working:
 		return "claude"
+	case primary != "edge" && u.edge != nil && u.edge.Round != nil && u.edge.Round.phase(u.now()) == "live" && u.edge.Round.Locked:
+		return "edge" // in a round: its clock stays in sight
 	case primary != "edge" && u.edge != nil && u.edge.StartedMs > 0:
 		return "edge"
 	}

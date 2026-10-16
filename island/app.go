@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	surfW, surfH = 580, 380 // room for a dashboard; the input region is only the shape
+	surfW, surfH = 580, 480 // room for a dashboard; the input region is only the shape
+	roomH        = 380      // the most a card or the open island may take
 	flickerEvery = time.Second / 12
 	idleEvery    = time.Second / 6
 	frameGrace   = 34 * time.Millisecond // a frame callback that never comes doesn't stall us

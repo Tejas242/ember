@@ -65,14 +65,15 @@ type line struct {
 	chipCol  color.NRGBA
 	lock     bool
 	music    bool
-	work     bool    // Claude is working: the label shimmers
-	halo     bool    // waiting on you: a blue light breathes around the pill
-	trail    string  // the second activity, as a satellite at the pill's end
-	m        *moment // a system moment: icon, meter, value, battery
+	work     bool          // Claude is working: the label shimmers
+	halo     bool          // waiting on you: a blue light breathes around the pill
+	trail    string        // the second activity, as a satellite at the pill's end
+	m        *moment       // a system moment: icon, meter, value, battery
+	letters  []EdgeProblem // a contest round's problems, as chips
 }
 
 // tick is the part of the line that changes with time alone.
-func (l line) tick() string { return l.timer + "|" + l.chip }
+func (l line) tick() string { return l.timer + "|" + l.chip + "|" + l.sub }
 
 const meterW = 86
 
@@ -145,6 +146,9 @@ func (u *UI) mainLine() line {
 		}
 	case "edge":
 		if e := u.edge; e != nil {
+			if e.Round != nil {
+				return u.roundLine(e.Round)
+			}
 			if e.StartedMs > 0 && !e.Pending {
 				return line{key: "edge", mood: moodWork, text: short(e.Task), textCol: p.fg,
 					timer: mins(now.Sub(time.UnixMilli(e.StartedMs)))}
@@ -281,6 +285,10 @@ func (u *UI) pillLayout(l line, h float32) (left, right []seg, w float32) {
 	}})
 
 	// the right group, laid out first: it's fixed, the words take what's left
+	if len(l.letters) > 0 {
+		lw := lettersW(l.letters, 15)
+		right = append(right, seg{w: lw, gap: 10, draw: func(x float32) { u.letters(l.letters, x, cy, 15, 1) }})
+	}
 	if l.timer != "" {
 		tw := tabWidth(fTimer(), l.timer)
 		right = append(right, seg{w: tw, gap: 8, draw: func(x float32) {
@@ -642,6 +650,9 @@ func (u *UI) drawTrail(act string, x, cy, h float32) {
 	case "edge":
 		if e := u.edge; e != nil {
 			txt := mins(u.now().Sub(time.UnixMilli(e.StartedMs)))
+			if r := e.Round; r != nil && r.phase(u.now()) == "live" {
+				txt = left(u.now(), r.end())
+			}
 			f := face(fSemiBold, 10)
 			u.dc.text(f, txt, x+9-measure(f, txt)/2, cy+3.5, p.green)
 		}

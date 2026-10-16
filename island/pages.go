@@ -226,6 +226,10 @@ func (u *UI) edgeRow(x, w, y float32) {
 		}
 		u.hits = append(u.hits, hit{image.Rect(int(x+pad-8), int(y), int(x+w-pad+8), int(y+edgeH)), "dash:edge"})
 	}
+	if e.Round != nil { // a round outranks the day's task
+		u.roundRow(e.Round, x, w, y)
+		return
+	}
 	cy := y + edgeH/2
 	gx := x + railX
 	// today's goal as a ring, filled as far as you've got
@@ -472,7 +476,7 @@ func (u *UI) cardHeight(c *Card) int {
 	if len(c.Buttons) > 0 || c.Footer != "" {
 		h += 12 + btnH
 	}
-	return min(h+14, u.H-14)
+	return min(h+14, u.room()-14)
 }
 
 // primaryOf is a card's action colour: blue when Claude waits on you.

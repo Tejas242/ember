@@ -258,6 +258,9 @@ func (u *UI) salience(act string, now time.Time) float64 {
 		}
 		return 0.4 + 0.5*nov()
 	case "edge":
+		if e := u.edge; e != nil && e.Round != nil {
+			return roundSalience(e.Round, now)
+		}
 		if e := u.edge; e != nil && (e.StartedMs > 0 || e.Closed) {
 			return 0.55
 		}

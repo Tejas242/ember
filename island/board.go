@@ -97,7 +97,7 @@ func (u *UI) board(b brief) (rows []sessLayout, hidden int) {
 	if b.s == nil {
 		return nil, 0
 	}
-	budget := float32(u.H-14) - u.headH(b) - cardFoot - u.footerH()
+	budget := float32(u.room()-14) - u.headH(b) - cardFoot - u.footerH()
 	hero := sessLayout{s: b.s, hero: true, open: !u.allRows, mode: b.mode, agSteps: agentHist, openAg: map[string]bool{}}
 	if b.mode == "work" || b.mode == "wait" {
 		hero.agents = append(b.s.agentList(), reversed(b.s.Finished)...)
@@ -235,8 +235,11 @@ func (u *UI) expandedHeight() int {
 		h += moreH
 	}
 	h += u.footerH() + cardFoot
-	return int(math.Min(float64(h), float64(u.H-14)))
+	return int(math.Min(float64(h), float64(u.room()-14)))
 }
+
+// room is the height a card may take: dashboards get the whole surface.
+func (u *UI) room() int { return min(u.H, roomH) }
 
 // ---- drawing ----
 

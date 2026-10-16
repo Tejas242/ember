@@ -29,6 +29,7 @@ const (
 	dashMid   = 96
 	dashHeat  = 92
 	dashTiles = 46
+	dashRound = 84                      // contest rounds, when edge follows them
 	dashDiv   = 9                       // the space and hairline between sections
 	dashEnter = 1700 * time.Millisecond // the whole entrance
 )
@@ -41,6 +42,9 @@ func (edgeDash) Size(u *UI) (float64, float64) {
 	h := dashHead + dashDiv + dashMid + dashDiv + dashHeat + dashDiv + dashTiles + 4
 	if st.Current != nil {
 		h += dashCur + dashDiv
+	}
+	if roundsShown(st) {
+		h += dashRound + dashDiv
 	}
 	if len(st.Health) > 0 {
 		h += 22
@@ -72,6 +76,12 @@ func (d edgeDash) Draw(u *UI, x, w float32, age time.Duration) bool {
 		y += dashDiv
 		d.current(u, st, x, w, y, age)
 		y += dashCur
+	}
+	if roundsShown(st) {
+		dashDivider(u, x, w, y, phase(age, 100, 400*time.Millisecond))
+		y += dashDiv
+		d.rounds(u, st.Rounds, x+dashP, y, w-2*dashP, age)
+		y += dashRound
 	}
 	dashDivider(u, x, w, y, phase(age, 120, 400*time.Millisecond))
 	y += dashDiv
@@ -701,4 +711,128 @@ func weakSub(st *EdgeStats, tag string) string {
 		}
 	}
 	return ""
+}
+
+// ---- contest rounds ----
+
+func roundsShown(st *EdgeStats) bool {
+	r := st.Rounds
+	return r != nil && r.Enabled && (r.Live != nil || r.Next != nil || len(r.Recent) > 0 || len(r.Upcoming) > 0)
+}
+
+// rounds: the round that matters (live, or the next one you're held to) on
+// the left, the last few on the right as rows of letters, and the record
+// along the top.
+func (edgeDash) rounds(u *UI, rs *EdgeRounds, x, y, w float32, age time.Duration) {
+	p, now := u.pal, u.now()
+	k := phase(age, 160, 500*time.Millisecond)
+	u.dc.eyebrow("Rounds", x, y+14, p.faint)
+	var rec []string
+	if rs.Weeks.Current > 0 {
+		rec = append(rec, plural(rs.Weeks.Current, "week")+" in a row")
+	}
+	if rs.Record.Held > 0 {
+		rec = append(rec, fmt.Sprintf("%d/%d held rounds sat", rs.Record.Sat, rs.Record.Held))
+	}
+	if n := rs.Upsolves.Done + rs.Upsolves.Taught; n > 0 || rs.Upsolves.Lapsed > 0 {
+		rec = append(rec, fmt.Sprintf("%d upsolved", n))
+		if rs.Upsolves.Lapsed > 0 {
+			rec[len(rec)-1] += fmt.Sprintf(", %d lapsed", rs.Upsolves.Lapsed)
+		}
+	}
+	if s := strings.Join(rec, " · "); s != "" {
+		u.dc.text(fCaption(), s, x+w-measure(fCaption(), s), y+14, alpha(p.faint, k))
+	}
+
+	lw := (w - 33) * 0.46
+	u.dc.roundRect(x+lw+16, y+26, 1, dashRound-30, 0.5, alpha(u.pal.hair(), k))
+
+	// the round that matters
+	focus, tag, tagCol := rs.Live, "Live", p.red
+	if focus == nil {
+		focus, tag, tagCol = rs.Next, "You're in", p.yellow
+	}
+	fy := y + 26 + 6*float32(1-k)
+	if focus == nil {
+		u.dc.text(fBody(), "No round this week", x, fy+16, alpha(p.muted, k))
+		u.dc.text(fCaption(), "edge holds you to the next one it finds", x, fy+34, alpha(p.faint, k))
+	} else {
+		tw := eyebrowW(tag) + 14
+		u.dc.roundRect(x, fy+4, tw, 16, 8, alpha(tagCol, 0.16*k))
+		u.dc.eyebrow(tag, x+7, fy+15.5, alpha(tagCol, k))
+		nx := x + tw + 8
+		nw := u.dc.text(face(fSemiBold, 14), focus.Short, nx, fy+17, alpha(p.fg, k))
+		if kl := roundKind(focus.Kind); kl != "" {
+			u.dc.text(fCaption(), kl, nx+nw+7, fy+16.5, alpha(p.faint, k))
+		}
+		ly := fy + 36
+		if focus.State == "live" {
+			end := focus.End
+			lx := x + u.letters(focus.Problems, x, ly-4, 15, k) + 10
+			u.lives = append(u.lives, live{r: image.Rect(int(lx)-1, int(ly-14), int(x+lw), int(ly+4)), draw: func(c *canvas, _ float64) {
+				c.text(fCaption(), left(u.now(), end)+" left", lx, ly, p.muted)
+			}})
+		} else {
+			when := focus.Start.Format("Mon 15:04")
+			if d := focus.Start.Sub(now); d < 12*time.Hour {
+				when += " · " + until(now, focus.Start)
+			}
+			u.dc.text(fCaption(), when, x, ly, alpha(p.muted, k))
+		}
+		lesson := focus.Lesson
+		for _, r := range rs.Recent {
+			if lesson == "" && r.Lesson != "" {
+				lesson = r.Lesson
+			}
+		}
+		if lesson != "" {
+			u.dc.text(fCaption(), ellipsize(fCaption(), "Lesson: "+lesson, lw), x, ly+17, alpha(p.faint, k))
+		}
+	}
+
+	// the last few: a row of letters each
+	rx, rw := x+lw+33, w-lw-33
+	shown := 0
+	for _, r := range rs.Recent {
+		if shown == 3 {
+			break
+		}
+		if r.State != "over" {
+			continue
+		}
+		rk := phase(age, time.Duration(260+90*shown)*time.Millisecond, 450*time.Millisecond)
+		cy := y + 34 + float32(shown)*18
+		u.dc.text(fCaption(), r.Short, rx, cy+4, alpha(p.fg, rk))
+		lx := rx + 66
+		right := rx + rw
+		switch {
+		case r.Rated && r.Delta != 0:
+			ds, dc := fmt.Sprintf("+%d", r.Delta), p.green
+			if r.Delta < 0 {
+				ds, dc = fmt.Sprintf("−%d", -r.Delta), p.red
+			}
+			u.dc.text(fCaption(), ds, right-measure(fCaption(), ds), cy+4, alpha(dc, rk))
+			right -= measure(fCaption(), ds) + 8
+		case r.Joined == "":
+			u.dc.text(fCaption(), "missed", right-measure(fCaption(), "missed"), cy+4, alpha(p.faint, rk))
+			right -= measure(fCaption(), "missed") + 8
+		case r.Joined == "virtual":
+			u.dc.text(fCaption(), "virtual", right-measure(fCaption(), "virtual"), cy+4, alpha(p.faint, rk))
+			right -= measure(fCaption(), "virtual") + 8
+		}
+		ps := r.Problems
+		for len(ps) > 0 && lettersW(ps, 13) > right-lx { // the hard end goes first
+			ps = ps[:len(ps)-1]
+		}
+		u.letters(ps, lx, cy, 13, rk)
+		shown++
+	}
+	if shown == 0 {
+		u.dc.text(fCaption(), "Results land here after each round", rx, y+38, alpha(p.faint, k))
+	}
+}
+
+func roundKind(kind string) string {
+	return map[string]string{"div2": "Div. 2", "div3": "Div. 3", "div4": "Div. 4", "edu": "Educational",
+		"div12": "Div. 1 + 2", "abc": "Beginner", "weekly": "Weekly", "biweekly": "Biweekly"}[kind]
 }

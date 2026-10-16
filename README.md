@@ -254,6 +254,10 @@ notes and buttons on the island, and it has a dashboard (`ember dash edge`, or c
 - **the week** as bars against each day's need, and your **Codeforces rating** over the band edge picks from
 - **the year** as a heatmap. Hover a day for what happened
 - **solo rate, retention, focus and your weakest focus topic**
+- **contest rounds**: the one you're in or held to next, the last three as rows of problem letters, the week streak
+
+During a contest round edge holds you to, the pill is the round: its name, a letter per problem filled in as verdicts
+land, the time left and the lock (edge keeps Claude off while it runs). Before it, a countdown; after, what's owed.
 
 It reads edge's live stats file (`$XDG_RUNTIME_DIR/edge/stats.json`) and edge's pushes over the socket. It opens with
 a short choreography: the ring sweeps, the bars grow in turn, the rating line draws itself, the year ripples in and

@@ -144,14 +144,15 @@ func watchFile(path string, every time.Duration, stop <-chan struct{}, got func(
 
 // EdgeStatus is what edge reports about the day, for the pill and the card.
 type EdgeStatus struct {
-	Today     int    `json:"today"`
-	Need      int    `json:"need"`
-	Streak    int    `json:"streak"`
-	Closed    bool   `json:"closed"`
-	Task      string `json:"task"`
-	URL       string `json:"url"`
-	StartedMs int64  `json:"startedMs"`
-	Pending   bool   `json:"pending"`
+	Today     int        `json:"today"`
+	Need      int        `json:"need"`
+	Streak    int        `json:"streak"`
+	Closed    bool       `json:"closed"`
+	Task      string     `json:"task"`
+	URL       string     `json:"url"`
+	StartedMs int64      `json:"startedMs"`
+	Pending   bool       `json:"pending"`
+	Round     *EdgeRound `json:"round"` // a contest round that matters now
 }
 
 type edgeCard struct {
@@ -246,6 +247,51 @@ type EdgeStats struct {
 		Key string `json:"key"`
 		Msg string `json:"msg"`
 	} `json:"health"`
+	Rounds *EdgeRounds `json:"rounds"` // absent from an edge that predates rounds
+}
+
+// EdgeRounds is the contests part of edge's stats.
+type EdgeRounds struct {
+	Enabled  bool             `json:"enabled"`
+	PerWeek  int              `json:"per_week"`
+	Live     *EdgeStatsRound  `json:"live"`
+	Next     *EdgeStatsRound  `json:"next"`
+	Upcoming []EdgeStatsRound `json:"upcoming"`
+	Recent   []EdgeStatsRound `json:"recent"`
+	Upsolves struct {
+		Open   int `json:"open"`
+		Done   int `json:"done"`
+		Taught int `json:"taught"`
+		Lapsed int `json:"lapsed"`
+	} `json:"upsolves"`
+	Weeks struct {
+		Current int `json:"current"`
+		Best    int `json:"best"`
+	} `json:"streak_weeks"`
+	Record struct {
+		Held   int `json:"held"`
+		Sat    int `json:"sat"`
+		Missed int `json:"missed"`
+		Extra  int `json:"extra"`
+	} `json:"record"`
+}
+
+type EdgeStatsRound struct {
+	ID       string        `json:"id"`
+	Name     string        `json:"name"`
+	Short    string        `json:"short"`
+	Kind     string        `json:"kind"`
+	Start    time.Time     `json:"start"`
+	End      time.Time     `json:"end"`
+	Plan     string        `json:"plan"`   // in | out | open
+	Joined   string        `json:"joined"` // live | virtual | ""
+	State    string        `json:"state"`  // upcoming | live | settling | over
+	Solved   int           `json:"solved"`
+	Rated    bool          `json:"rated"`
+	Rating   int           `json:"rating"`
+	Delta    int           `json:"delta"`
+	Lesson   string        `json:"lesson"`
+	Problems []EdgeProblem `json:"problems"`
 }
 
 type EdgeDay struct {

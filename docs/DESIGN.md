@@ -100,7 +100,11 @@ Radii: the card 22 (continuous superellipse), hovers 10, buttons fully round (26
 - **Music** has no box. The cover lights the section softly in its own colour, fading out before any edge. Controls
   replace the equaliser under the pointer. The progress line thickens and can be dragged. A song paused for 15 minutes
   leaves the card.
-- **Practice** (edge) is one line with a chevron: the way to its dashboard.
+- **Practice** (edge) is one line with a chevron: the way to its dashboard. While a contest round matters (two hours
+  before one edge holds you to, while it runs, half an hour after) the line is the round: a ring on the rail that
+  empties as the clock runs, the letters, and its one action (Open, Can't make it, Upsolve).
+- **Round letters** are chips, one per problem: solved filled green, tried ringed red, owed ringed amber, upsolved
+  filled blue, lapsed struck through. The pill, the row and the dashboard draw them the same way.
 
 ## Requests
 
