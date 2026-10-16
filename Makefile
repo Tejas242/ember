@@ -1,7 +1,7 @@
 PREFIX ?= $(HOME)/.local
 BIN    := $(PREFIX)/bin/ember
 
-.PHONY: build install uninstall test preview gallery demo docs
+.PHONY: build install uninstall test preview gallery demo docs site-media
 
 build:
 	go build -trimpath -ldflags='-s -w' -o ember .
@@ -41,3 +41,10 @@ docs: gallery
 demo:
 	mkdir -p docs/demo
 	EMBER_DEMO=$(CURDIR)/docs/demo go test -run 'TestDemo$$|TestBanner' -timeout 30m ./island
+
+# the landing page's frames: the same scenes on the page's own dark ground, in docs/site
+site-media:
+	rm -rf preview/site && mkdir -p preview/site docs/site
+	EMBER_GROUND=site EMBER_PREVIEW=$(CURDIR)/preview/site EMBER_DEMO=$(CURDIR)/preview/site go test -run 'TestGallery|TestDemo$$' -timeout 30m ./island
+	cp preview/site/*.webp docs/site/
+	for f in preview/site/site-*.png; do ffmpeg -loglevel error -y -i $$f -c:v libwebp -quality 92 docs/site/$$(basename $$f .png).webp; done

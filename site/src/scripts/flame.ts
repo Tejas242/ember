@@ -1,8 +1,9 @@
 // Ember's flame, ported from its Go renderer (island/draw.go, emberX): two
 // tongues of cubic Béziers, a sway and a stretch that follow its mood, two
-// eyes that blink at random and look at the pointer.
+// eyes that blink at random and look at the pointer. It can grow drowsy
+// (data-drowsy), sleep (mood="sleep"), and it says when it blinks.
 
-export type Mood = "idle" | "work" | "wait" | "happy" | "error"
+export type Mood = "idle" | "work" | "wait" | "happy" | "error" | "sleep"
 
 const KAPPA = 0.5522847
 
@@ -33,6 +34,7 @@ export const COLOURS: Record<Mood, string> = {
   wait: "#9ccaff",
   happy: "#72dd71",
   error: "#ffb4ab",
+  sleep: "#6f786b",
 }
 
 const S = 100 // the flame's size in its own units; the viewBox fits it
@@ -48,6 +50,8 @@ class EmberFlame extends HTMLElement {
   #raf = 0
   #visible = true
   #energy = 0.6
+  #blinked = false
+  #lid = 0 // how far the eyes are closed by drowsiness or sleep, eased
 
   connectedCallback() {
     const ns = "http://www.w3.org/2000/svg"
@@ -84,6 +88,20 @@ class EmberFlame extends HTMLElement {
 
   attributeChangedCallback() {
     this.#paint()
+  }
+
+  /** How lively it is, 0 to 1: the sway's speed and reach. */
+  set energy(v: number) {
+    this.#energy = Math.max(0, Math.min(1, v))
+  }
+  get energy() {
+    return this.#energy
+  }
+
+  /** A double blink, as when something wakes it. */
+  wake() {
+    this.#blinkAt = performance.now()
+    setTimeout(() => (this.#blinkAt = performance.now()), 260)
   }
 
   get mood(): Mood {
@@ -124,6 +142,10 @@ class EmberFlame extends HTMLElement {
       case "happy":
         stretch = 1 + Math.sin(t * 5) * 0.03
         break
+      case "sleep":
+        stretch = 0.97 + Math.sin(t * 1.1) * 0.035
+        sway = Math.sin(t * 0.5) * 0.015 * S
+        break
       default:
         stretch = 1 + Math.sin(t * 1.6 * (0.55 + 0.9 * en)) * 0.05
         sway = Math.sin(t * 0.9 * (0.6 + 0.6 * en)) * 0.03 * S
@@ -135,14 +157,25 @@ class EmberFlame extends HTMLElement {
     const now = performance.now()
     let blink = 0
     const since = now - this.#blinkAt
-    if (since > 0 && since < 150) blink = Math.sin((since / 150) * Math.PI)
-    else if (since >= 150) this.#blinkAt = now + 600 - Math.log(Math.random()) * 3400
+    if (since > 0 && since < 150) {
+      blink = Math.sin((since / 150) * Math.PI)
+      if (!this.#blinked && this.mood !== "sleep") this.dispatchEvent(new Event("blink"))
+      this.#blinked = true
+    } else if (since >= 150) {
+      // sometimes a second blink follows close behind
+      const gap = Math.random() < 0.18 ? 120 + Math.random() * 160 : 600 - Math.log(Math.random()) * 3400
+      this.#blinkAt = now + gap
+      this.#blinked = false
+    }
+    const shut = this.mood === "sleep" ? 1 : this.dataset.drowsy !== undefined ? 0.55 : 0
+    this.#lid += (shut - this.#lid) * 0.06
     this.#look += (this.#lookTo - this.#look) * 0.08
 
     let eyeY = S * 0.19
     const gap = S * 0.125
     const ew = S * 0.1
-    let eh = S * 0.17 * (1 - blink * 0.85)
+    let eh = S * 0.17 * (1 - Math.max(blink * 0.85, this.#lid * 0.9))
+    eyeY += this.#lid * S * 0.025
     if (this.mood === "happy") {
       eh = S * 0.05
       eyeY -= S * 0.02

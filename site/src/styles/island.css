@@ -1,4 +1,6 @@
-/* The island: Ember's notch, hanging from the bar. */
+/* The island: Ember's notch, hanging from the bar. Pills and moments are
+   styled on their own (.pill), so the page's specimens are the same thing. */
+
 ember-island {
   position: fixed;
   inset-block-start: 0;
@@ -7,6 +9,7 @@ ember-island {
   display: flex;
   justify-content: center;
   pointer-events: none;
+  transform-origin: 50% 0;
 }
 
 ember-island .isl {
@@ -15,27 +18,15 @@ ember-island .isl {
   pointer-events: auto;
   inline-size: 150px;
   block-size: var(--bar);
-  background: rgb(8 11 8 / 0.94);
-  backdrop-filter: blur(16px) saturate(1.2);
+  background: var(--island);
   border-end-start-radius: 15px;
   border-end-end-radius: 15px;
   box-shadow:
     0 0 0 0.5px rgb(222 229 216 / 0.07),
-    0 14px 34px -10px rgb(0 0 0 / 0.75),
+    0 18px 40px -12px rgb(0 0 0 / 0.8),
     0 2px 6px rgb(0 0 0 / 0.4);
-  overflow: hidden;
   cursor: default;
-}
-
-/* the concave fillets where the island meets the bar */
-ember-island .ear {
-  position: absolute;
-  inset-block-start: 0;
-  inline-size: var(--ear);
-  block-size: var(--ear);
-}
-ember-island .isl {
-  overflow: visible;
+  transition: filter 1.2s ease;
 }
 /* the content clips to the springing shape; the ears sit outside it */
 ember-island .clip {
@@ -44,13 +35,20 @@ ember-island .clip {
   overflow: hidden;
   border-radius: inherit;
 }
+/* the concave fillets where the island meets the bar */
+ember-island .ear {
+  position: absolute;
+  inset-block-start: 0;
+  inline-size: var(--ear);
+  block-size: var(--ear);
+}
 ember-island .ear.l {
   inset-inline-start: calc(-1 * var(--ear));
-  background: radial-gradient(circle at 0 100%, transparent calc(var(--ear) - 0.5px), rgb(8 11 8 / 0.94) var(--ear));
+  background: radial-gradient(circle at 0 100%, transparent calc(var(--ear) - 0.5px), var(--island) var(--ear));
 }
 ember-island .ear.r {
   inset-inline-end: calc(-1 * var(--ear));
-  background: radial-gradient(circle at 100% 100%, transparent calc(var(--ear) - 0.5px), rgb(8 11 8 / 0.94) var(--ear));
+  background: radial-gradient(circle at 100% 100%, transparent calc(var(--ear) - 0.5px), var(--island) var(--ear));
 }
 
 ember-island .view {
@@ -63,60 +61,86 @@ ember-island .view {
 ember-island .view.on {
   pointer-events: auto;
 }
+ember-island .sr {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
 
-/* ---- pills ---- */
-ember-island .pill {
-  block-size: var(--bar);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-inline: 11px 12px;
-  white-space: nowrap;
-  font-size: 13px;
-  font-weight: 500;
-}
-ember-island .lead {
-  inline-size: 17px;
-  block-size: 21px;
-  flex: none;
-}
-ember-island .label {
-  color: var(--fg);
-}
-ember-island .label.wait {
-  color: var(--blue);
-}
-/* waiting on you: a light breathes around the pill */
-ember-island[data-state="wait"] .isl {
+/* waiting on you: a light breathes around the pill, with a lit rim */
+ember-island[data-state="wait"] .isl,
+ember-island[data-state="request"] .isl {
   animation: halo 1.6s ease-in-out infinite;
 }
 @keyframes halo {
   50% {
     box-shadow:
-      0 0 0 1px rgb(156 202 255 / 0.55),
-      0 0 22px 2px rgb(156 202 255 / 0.28),
-      0 14px 34px -10px rgb(0 0 0 / 0.75);
+      0 0 0 1px rgb(156 202 255 / 0.5),
+      0 0 26px 3px rgb(156 202 255 / 0.26),
+      0 18px 40px -12px rgb(0 0 0 / 0.8);
   }
 }
-ember-island .sub {
+
+/* asleep: the pill dims and the clock turns grey */
+ember-island[data-sleep="asleep"] .isl {
+  filter: brightness(0.84);
+}
+ember-island[data-sleep="asleep"] [data-view="clock"] .label {
+  color: var(--faint);
+}
+ember-island[data-sleep="asleep"] .zz,
+.mini.asleep .zz {
+  display: block;
+}
+
+/* ---- a pill, anywhere ---- */
+.pill {
+  block-size: var(--bar);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-inline: 11px 13px;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+  position: relative;
+}
+.pill .lead {
+  inline-size: 17px;
+  block-size: 21px;
+  flex: none;
+}
+.pill .label.wait {
+  color: var(--blue);
+}
+.pill .sub {
   color: var(--muted);
   font-weight: 400;
   overflow: hidden;
   text-overflow: ellipsis;
   min-inline-size: 0;
 }
-ember-island .timer {
+.pill .news {
+  color: var(--green);
+  font-weight: 500;
+}
+.pill .timer {
   margin-inline-start: auto;
+  padding-inline-start: 6px;
   color: var(--muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
-ember-island .verb {
+.pill .verb {
   color: var(--green);
   font-weight: 600;
   margin-inline-end: -3px;
 }
-ember-island .shimmer {
+.shimmer,
+.steps li.now .txt {
   background: linear-gradient(100deg, var(--fg) 40%, #fff 50%, var(--fg) 60%) 0 0 / 260% 100%;
   -webkit-background-clip: text;
   background-clip: text;
@@ -127,13 +151,13 @@ ember-island .shimmer {
   0% { background-position: 110% 0; }
   42%, 100% { background-position: -10% 0; }
 }
-
-ember-island .check {
+.pill .check {
   inline-size: 12px;
   margin-inline-start: auto;
+  padding-inline-start: 2px;
   flex: none;
 }
-ember-island .check path {
+.pill .check path {
   fill: none;
   stroke: var(--green);
   stroke-width: 1.7;
@@ -141,24 +165,133 @@ ember-island .check path {
   stroke-linejoin: round;
   stroke-dasharray: 18;
 }
-ember-island .sweep {
+.pill .sweep {
   position: absolute;
   inset-block: 0;
   inset-inline-start: 0;
   inline-size: 60px;
-  background: linear-gradient(90deg, transparent, rgb(114 221 113 / 0.22), transparent);
+  background: linear-gradient(90deg, transparent, rgb(114 221 113 / 0.24), transparent);
   opacity: 0;
   pointer-events: none;
 }
 
+/* z's rising from a sleeping flame */
+.zz {
+  display: none;
+  position: absolute;
+  inset-inline-start: 22px;
+  inset-block-start: 2px;
+  pointer-events: none;
+}
+.zz i {
+  position: absolute;
+  font: 600 8px var(--sans);
+  font-style: normal;
+  color: var(--faint);
+  opacity: 0;
+  animation: zz 3s ease-out infinite;
+}
+.zz i:nth-child(2) { animation-delay: 1s; font-size: 9.5px; }
+.zz i:nth-child(3) { animation-delay: 2s; font-size: 11px; }
+@keyframes zz {
+  0% { transform: translate(0, 10px); opacity: 0; }
+  25% { opacity: 0.9; }
+  100% { transform: translate(9px, -6px); opacity: 0; }
+}
+
+/* ---- moments ---- */
+.moment .glyph {
+  inline-size: 16px;
+  block-size: 16px;
+  flex: none;
+  fill: none;
+  stroke: var(--fg);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.moment .glyph .solid {
+  fill: var(--fg);
+  stroke: none;
+}
+.moment .meter {
+  flex: 1;
+  block-size: 4px;
+  border-radius: 2px;
+  background: rgb(222 229 216 / 0.14);
+  transform-origin: left;
+  min-inline-size: 60px;
+}
+.moment .meter i {
+  display: block;
+  block-size: 100%;
+  border-radius: 2px;
+  background: var(--fg);
+  transform-origin: left;
+  transform: scaleX(var(--lv));
+}
+.moment .value {
+  inline-size: 26px;
+  text-align: end;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  counter-reset: v var(--v);
+}
+.moment .value::after {
+  content: counter(v);
+}
+@property --lv { syntax: "<number>"; inherits: true; initial-value: 0.5; }
+@property --v { syntax: "<integer>"; inherits: true; initial-value: 50; }
+
+/* volume: the level rises to 100, the meter stretches, then it falls back */
+.m-volume {
+  animation: vol 6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@keyframes vol {
+  0%, 6% { --lv: 0.38; --v: 38; }
+  40% { --lv: 1; --v: 100; }
+  74% { --lv: 1; --v: 100; }
+  100% { --lv: 0.38; --v: 38; }
+}
+.m-volume .meter {
+  animation: stretch 6s infinite;
+}
+@keyframes stretch {
+  0%, 39% { transform: scaleX(1); }
+  44% { transform: scaleX(1.07); }
+  52%, 100% { transform: scaleX(1); }
+}
+.m-volume .w2 {
+  animation: wave2 6s infinite;
+}
+@keyframes wave2 {
+  0%, 8% { opacity: 0; }
+  12%, 92% { opacity: 1; }
+  96%, 100% { opacity: 0; }
+}
+
+/* brightness: the light falls, and the sun's rays shorten with it */
+.m-bright {
+  animation: bright 6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@keyframes bright {
+  0%, 10% { --lv: 0.8; --v: 80; }
+  50%, 60% { --lv: 0.25; --v: 25; }
+  100% { --lv: 0.8; --v: 80; }
+}
+.m-bright .rays {
+  transform-origin: 8px 8px;
+  transform: scale(calc(0.62 + var(--lv) * 0.48));
+}
+
 /* music: the cover as a disc, the song as a ring around it */
-ember-island .disc {
+.moment .disc {
   position: relative;
   inline-size: 22px;
   block-size: 22px;
   flex: none;
 }
-ember-island .disc::before {
+.moment .disc::before {
   content: "";
   position: absolute;
   inset: 4px;
@@ -166,19 +299,19 @@ ember-island .disc::before {
   background: conic-gradient(from 200deg, #f08a5d, #b83b5e, #6a2c70, #f9ed69, #f08a5d);
   animation: spin 9s linear infinite;
 }
-ember-island .disc svg {
+.moment .disc svg {
   position: absolute;
   inset: 0;
   transform: rotate(-90deg);
 }
-ember-island .disc circle {
+.moment .disc circle {
   fill: none;
   stroke-width: 1.4;
 }
-ember-island .disc .track {
+.moment .disc .track {
   stroke: rgb(222 229 216 / 0.14);
 }
-ember-island .disc .played {
+.moment .disc .played {
   stroke: #f08a5d;
   stroke-linecap: round;
   stroke-dasharray: 60.3;
@@ -191,72 +324,122 @@ ember-island .disc .played {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
-ember-island .eq {
+.moment .eq {
   margin-inline-start: auto;
+  padding-inline-start: 6px;
   display: flex;
   align-items: flex-end;
   gap: 2.5px;
   block-size: 11px;
 }
-ember-island .eq i {
+.moment .eq i {
   inline-size: 3px;
   border-radius: 2px;
   background: #f08a5d;
   animation: eq 0.9s ease-in-out infinite alternate;
 }
-ember-island .eq i:nth-child(2) { animation-duration: 0.62s; animation-delay: -0.3s; }
-ember-island .eq i:nth-child(3) { animation-duration: 0.77s; animation-delay: -0.5s; }
+.moment .eq i:nth-child(2) { animation-duration: 0.62s; animation-delay: -0.3s; }
+.moment .eq i:nth-child(3) { animation-duration: 0.77s; animation-delay: -0.5s; }
 @keyframes eq {
   from { block-size: 25%; }
   to { block-size: 100%; }
 }
 
-/* volume: the waves come and go with the level */
-ember-island .vol {
-  inline-size: 16px;
+/* headphones and the charger: a battery glyph, a value only where the bar has none */
+.moment .trail {
+  margin-inline-start: auto;
+  padding-inline-start: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.batt {
+  position: relative;
+  inline-size: 18px;
+  block-size: 9px;
+  border-radius: 2.5px;
+  box-shadow: inset 0 0 0 1.2px rgb(222 229 216 / 0.6);
+  padding: 2px;
+  display: inline-flex;
+}
+.batt::after {
+  content: "";
+  position: absolute;
+  inset-inline-end: -2.5px;
+  inset-block: 2.5px;
+  inline-size: 1.5px;
+  border-radius: 0 1px 1px 0;
+  background: rgb(222 229 216 / 0.6);
+}
+.batt i {
+  display: block;
+  border-radius: 1px;
+  background: var(--fg);
+  inline-size: calc(var(--fill, 0.6) * 100%);
+}
+.batt.filling i {
+  background: var(--green);
+  animation: fill 5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@keyframes fill {
+  0% { inline-size: 35%; }
+  85%, 100% { inline-size: 100%; }
+}
+.m-charge .bolt .solid {
+  fill: var(--green);
+}
+.m-phones .glyph {
+  animation: pop 5s var(--spring) infinite;
+}
+@keyframes pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  8% { transform: scale(1.08); opacity: 1; }
+  14%, 100% { transform: scale(1); }
+}
+
+/* a screenshot: a shutter flash, and its preview drops in */
+.m-shot .thumb {
+  inline-size: 30px;
+  block-size: 18px;
+  border-radius: 4px;
+  overflow: hidden;
   flex: none;
-  fill: none;
-  stroke: var(--fg);
-  stroke-width: 1.4;
-  stroke-linecap: round;
+  box-shadow: 0 0 0 0.5px rgb(222 229 216 / 0.3);
+  animation: drop 4s var(--spring) infinite;
 }
-ember-island .vol path:first-child {
-  fill: var(--fg);
-  stroke: none;
-}
-ember-island .vol .w1,
-ember-island .vol .w2 {
-  transition: opacity 0.18s;
-}
-ember-island[data-level="0"] .vol .w1,
-ember-island[data-level="0"] .vol .w2,
-ember-island[data-level="1"] .vol .w2 {
-  opacity: 0;
-}
-ember-island .meter {
-  flex: 1;
-  block-size: 4px;
-  border-radius: 2px;
-  background: rgb(222 229 216 / 0.14);
-  transform-origin: left;
-}
-ember-island .meter i {
+.m-shot .thumb i {
   display: block;
   block-size: 100%;
-  border-radius: 2px;
-  background: var(--fg);
-  transform-origin: left;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.35) 0 3px, transparent 3px),
+    linear-gradient(135deg, #1d3b3c, #4a2c5c 60%, #b0623a);
 }
-ember-island .value {
-  inline-size: 26px;
-  text-align: end;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+@keyframes drop {
+  0%, 6% { transform: translateY(-14px) scale(0.8); opacity: 0; }
+  18% { transform: none; opacity: 1; }
+  100% { transform: none; opacity: 1; }
+}
+.m-shot .flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  animation: shutter 4s infinite;
+}
+@keyframes shutter {
+  0% { opacity: 0; }
+  2% { opacity: 0.85; }
+  10%, 100% { opacity: 0; }
 }
 
 /* ---- the card ---- */
 ember-island .card {
-  padding: 0 18px 14px;
+  padding: 0 18px 15px;
   font-size: 12.5px;
 }
 ember-island .card .head {
@@ -264,7 +447,7 @@ ember-island .card .head {
   grid-template-columns: 22px 1fr auto;
   gap: 12px;
   align-items: start;
-  padding-block-start: 9px;
+  padding-block-start: 10px;
 }
 ember-island .big {
   inline-size: 22px;
@@ -296,9 +479,23 @@ ember-island .time {
   font-size: 11px;
   color: var(--faint);
   padding-block-start: 2px;
+  font-variant-numeric: tabular-nums;
 }
 ember-island b.g { color: var(--green); font-weight: 500; }
 ember-island b.r { color: var(--red); font-weight: 500; }
+
+ember-island[data-session="done"] .live-only,
+ember-island:not([data-session="done"]) .done-only {
+  display: none;
+}
+ember-island .reply {
+  margin: 12px 0 2px 34px;
+  padding-inline-start: 12px;
+  border-inline-start: 2px solid var(--green);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
 
 ember-island .steps {
   position: relative;
@@ -340,7 +537,7 @@ ember-island .steps li .fail {
 }
 ember-island .steps li .fail,
 ember-island .steps li.failed {
-  color: color-mix(in oklab, var(--red) 70%, var(--fg));
+  color: color-mix(in oklab, var(--red) 75%, var(--fg));
 }
 ember-island .steps li .diff {
   font-size: 11px;
@@ -351,13 +548,6 @@ ember-island .steps li.now {
 }
 ember-island .steps li.now svg {
   color: var(--green);
-}
-ember-island .steps li.now .txt {
-  background: linear-gradient(100deg, var(--fg) 40%, #fff 50%, var(--fg) 60%) 0 0 / 260% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: shimmer 2.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
 }
 /* the thread the steps hang on, down from Ember */
 ember-island .steps .thread {
@@ -389,6 +579,37 @@ ember-island .steps .thread .bead {
   opacity: 0;
 }
 
+/* the day: a greeting, one line, and 24 hour bars */
+ember-island .hours {
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  gap: 3px;
+  align-items: end;
+  block-size: 34px;
+  margin: 14px 0 0 34px;
+}
+ember-island .hours i {
+  block-size: 2px;
+  border-radius: 1.5px;
+  background: rgb(222 229 216 / 0.12);
+  transition: block-size 0.5s var(--spring), background 0.3s;
+}
+ember-island .hours i.past {
+  block-size: max(2px, calc(var(--n) / 31 * 100%));
+  background: rgb(114 221 113 / 0.55);
+}
+ember-island .hours i.now {
+  background: var(--green);
+  block-size: max(4px, calc(var(--n) / 31 * 100%));
+}
+ember-island .hour-axis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin: 6px 0 0 34px;
+  font-size: 10px;
+  color: var(--faint);
+}
+
 /* the request */
 ember-island .code {
   margin: 12px 0 0;
@@ -409,6 +630,9 @@ ember-island .note {
 ember-island .note code {
   font-family: var(--mono);
   font-size: 10.5px;
+  background: none;
+  padding: 0;
+  color: var(--muted);
 }
 ember-island .buttons {
   display: flex;
@@ -447,7 +671,7 @@ ember-island .btn:hover {
   background: rgb(222 229 216 / 0.14);
 }
 ember-island .btn:active {
-  transform: scale(0.96);
+  transform: scale(0.95);
 }
 ember-island .btn.deny {
   color: color-mix(in oklab, var(--red) 90%, var(--fg));
@@ -465,6 +689,6 @@ ember-island .countdown {
   inset-inline: 24px;
   inset-block-end: 1px;
   block-size: 1px;
-  background: rgb(222 229 216 / 0.14);
+  background: rgb(222 229 216 / 0.16);
   transform-origin: center;
 }

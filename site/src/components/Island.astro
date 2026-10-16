@@ -1,23 +1,34 @@
 ---
 // The island, as a web page can have it: a dark pill hanging from the bar at
-// the top of the window. It acts out each section of the page as you read it
-// (see index.astro), and it morphs between its views on springs, like Ember.
+// the top of the window. The page directs it (scripts/page.ts): it acts out
+// the part of the day you're reading, morphing between views on springs, the
+// way Ember's renderer does. Hover drops a card; it sleeps if you leave it be.
+import Moment from "./Moment.astro"
+
+const hours = [0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 9, 31, 6, 0, 14, 22, 8, 0, 0, 0, 0, 0, 0, 0]
 ---
 
-<ember-island data-state="clock" aria-live="polite">
+<ember-island data-state="clock" data-session="none">
   <div class="isl" role="group" aria-label="Ember, the island">
     <span class="ear l" aria-hidden="true"></span><span class="ear r" aria-hidden="true"></span>
     <div class="clip">
 
-    <div class="view pill" data-view="clock" data-w="150">
-      <ember-flame class="lead" mood="idle" data-energy="0.4"></ember-flame>
-      <span class="label" data-clock>5:24 PM</span>
+    <div class="view pill" data-view="clock">
+      <ember-flame class="lead" mood="idle" data-energy="0.45"></ember-flame>
+      <span class="label" data-clock>9:04 AM</span>
+      <span class="zz" aria-hidden="true"><i>z</i><i>z</i><i>z</i></span>
     </div>
 
-    <div class="view pill" data-view="work" data-w="176">
+    <div class="view pill" data-view="missed">
+      <ember-flame class="lead" mood="idle" data-energy="0.5"></ember-flame>
+      <span class="label" data-clock>11:53 AM</span>
+      <span class="news">kinvault done</span>
+    </div>
+
+    <div class="view pill" data-view="work">
       <ember-flame class="lead" mood="work" data-energy="0.75"></ember-flame>
       <span class="label shimmer">kinvault</span>
-      <span class="timer">3m</span>
+      <span class="timer" data-timer>1m</span>
     </div>
 
     <div class="view pill" data-view="wait">
@@ -25,18 +36,56 @@
       <span class="label wait">kinvault needs you</span>
     </div>
 
+    <div class="view pill" data-view="done">
+      <ember-flame class="lead" mood="happy" data-energy="0.8"></ember-flame>
+      <span class="verb">Done</span><span class="label">kinvault</span>
+      <span class="sub">All 42 tests pass under -race</span>
+      <svg class="check" viewBox="0 0 12 10" aria-hidden="true"><path d="M1 5.2 4.3 8.4 11 1.4" /></svg>
+      <i class="sweep" aria-hidden="true"></i>
+    </div>
+
+    <div class="view pill" data-view="away">
+      <ember-flame class="lead" mood="happy" data-energy="0.7"></ember-flame>
+      <span class="label">While you were away</span>
+      <span class="sub">kinvault done · edge asked once</span>
+    </div>
+
+    <div class="view pill moment m-music" data-view="music"><Moment kind="music" /></div>
+    <div class="view pill moment m-volume" data-view="volume" data-w="196"><Moment kind="volume" /></div>
+    <div class="view pill moment m-bright" data-view="bright" data-w="196"><Moment kind="bright" /></div>
+    <div class="view pill moment m-phones" data-view="phones"><Moment kind="phones" /></div>
+    <div class="view pill moment m-shot" data-view="shot"><Moment kind="shot" /></div>
+    <div class="view pill moment m-charge" data-view="charge"><Moment kind="charge" /></div>
+
     <div class="view card" data-view="card" data-w="380">
       <div class="head">
         <ember-flame class="big" mood="work" data-energy="0.75"></ember-flame>
         <div>
           <p class="title">Fix the race in the store's compaction path</p>
-          <p class="facts">kinvault · 3m in · 2 files <b class="g">+23</b> <b class="r">−6</b></p>
+          <p class="facts live-only">kinvault · <span data-timer>3m</span> in · 2 files <b class="g">+23</b> <b class="r">−6</b> · 1 retry</p>
+          <p class="facts done-only">kinvault · finished just now · took 12m · <b class="g">+23</b> <b class="r">−6</b></p>
         </div>
-        <span class="time" data-clock>5:24 PM</span>
+        <span class="time" data-clock>11:44 AM</span>
       </div>
-      <ol class="steps" data-steps>
+      <ol class="steps live-only" data-steps>
         <li class="thread" aria-hidden="true"><i class="live"></i><i class="bead"></i></li>
       </ol>
+      <p class="reply done-only">Fixed the race in the store's compaction path: writers now take the segment lock before rotating, and all 42 tests pass under -race.</p>
+    </div>
+
+    <div class="view card" data-view="day" data-w="380">
+      <div class="head">
+        <ember-flame class="big" mood="idle" data-energy="0.5"></ember-flame>
+        <div>
+          <p class="title" data-greeting>Good morning</p>
+          <p class="facts" data-dayline>Nothing running · 3 tasks yesterday</p>
+        </div>
+        <span class="time" data-clock>9:04 AM</span>
+      </div>
+      <div class="hours" aria-hidden="true">
+        {hours.map((n, h) => <i data-h={h} style={`--n:${n}`}></i>)}
+      </div>
+      <div class="hour-axis" aria-hidden="true"><span>12a</span><span>6a</span><span>12p</span><span>6p</span></div>
     </div>
 
     <div class="view card" data-view="request" data-w="380">
@@ -44,7 +93,7 @@
         <ember-flame class="big" mood="wait" data-energy="0.6"></ember-flame>
         <div>
           <p class="kicker">kinvault wants to run</p>
-          <p class="title">Run the store tests with the race detector</p>
+          <p class="title">Run the whole suite under the race detector</p>
         </div>
       </div>
       <pre class="code"><span class="p">go</span> test <span class="f">-race</span> <span class="f">-count=1</span> ./store/...</pre>
@@ -58,28 +107,9 @@
       </div>
       <i class="countdown" aria-hidden="true"></i>
     </div>
-
-    <div class="view pill" data-view="done" data-w="336">
-      <ember-flame class="lead" mood="happy" data-energy="0.8"></ember-flame>
-      <span class="verb">Done</span><span class="label">kinvault</span>
-      <span class="sub">All 42 tests pass under -race</span>
-      <svg class="check" viewBox="0 0 12 10" aria-hidden="true"><path d="M1 5.2 4.3 8.4 11 1.4" /></svg>
-      <i class="sweep" aria-hidden="true"></i>
-    </div>
-
-    <div class="view pill" data-view="music" data-w="300">
-      <span class="disc" aria-hidden="true"><svg viewBox="0 0 22 22"><circle class="track" cx="11" cy="11" r="9.6" /><circle class="played" cx="11" cy="11" r="9.6" /></svg></span>
-      <span class="label">Instant Crush</span><span class="sub">Daft Punk</span>
-      <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
-    </div>
-
-    <div class="view pill" data-view="volume" data-w="196">
-      <svg class="vol" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6h2.6L8 3v10L4.6 10H2z" /><path class="w1" d="M10.3 5.8a3 3 0 0 1 0 4.4" /><path class="w2" d="M12.2 3.9a5.6 5.6 0 0 1 0 8.2" /></svg>
-      <span class="meter"><i data-level></i></span>
-      <span class="value" data-value>64</span>
-    </div>
     </div>
   </div>
+  <p class="sr" aria-live="polite" data-say></p>
 </ember-island>
 
 <script>

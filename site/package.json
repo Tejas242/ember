@@ -3,7 +3,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "assets": "mkdir -p public/media && cp ../docs/demo/*.webp ../docs/card.png ../docs/request.png ../docs/social.png public/media/",
+    "assets": "rm -rf public/media && mkdir -p public/media && cp ../docs/site/* ../docs/social.png public/media/",
     "dev": "bun run assets && astro dev",
     "build": "bun run assets && astro build",
     "preview": "astro preview"

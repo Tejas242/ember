@@ -4,7 +4,7 @@
 @import "@fontsource-variable/geist-mono";
 
 :root {
-  --ground: #070908;
+  --ground: #080a09;
   --island: #080b08;
   --raised: #0d110d;
   --raised-2: #121712;
@@ -28,6 +28,7 @@
   --step-2: clamp(1.6rem, 1.3rem + 1.4vw, 2.4rem);
   --step-3: clamp(2.3rem, 1.6rem + 3.4vw, 4.6rem);
   --step-4: clamp(3rem, 1.8rem + 6vw, 7.4rem);
+  --step-5: clamp(3.1rem, 1.2rem + 7.2vw, 8.8rem);
 
   --radius: 22px;
   --radius-s: 12px;
@@ -80,6 +81,10 @@ a {
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--faint);
+}
+
+.mono {
+  font-family: var(--mono);
 }
 
 .wrap {

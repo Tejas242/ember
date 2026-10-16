@@ -31,9 +31,12 @@ const (
 )
 
 // demoWallpaper is a soft dusk gradient with a little grain, and a bar.
+// EMBER_GROUND=site makes it the landing page's own dark ground instead, so
+// the frames sit on the page without a wallpaper around them.
 func demoWallpaper() *image.RGBA {
 	const W, H = 1366, 768
 	img := image.NewRGBA(image.Rect(0, 0, W, H))
+	ground := os.Getenv("EMBER_GROUND") == "site"
 	type blob struct {
 		x, y, r float64
 		c       [3]float64
@@ -46,10 +49,16 @@ func demoWallpaper() *image.RGBA {
 		{200, 520, 420, [3]float64{16, 60, 70}},   // deep teal
 		{690, 150, 260, [3]float64{36, 46, 74}},   // a little light where the island hangs
 	}
+	if ground {
+		blobs = nil
+	}
 	rng := rand.New(rand.NewSource(7))
 	for y := 0; y < H; y++ {
 		for x := 0; x < W; x++ {
 			c := [3]float64{10, 12, 18}
+			if ground {
+				c = [3]float64{8, 10, 9}
+			}
 			for _, b := range blobs {
 				dx, dy := float64(x)-b.x, float64(y)-b.y
 				k := math.Exp(-(dx*dx + dy*dy) / (b.r * b.r))
@@ -58,6 +67,9 @@ func demoWallpaper() *image.RGBA {
 				}
 			}
 			n := (rng.Float64() - 0.5) * 5 // grain: no banding
+			if ground {
+				n = 0
+			}
 			i := img.PixOffset(x, y)
 			for ch := 0; ch < 3; ch++ {
 				img.Pix[i+ch] = uint8(math.Max(0, math.Min(255, c[ch]+n)))
@@ -68,7 +80,11 @@ func demoWallpaper() *image.RGBA {
 	// the bar: a glass strip, workspaces on the left, a few glyphs on the right
 	cv := &canvas{img: img, masks: map[maskKey]*textMask{}}
 	cv.r = newCanvas(1, 1).r
-	cv.roundRect(0, 0, W, 22, 0, color.NRGBA{10, 12, 18, 150})
+	bar := color.NRGBA{10, 12, 18, 150}
+	if ground {
+		bar = color.NRGBA{17, 20, 18, 255}
+	}
+	cv.roundRect(0, 0, W, 22, 0, bar)
 	fg := color.NRGBA{220, 226, 236, 255}
 	dim := color.NRGBA{220, 226, 236, 110}
 	cv.roundRect(12, 7, 18, 8, 4, fg)

@@ -399,6 +399,11 @@ func TestGallery(t *testing.T) {
 	}
 	sheet(t, "gallery-cards", cards, 2)
 	single(t, "gallery-card", cards[0].img) // the landing page's picture of a card
+	if os.Getenv("EMBER_GROUND") == "site" {
+		for i, c := range cards {
+			single(t, fmt.Sprintf("site-card-%d", i), c.img)
+		}
+	}
 
 	req := func(label string, c *Card, extra func(g *galleryScene)) galleryShot {
 		g := newScene()
@@ -434,6 +439,11 @@ func TestGallery(t *testing.T) {
 	}
 	sheet(t, "gallery-requests", reqs, 2)
 	single(t, "gallery-request", reqs[0].img)
+	if os.Getenv("EMBER_GROUND") == "site" {
+		for i, r := range reqs {
+			single(t, fmt.Sprintf("site-request-%d", i), r.img)
+		}
+	}
 
 	// motion: filmstrips, one frame every few sixtieths
 	var motion []galleryShot

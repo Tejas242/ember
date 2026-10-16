@@ -1,0 +1,52 @@
+---
+// What a moment says inside a pill: the island's own views and the specimens
+// on the page share it, so the two can never drift apart. Each one loops on
+// CSS alone (island.css, "moments").
+interface Props {
+  kind: "music" | "volume" | "bright" | "phones" | "shot" | "charge"
+}
+const { kind } = Astro.props
+---
+
+{kind === "music" && (
+  <>
+    <span class="disc" aria-hidden="true"><svg viewBox="0 0 22 22"><circle class="track" cx="11" cy="11" r="9.6" /><circle class="played" cx="11" cy="11" r="9.6" /></svg></span>
+    <span class="label">Instant Crush</span><span class="sub">Daft Punk</span>
+    <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
+  </>
+)}
+{kind === "volume" && (
+  <>
+    <svg class="glyph vol" viewBox="0 0 16 16" aria-hidden="true"><path class="solid" d="M2 6h2.6L8 3v10L4.6 10H2z" /><path class="w1" d="M10.3 5.8a3 3 0 0 1 0 4.4" /><path class="w2" d="M12.2 3.9a5.6 5.6 0 0 1 0 8.2" /></svg>
+    <span class="meter"><i></i></span>
+    <span class="value" aria-label="volume"></span>
+  </>
+)}
+{kind === "bright" && (
+  <>
+    <svg class="glyph sun" viewBox="0 0 16 16" aria-hidden="true"><circle class="solid" cx="8" cy="8" r="2.7" /><g class="rays">{[0, 45, 90, 135, 180, 225, 270, 315].map((a) => <path d="M8 3.2V1.6" transform={`rotate(${a} 8 8)`} />)}</g></svg>
+    <span class="meter"><i></i></span>
+    <span class="value" aria-label="brightness"></span>
+  </>
+)}
+{kind === "phones" && (
+  <>
+    <svg class="glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 10V8a5.5 5.5 0 0 1 11 0v2" /><rect class="solid" x="1.8" y="9" width="3" height="5" rx="1.2" /><rect class="solid" x="11.2" y="9" width="3" height="5" rx="1.2" /></svg>
+    <span class="label">Headphones</span><span class="sub">connected</span>
+    <span class="trail"><span class="batt"><i style="--fill:.8"></i></span>80%</span>
+  </>
+)}
+{kind === "shot" && (
+  <>
+    <span class="thumb" aria-hidden="true"><i></i></span>
+    <span class="label">Screenshot</span><span class="sub">copied</span>
+    <i class="flash" aria-hidden="true"></i>
+  </>
+)}
+{kind === "charge" && (
+  <>
+    <svg class="glyph bolt" viewBox="0 0 16 16" aria-hidden="true"><path class="solid" d="M9.2 1.5 3.6 9h3.6l-.6 5.5L12.4 7H8.6z" /></svg>
+    <span class="label">Charging</span><span class="sub">full in 40m</span>
+    <span class="trail"><span class="batt filling"><i></i></span></span>
+  </>
+)}
