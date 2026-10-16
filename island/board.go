@@ -381,7 +381,8 @@ func (u *UI) facts(s string, x, base, maxW float32, col color.NRGBA) float32 {
 		if i > 0 {
 			x += u.dc.text(f, " · ", x, base, p.faint)
 		}
-		for j, word := range strings.Split(part, " ") {
+		words := strings.Split(part, " ")
+		for j, word := range words {
 			if j > 0 {
 				x += measure(f, " ")
 			}
@@ -396,7 +397,9 @@ func (u *UI) facts(s string, x, base, maxW float32, col color.NRGBA) float32 {
 			}
 			if strings.ContainsAny(word, "0123456789") { // numbers roll when they change
 				ww := measure(f, word)
-				u.rollText(u.dc, fmt.Sprintf("facts:%.0f:%d:%d", x0, i, j), word, f, x+ww, base, c)
+				// keyed by the words before it: two lines of a card can share x, part and position
+				key := fmt.Sprintf("facts:%.0f:%d:%s", x0, i, strings.Join(words[:j], " "))
+				u.rollText(u.dc, key, word, f, x+ww, base, c)
 				x += ww
 				continue
 			}
