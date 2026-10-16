@@ -223,7 +223,7 @@ func Run() error {
 			lost = image.Rectangle{}
 		} else {
 			nFail++
-			lost = damage    // what changed never reached the screen: keep it for the next frame
+			lost = damage     // what changed never reached the screen: keep it for the next frame
 			a.ui.dirty = true // no free buffer: try again on the next wake
 		}
 		if b := a.ui.shape.blurRects(); !slices.Equal(b, win.lastBlur) {
