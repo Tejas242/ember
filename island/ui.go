@@ -744,16 +744,25 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 		composite(u.cv, u.content.img, u.shape, p, 0, 0)
 		copy(u.base.Pix, u.cv.img.Pix)
 		u.stepEmber(dt, now)
-		b := u.shape.bounds().Union(u.bubble).Inset(-10)
+		b := u.shape.bounds().Union(u.bubble).Inset(-14) // the shadow, a queued request's edges
 		damage = b.Union(u.lastBounds).Intersect(u.cv.img.Rect)
-		u.lastBounds = b
 		for _, l := range u.lives {
 			if settled || l.outside || u.shape.contains(l.r) || u.bubble.Inset(-2).Intersect(l.r) == l.r { // appear once the shape reaches them
 				l.draw(u.cv, t)
 			}
 		}
 		u.drawEmber(t, now)
-		u.lastEmber = u.emberRect()
+		// what's drawn after the damage was reckoned must be inside it too:
+		// Ember (wherever it is, and where it was) and the live parts, some
+		// of which live outside the shape (the halo). Pixels drawn outside
+		// the damage reach a buffer anyway and linger on screen as ghosts.
+		er := u.emberRect()
+		drawn := b.Union(er)
+		for _, l := range u.lives {
+			drawn = drawn.Union(l.r)
+		}
+		damage = damage.Union(drawn).Union(u.lastEmber).Intersect(u.cv.img.Rect)
+		u.lastBounds, u.lastEmber = drawn, er // the next full frame clears all of this
 		return u.moving(settled, p, sliding, flashing) || leaving > 0, damage
 	}
 	u.stepEmber(dt, now)

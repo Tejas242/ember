@@ -207,6 +207,7 @@ func Run() error {
 	var waitingSince time.Time
 	debug := os.Getenv("EMBER_DEBUG") != ""
 	var nFull, nFast, nFail, nPost, nWake int
+	var lost image.Rectangle // damage of frames the compositor had no buffer for: the next frame carries it
 	statAt := time.Now()
 	draw := func() {
 		var damage image.Rectangle
@@ -216,10 +217,13 @@ func Run() error {
 		} else {
 			nFast++
 		}
+		damage = damage.Union(lost)
 		if win.present(a.ui.cv.img, a.ui.shape.bounds().Union(a.ui.bubble), damage, animating) {
 			waitingFrame, waitingSince = animating, time.Now()
+			lost = image.Rectangle{}
 		} else {
 			nFail++
+			lost = damage    // what changed never reached the screen: keep it for the next frame
 			a.ui.dirty = true // no free buffer: try again on the next wake
 		}
 		if b := a.ui.shape.blurRects(); !slices.Equal(b, win.lastBlur) {
