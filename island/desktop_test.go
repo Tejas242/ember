@@ -11,8 +11,8 @@ func TestSessionTitle(t *testing.T) {
 		"✳ Ember end-to-end product": "Ember end-to-end product",
 		"◐ Fix the flaky test":       "Fix the flaky test",
 		"⠂ Claude Code":              "",
-		"screenager@creeper:~":       "",
-		"~/Gems/ember":               "",
+		"user@host:~":                "",
+		"~/src/ember":                "",
 		"nvim main.go":               "",
 		"":                           "",
 	} {

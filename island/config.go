@@ -28,6 +28,7 @@ type Config struct {
 	Settle     time.Duration // [claude] settle_min: a silent session is taken as stopped
 	AgentQuiet time.Duration // [claude] agent_quiet_min: a silent subagent is taken as gone
 	Opacity    float64       // [look] opacity of the island's body
+	BarHeight  float64       // [look] bar_height: the bar's thickness; 0 asks Noctalia (else 24)
 
 	Green, Blue, Red, Amber color.NRGBA // [look] colours; zero follows the Noctalia theme
 
@@ -88,7 +89,8 @@ settle_min      = 30    # a session silent this long is taken as stopped (a kill
 agent_quiet_min = 20    # the same for a subagent
 
 [look]
-opacity = 0.87  # the island's body: 1 is solid, lower lets the blur through (0.3-1)
+opacity    = 0.87  # the island's body: 1 is solid, lower lets the blur through (0.3-1)
+bar_height = 0     # your bar's thickness in px, so the pill sits on its line; 0 asks Noctalia, else 24 (16-64)
 # colours are hex, like "#72dd71"; "" follows Noctalia's theme
 green   = ""    # working, done
 blue    = ""    # waiting on you
@@ -273,6 +275,10 @@ func parseConfig(text string) (c Config, warns, keys []string) {
 		case "look.opacity":
 			if n, ok := number(0.3, 1); ok {
 				c.Opacity = n
+			}
+		case "look.bar_height":
+			if n, ok := number(0, 64); ok && (n == 0 || n >= 16) {
+				c.BarHeight = n
 			}
 		case "look.green":
 			hex(&c.Green)

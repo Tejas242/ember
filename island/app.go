@@ -93,7 +93,7 @@ func (a *app) raise(why string) {
 	go func() { // the bar may have changed too: take its new look
 		b := readBar()
 		a.posts <- func(a *app) {
-			if b.h != a.ui.BarH {
+			if b.h != a.ui.BarH && a.cfg.BarHeight == 0 {
 				a.ui.BarH = b.h
 				a.ui.Invalidate()
 			}
@@ -118,6 +118,9 @@ func (a *app) reloadConfig() bool {
 	}
 	a.ui.cfg = a.cfg
 	a.ui.TimeFmt = a.cfg.timeFormat()
+	if h := float32(a.cfg.BarHeight); h > 0 && h != a.ui.BarH { // a bar that isn't Noctalia's says its height here
+		a.ui.BarH = h
+	}
 	a.ui.pal = a.cfg.look(loadPalette())
 	if a.win != nil {
 		a.win.watchIdle(a.cfg.awayAfter())
