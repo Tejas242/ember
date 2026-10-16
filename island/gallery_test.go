@@ -168,6 +168,18 @@ func sheet(t *testing.T, name string, shots []galleryShot, cols int) {
 	f.Close()
 }
 
+// single writes one shot at 2×, without a label.
+func single(t *testing.T, name string, img *image.RGBA) {
+	big := image.NewRGBA(image.Rect(0, 0, img.Rect.Dx()*2, img.Rect.Dy()*2))
+	xdraw.CatmullRom.Scale(big, big.Rect, img, img.Rect, xdraw.Src, nil)
+	f, err := os.Create(filepath.Join(os.Getenv("EMBER_PREVIEW"), name+".png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	png.Encode(f, big)
+	f.Close()
+}
+
 type galleryScene struct {
 	clock time.Time
 	a     *app
@@ -386,6 +398,7 @@ func TestGallery(t *testing.T) {
 		}())
 	}
 	sheet(t, "gallery-cards", cards, 2)
+	single(t, "gallery-card", cards[0].img) // the landing page's picture of a card
 
 	req := func(label string, c *Card, extra func(g *galleryScene)) galleryShot {
 		g := newScene()
@@ -420,6 +433,7 @@ func TestGallery(t *testing.T) {
 			Body: "1360E · Polygon, rated 1400. Claude unlocks when it's solved.", Buttons: []Button{{Key: "later", Label: "Later"}, {Key: "start", Label: "Start", Primary: true}}}, nil),
 	}
 	sheet(t, "gallery-requests", reqs, 2)
+	single(t, "gallery-request", reqs[0].img)
 
 	// motion: filmstrips, one frame every few sixtieths
 	var motion []galleryShot

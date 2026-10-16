@@ -22,6 +22,7 @@
 </p>
 
 <p align="center">
+  <a href="https://tejas242.github.io/ember/"><b>Website</b></a> ·
   <a href="#what-it-shows">What it shows</a> ·
   <a href="#alive">Alive</a> ·
   <a href="#install">Install</a> ·

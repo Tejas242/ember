@@ -1,0 +1,87 @@
+---
+// The island, as a web page can have it: a dark pill hanging from the bar at
+// the top of the window. It acts out each section of the page as you read it
+// (see index.astro), and it morphs between its views on springs, like Ember.
+---
+
+<ember-island data-state="clock" aria-live="polite">
+  <div class="isl" role="group" aria-label="Ember, the island">
+    <span class="ear l" aria-hidden="true"></span><span class="ear r" aria-hidden="true"></span>
+    <div class="clip">
+
+    <div class="view pill" data-view="clock" data-w="150">
+      <ember-flame class="lead" mood="idle" data-energy="0.4"></ember-flame>
+      <span class="label" data-clock>5:24 PM</span>
+    </div>
+
+    <div class="view pill" data-view="work" data-w="176">
+      <ember-flame class="lead" mood="work" data-energy="0.75"></ember-flame>
+      <span class="label shimmer">kinvault</span>
+      <span class="timer">3m</span>
+    </div>
+
+    <div class="view pill" data-view="wait">
+      <ember-flame class="lead" mood="wait" data-energy="0.6"></ember-flame>
+      <span class="label wait">kinvault needs you</span>
+    </div>
+
+    <div class="view card" data-view="card" data-w="380">
+      <div class="head">
+        <ember-flame class="big" mood="work" data-energy="0.75"></ember-flame>
+        <div>
+          <p class="title">Fix the race in the store's compaction path</p>
+          <p class="facts">kinvault · 3m in · 2 files <b class="g">+23</b> <b class="r">−6</b></p>
+        </div>
+        <span class="time" data-clock>5:24 PM</span>
+      </div>
+      <ol class="steps" data-steps>
+        <li class="thread" aria-hidden="true"><i class="live"></i><i class="bead"></i></li>
+      </ol>
+    </div>
+
+    <div class="view card" data-view="request" data-w="380">
+      <div class="head">
+        <ember-flame class="big" mood="wait" data-energy="0.6"></ember-flame>
+        <div>
+          <p class="kicker">kinvault wants to run</p>
+          <p class="title">Run the store tests with the race detector</p>
+        </div>
+      </div>
+      <pre class="code"><span class="p">go</span> test <span class="f">-race</span> <span class="f">-count=1</span> ./store/...</pre>
+      <p class="note">Always allows <code>go test:*</code> in this project</p>
+      <div class="buttons">
+        <button type="button" class="link" data-act="terminal">Answer in terminal</button>
+        <span class="grow"></span>
+        <button type="button" class="btn deny" data-act="deny">Deny</button>
+        <button type="button" class="btn" data-act="always">Always</button>
+        <button type="button" class="btn primary" data-act="allow">Allow</button>
+      </div>
+      <i class="countdown" aria-hidden="true"></i>
+    </div>
+
+    <div class="view pill" data-view="done" data-w="336">
+      <ember-flame class="lead" mood="happy" data-energy="0.8"></ember-flame>
+      <span class="verb">Done</span><span class="label">kinvault</span>
+      <span class="sub">All 42 tests pass under -race</span>
+      <svg class="check" viewBox="0 0 12 10" aria-hidden="true"><path d="M1 5.2 4.3 8.4 11 1.4" /></svg>
+      <i class="sweep" aria-hidden="true"></i>
+    </div>
+
+    <div class="view pill" data-view="music" data-w="300">
+      <span class="disc" aria-hidden="true"><svg viewBox="0 0 22 22"><circle class="track" cx="11" cy="11" r="9.6" /><circle class="played" cx="11" cy="11" r="9.6" /></svg></span>
+      <span class="label">Instant Crush</span><span class="sub">Daft Punk</span>
+      <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
+    </div>
+
+    <div class="view pill" data-view="volume" data-w="196">
+      <svg class="vol" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6h2.6L8 3v10L4.6 10H2z" /><path class="w1" d="M10.3 5.8a3 3 0 0 1 0 4.4" /><path class="w2" d="M12.2 3.9a5.6 5.6 0 0 1 0 8.2" /></svg>
+      <span class="meter"><i data-level></i></span>
+      <span class="value" data-value>64</span>
+    </div>
+    </div>
+  </div>
+</ember-island>
+
+<script>
+  import "@/scripts/island"
+</script>

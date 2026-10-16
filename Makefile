@@ -34,6 +34,8 @@ docs: gallery
 	cp preview/gallery-pills.png docs/pills.png
 	cp preview/gallery-cards.png docs/cards.png
 	cp preview/gallery-requests.png docs/requests.png
+	cp preview/gallery-card.png docs/card.png
+	cp preview/gallery-request.png docs/request.png
 	$(MAKE) demo
 
 demo:

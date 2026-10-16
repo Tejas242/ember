@@ -1,0 +1,105 @@
+/* Ember's language on a page: its palette, Geist, tracked small capitals,
+   hairlines, continuous corners and one green that means "working". */
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+:root {
+  --ground: #070908;
+  --island: #080b08;
+  --raised: #0d110d;
+  --raised-2: #121712;
+  --fg: #dee5d8;
+  --muted: #9aa494;
+  --faint: #6f786b;
+  --hair: rgb(222 229 216 / 0.08);
+  --hair-strong: rgb(222 229 216 / 0.14);
+  --green: #72dd71;
+  --blue: #9ccaff;
+  --red: #ffb4ab;
+  --amber: #fdc874;
+  --ink: #080b08;
+
+  --sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --mono: "Geist Mono Variable", ui-monospace, monospace;
+
+  --step--1: clamp(0.82rem, 0.8rem + 0.1vw, 0.88rem);
+  --step-0: clamp(1rem, 0.96rem + 0.2vw, 1.12rem);
+  --step-1: clamp(1.2rem, 1.1rem + 0.5vw, 1.45rem);
+  --step-2: clamp(1.6rem, 1.3rem + 1.4vw, 2.4rem);
+  --step-3: clamp(2.3rem, 1.6rem + 3.4vw, 4.6rem);
+  --step-4: clamp(3rem, 1.8rem + 6vw, 7.4rem);
+
+  --radius: 22px;
+  --radius-s: 12px;
+  --bar: 30px;
+  --gutter: max(20px, env(safe-area-inset-left, 0px));
+  --spring: cubic-bezier(0.22, 1, 0.36, 1);
+
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--ground);
+  scroll-padding-top: 90px;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--fg);
+  font-family: var(--sans);
+  font-size: var(--step-0);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "ss01", "cv11";
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+a {
+  color: inherit;
+}
+
+::selection {
+  background: rgb(114 221 113 / 0.3);
+}
+
+.eyebrow {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.wrap {
+  inline-size: min(1120px, 100%);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

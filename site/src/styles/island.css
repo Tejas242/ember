@@ -1,0 +1,470 @@
+/* The island: Ember's notch, hanging from the bar. */
+ember-island {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+ember-island .isl {
+  --ear: 7px;
+  position: relative;
+  pointer-events: auto;
+  inline-size: 150px;
+  block-size: var(--bar);
+  background: rgb(8 11 8 / 0.94);
+  backdrop-filter: blur(16px) saturate(1.2);
+  border-end-start-radius: 15px;
+  border-end-end-radius: 15px;
+  box-shadow:
+    0 0 0 0.5px rgb(222 229 216 / 0.07),
+    0 14px 34px -10px rgb(0 0 0 / 0.75),
+    0 2px 6px rgb(0 0 0 / 0.4);
+  overflow: hidden;
+  cursor: default;
+}
+
+/* the concave fillets where the island meets the bar */
+ember-island .ear {
+  position: absolute;
+  inset-block-start: 0;
+  inline-size: var(--ear);
+  block-size: var(--ear);
+}
+ember-island .isl {
+  overflow: visible;
+}
+/* the content clips to the springing shape; the ears sit outside it */
+ember-island .clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+}
+ember-island .ear.l {
+  inset-inline-start: calc(-1 * var(--ear));
+  background: radial-gradient(circle at 0 100%, transparent calc(var(--ear) - 0.5px), rgb(8 11 8 / 0.94) var(--ear));
+}
+ember-island .ear.r {
+  inset-inline-end: calc(-1 * var(--ear));
+  background: radial-gradient(circle at 100% 100%, transparent calc(var(--ear) - 0.5px), rgb(8 11 8 / 0.94) var(--ear));
+}
+
+ember-island .view {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+ember-island .view.on {
+  pointer-events: auto;
+}
+
+/* ---- pills ---- */
+ember-island .pill {
+  block-size: var(--bar);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-inline: 11px 12px;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+}
+ember-island .lead {
+  inline-size: 17px;
+  block-size: 21px;
+  flex: none;
+}
+ember-island .label {
+  color: var(--fg);
+}
+ember-island .label.wait {
+  color: var(--blue);
+}
+/* waiting on you: a light breathes around the pill */
+ember-island[data-state="wait"] .isl {
+  animation: halo 1.6s ease-in-out infinite;
+}
+@keyframes halo {
+  50% {
+    box-shadow:
+      0 0 0 1px rgb(156 202 255 / 0.55),
+      0 0 22px 2px rgb(156 202 255 / 0.28),
+      0 14px 34px -10px rgb(0 0 0 / 0.75);
+  }
+}
+ember-island .sub {
+  color: var(--muted);
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-inline-size: 0;
+}
+ember-island .timer {
+  margin-inline-start: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+ember-island .verb {
+  color: var(--green);
+  font-weight: 600;
+  margin-inline-end: -3px;
+}
+ember-island .shimmer {
+  background: linear-gradient(100deg, var(--fg) 40%, #fff 50%, var(--fg) 60%) 0 0 / 260% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+@keyframes shimmer {
+  0% { background-position: 110% 0; }
+  42%, 100% { background-position: -10% 0; }
+}
+
+ember-island .check {
+  inline-size: 12px;
+  margin-inline-start: auto;
+  flex: none;
+}
+ember-island .check path {
+  fill: none;
+  stroke: var(--green);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 18;
+}
+ember-island .sweep {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: 60px;
+  background: linear-gradient(90deg, transparent, rgb(114 221 113 / 0.22), transparent);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* music: the cover as a disc, the song as a ring around it */
+ember-island .disc {
+  position: relative;
+  inline-size: 22px;
+  block-size: 22px;
+  flex: none;
+}
+ember-island .disc::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: conic-gradient(from 200deg, #f08a5d, #b83b5e, #6a2c70, #f9ed69, #f08a5d);
+  animation: spin 9s linear infinite;
+}
+ember-island .disc svg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+ember-island .disc circle {
+  fill: none;
+  stroke-width: 1.4;
+}
+ember-island .disc .track {
+  stroke: rgb(222 229 216 / 0.14);
+}
+ember-island .disc .played {
+  stroke: #f08a5d;
+  stroke-linecap: round;
+  stroke-dasharray: 60.3;
+  stroke-dashoffset: 38;
+  animation: play 40s linear infinite;
+}
+@keyframes play {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+ember-island .eq {
+  margin-inline-start: auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 2.5px;
+  block-size: 11px;
+}
+ember-island .eq i {
+  inline-size: 3px;
+  border-radius: 2px;
+  background: #f08a5d;
+  animation: eq 0.9s ease-in-out infinite alternate;
+}
+ember-island .eq i:nth-child(2) { animation-duration: 0.62s; animation-delay: -0.3s; }
+ember-island .eq i:nth-child(3) { animation-duration: 0.77s; animation-delay: -0.5s; }
+@keyframes eq {
+  from { block-size: 25%; }
+  to { block-size: 100%; }
+}
+
+/* volume: the waves come and go with the level */
+ember-island .vol {
+  inline-size: 16px;
+  flex: none;
+  fill: none;
+  stroke: var(--fg);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+ember-island .vol path:first-child {
+  fill: var(--fg);
+  stroke: none;
+}
+ember-island .vol .w1,
+ember-island .vol .w2 {
+  transition: opacity 0.18s;
+}
+ember-island[data-level="0"] .vol .w1,
+ember-island[data-level="0"] .vol .w2,
+ember-island[data-level="1"] .vol .w2 {
+  opacity: 0;
+}
+ember-island .meter {
+  flex: 1;
+  block-size: 4px;
+  border-radius: 2px;
+  background: rgb(222 229 216 / 0.14);
+  transform-origin: left;
+}
+ember-island .meter i {
+  display: block;
+  block-size: 100%;
+  border-radius: 2px;
+  background: var(--fg);
+  transform-origin: left;
+}
+ember-island .value {
+  inline-size: 26px;
+  text-align: end;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- the card ---- */
+ember-island .card {
+  padding: 0 18px 14px;
+  font-size: 12.5px;
+}
+ember-island .card .head {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  gap: 12px;
+  align-items: start;
+  padding-block-start: 9px;
+}
+ember-island .big {
+  inline-size: 22px;
+  block-size: 27px;
+  margin-block-start: 2px;
+}
+ember-island .title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+ember-island .facts,
+ember-island .kicker {
+  margin: 3px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+ember-island .kicker {
+  margin: 1px 0 3px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--blue) 65%, var(--fg));
+}
+ember-island .time {
+  font-size: 11px;
+  color: var(--faint);
+  padding-block-start: 2px;
+}
+ember-island b.g { color: var(--green); font-weight: 500; }
+ember-island b.r { color: var(--red); font-weight: 500; }
+
+ember-island .steps {
+  position: relative;
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+ember-island .steps li {
+  display: grid;
+  grid-template-columns: 22px 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+  block-size: 23px;
+  color: var(--muted);
+}
+ember-island .steps li svg {
+  inline-size: 11px;
+  justify-self: center;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  background: var(--island);
+  box-shadow: 0 0 0 4px var(--island);
+  border-radius: 50%;
+  position: relative;
+  z-index: 1;
+}
+ember-island .steps li .txt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+ember-island .steps li .when,
+ember-island .steps li .fail {
+  font-size: 11px;
+  color: var(--faint);
+}
+ember-island .steps li .fail,
+ember-island .steps li.failed {
+  color: color-mix(in oklab, var(--red) 70%, var(--fg));
+}
+ember-island .steps li .diff {
+  font-size: 11px;
+}
+ember-island .steps li.now {
+  color: var(--fg);
+  font-weight: 500;
+}
+ember-island .steps li.now svg {
+  color: var(--green);
+}
+ember-island .steps li.now .txt {
+  background: linear-gradient(100deg, var(--fg) 40%, #fff 50%, var(--fg) 60%) 0 0 / 260% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+/* the thread the steps hang on, down from Ember */
+ember-island .steps .thread {
+  position: absolute;
+  inset-block: -26px 11px;
+  inset-inline-start: 10.5px;
+  inline-size: 1px;
+  block-size: auto;
+  display: block;
+  background: rgb(222 229 216 / 0.16);
+}
+ember-island .steps .thread .live {
+  position: absolute;
+  inset-inline-start: -0.25px;
+  inset-block-start: 0;
+  inline-size: 1.5px;
+  block-size: 37px;
+  background: rgb(114 221 113 / 0.5);
+}
+ember-island .steps .thread .bead {
+  position: absolute;
+  inset-inline-start: -1.5px;
+  inset-block-start: 14px;
+  inline-size: 4px;
+  block-size: 4px;
+  border-radius: 50%;
+  background: #b9f0b8;
+  box-shadow: 0 0 8px 2px rgb(114 221 113 / 0.5);
+  opacity: 0;
+}
+
+/* the request */
+ember-island .code {
+  margin: 12px 0 0;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: rgb(222 229 216 / 0.055);
+  font: 11.5px/1.5 var(--mono);
+  color: var(--fg);
+  white-space: pre-wrap;
+}
+ember-island .code .p { color: color-mix(in oklab, var(--blue) 85%, var(--fg)); }
+ember-island .code .f { color: var(--muted); }
+ember-island .note {
+  margin: 8px 0 0 2px;
+  font-size: 11px;
+  color: var(--faint);
+}
+ember-island .note code {
+  font-family: var(--mono);
+  font-size: 10.5px;
+}
+ember-island .buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-block-start: 12px;
+}
+ember-island .grow {
+  flex: 1;
+}
+ember-island button {
+  font: inherit;
+  cursor: pointer;
+  border: 0;
+}
+ember-island .link {
+  background: none;
+  color: var(--faint);
+  font-size: 11px;
+  padding: 0;
+}
+ember-island .link:hover {
+  color: var(--fg);
+}
+ember-island .btn {
+  block-size: 26px;
+  padding-inline: 14px;
+  border-radius: 13px;
+  background: rgb(222 229 216 / 0.08);
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 500;
+  transition: background 0.12s, transform 0.05s;
+}
+ember-island .btn:hover {
+  background: rgb(222 229 216 / 0.14);
+}
+ember-island .btn:active {
+  transform: scale(0.96);
+}
+ember-island .btn.deny {
+  color: color-mix(in oklab, var(--red) 90%, var(--fg));
+}
+ember-island .btn.primary {
+  background: var(--blue);
+  color: var(--ink);
+  font-weight: 600;
+}
+ember-island .btn.primary:hover {
+  background: color-mix(in oklab, var(--blue) 86%, white);
+}
+ember-island .countdown {
+  position: absolute;
+  inset-inline: 24px;
+  inset-block-end: 1px;
+  block-size: 1px;
+  background: rgb(222 229 216 / 0.14);
+  transform-origin: center;
+}
