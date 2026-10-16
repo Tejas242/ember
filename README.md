@@ -3,6 +3,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Tejas242/ember/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Tejas242/ember/ci.yml?branch=main&style=flat-square&label=ci"></a>
   <a href="https://go.dev"><img alt="Go" src="https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square&logo=go&logoColor=white"></a>
   <a href="https://wayland.freedesktop.org"><img alt="Wayland" src="https://img.shields.io/badge/Wayland-layer--shell-FFBC00?style=flat-square&logo=wayland&logoColor=black"></a>
   <a href="https://docs.anthropic.com/en/docs/claude-code"><img alt="Claude Code" src="https://img.shields.io/badge/Claude_Code-hooks-D97757?style=flat-square&logo=claude&logoColor=white"></a>
