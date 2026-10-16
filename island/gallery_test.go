@@ -40,13 +40,8 @@ func galleryBackground() *image.RGBA {
 			draw.Draw(bg, bg.Rect, im, im.Bounds().Min, draw.Src)
 		}
 		f.Close()
-	} else {
-		for y := 0; y < 768; y++ {
-			for x := 0; x < 1366; x++ {
-				bg.Set(x, y, color.NRGBA{uint8(20 + x/40), uint8(36 + y/10), uint8(28 + x/60), 255})
-			}
-		}
-		draw.Draw(bg, image.Rect(0, 0, 1366, 22), image.NewUniform(color.NRGBA{0x0f, 0x15, 0x0e, 150}), image.Point{}, draw.Over)
+	} else { // the README's made-up desktop
+		bg = demoWallpaper()
 	}
 	galleryBG = bg
 	return bg
@@ -244,6 +239,9 @@ func (g *galleryScene) edge() {
 func TestGallery(t *testing.T) {
 	if os.Getenv("EMBER_PREVIEW") == "" {
 		t.Skip("set EMBER_PREVIEW")
+	}
+	if os.Getenv("EMBER_BG") == "" {
+		t.Setenv("HOME", t.TempDir()) // the default palette, as in the README
 	}
 	pillCrop := image.Rect(surfW/2-230, 0, surfW/2+230, 46)
 	pill := func(label string, set func(g *galleryScene)) galleryShot {

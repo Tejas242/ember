@@ -1,88 +1,109 @@
-# Ember
+<p align="center">
+  <img src="docs/banner.png" alt="Ember: a living dynamic island for Wayland" width="840">
+</p>
 
-A dynamic island for the top of a Wayland desktop. It sits over the centre of your bar as a small pill with a flame
-in it, and morphs to show what is going on: what Claude Code is doing and what it needs from you, the song that's
-playing, volume and brightness as you change them, the charger, your headphones, a screenshot you just took.
+<p align="center">
+  <a href="https://go.dev"><img alt="Go" src="https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square&logo=go&logoColor=white"></a>
+  <a href="https://wayland.freedesktop.org"><img alt="Wayland" src="https://img.shields.io/badge/Wayland-layer--shell-FFBC00?style=flat-square&logo=wayland&logoColor=black"></a>
+  <a href="https://docs.anthropic.com/en/docs/claude-code"><img alt="Claude Code" src="https://img.shields.io/badge/Claude_Code-hooks-D97757?style=flat-square&logo=claude&logoColor=white"></a>
+  <img alt="No GPU" src="https://img.shields.io/badge/drawn_in-software-6E56CF?style=flat-square">
+  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-3DA639?style=flat-square"></a>
+</p>
 
-It is always one pill. When two things are going on, the second rides along as a small satellite at the pill's end,
-behind a hairline: a tiny flickering flame while Claude works, the spinning cover while a song plays. Click the
-satellite to swap it in. Hover the pill and a card drops down. It's a brief on what your agents are doing, not a settings window.
+<p align="center">
+  A small pill that hangs from the top of your screen and morphs to show what matters right now:<br>
+  what <b>Claude Code</b> is doing and what it needs from you, the song that's playing, and the moment you press a key.<br>
+  One native Go binary. No toolkit, no GPU, about 9 MB of memory.
+</p>
 
-![The pill's states](docs/pills.png)
+<p align="center">
+  <img src="docs/demo/claude.webp" alt="Claude works: the pill names the session, the card shows its live timeline, a request is allowed from the island, and it's done" width="760">
+</p>
 
-![The card: working, several sessions, waiting, just finished, a quiet day, subagents](docs/cards.png)
+<p align="center">
+  <a href="#what-it-shows">What it shows</a> ·
+  <a href="#alive">Alive</a> ·
+  <a href="#install">Install</a> ·
+  <a href="#using-it">Using it</a> ·
+  <a href="#config">Config</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="docs/DESIGN.md">Design</a>
+</p>
 
-![Requests: a command, an edit, questions, a practice nudge](docs/requests.png)
+## Why
 
-How it looks and moves, and why, is in [docs/DESIGN.md](docs/DESIGN.md).
-
-It is one native Go binary. It talks the Wayland protocol directly and draws in software, with no toolkit and no
-GPU. It wakes only when something changes. Measured on a 2018 laptop, it uses about 9 MB of private memory and about 1%
-of one core while Claude works and the flame is animating, and a fraction of that when idle.
+You run a few Claude Code sessions in terminals you can't all see. You want to know, at a glance, without switching
+windows: *does anything need me, is it going well, what just happened.* Ember answers those three questions from
+the top of the screen, and lets you answer Claude's permission requests right there. When nothing's going on it's a
+clock with a small flame that breathes, blinks, glances around and falls asleep at night.
 
 ## What it shows
 
-**Claude Code**
+### Claude Code
+
 - **At a glance.** The pill names the session at work and how long it has been at it, under a slow band of light.
   It changes only when the situation does, never per tool call. With several sessions, the one you can't see is
-  named and the rest count as `+N`. One that has gone quiet for three minutes turns its timer amber.
-- **Permission requests in the pill.** Deny, Always or Allow, with the whole command shown (it wraps; it's never cut
-  where an `&& rm -rf` could hide) and a line saying what Always would allow (*Always allows go test:\* in this
-  project*). Several requests queue up behind each other, and the card says how many more are waiting.
-- **Questions.** `AskUserQuestion` options show as rows, single or multi-select, one question after another.
-- **Done.** When a session finishes while you're looking elsewhere, the pill says so with Claude's most informative
-  sentence, and a check draws itself. Click it to jump to that terminal. If it stops on an error, it says which in
-  words (*Rate limited*, *Signed out, run /login*). Either way the outcome then waits quietly by the clock
-  (*kinvault done*) until you've looked.
-- **Never in the way.** Claude waits at most 90 s on the island, then asks in the terminal as usual. It asks in the
-  terminal at once if Ember isn't running. If Claude cancels, the request leaves the island within a second.
-- **Sessions by name.** The card lists sessions with the topic Claude gave each one (read from the terminal's
-  title), the current step, the diff so far and how long it has been running.
+  named and the rest count as `+N`. A session that's gone quiet for three minutes turns its timer amber.
+- **The card.** Hover the pill and a card drops down. One session is the hero: its task in words, one line of facts
+  (*kinvault · 4m in · 3 files +58 −12*), and a live timeline that hangs from Ember on a thin thread. A bead of light
+  runs down the thread into each new step. Subagents branch off it. Every other session is one line that says how it
+  stands: *Done ·*, *Stopped ·*, *Needs you ·*. Click one to make it the hero.
+- **Requests on the island.** Deny, Always or Allow, with Claude's own words as the title and the whole command
+  shown (it wraps; it's never cut where an `&& rm -rf` could hide), and a line saying what *Always* would allow.
+  Questions from `AskUserQuestion` are a numbered list. Requests that queue up stack under the card. Ember nods when
+  you allow and shakes its head when you deny.
+- **Done.** When a session finishes where you can't see it, the pill says so with Claude's most informative sentence,
+  and a check draws itself. If it stops on an error, it says which in words (*Rate limited*). Either way the outcome
+  waits by the clock (*kinvault done*) until you've looked.
+- **Never in the way.** A request waits on the island at most 85 s, then Claude asks in the terminal as usual. If
+  Ember isn't running, Claude asks in the terminal at once.
 
-**Music.** Any MPRIS player: title, artist and cover, a progress hairline along the pill's rim, and a section of the
-card with seek, previous, play/pause and next. Scroll on it to change the volume. The cover lights its section in its
-own colour. A song paused for a quarter of an hour leaves the card. The equaliser listens: while a song plays, Ember reads
-the output's levels through `parec` (8 kHz mono) and splits them into low, mid and high, 25 times a second. Nothing is
-kept but those three numbers, and it stops when the music does.
+<p align="center">
+  <img src="docs/cards.png" alt="The card: working with a subagent, three sessions, a session waiting, just finished, a quiet day, subagents opened" width="840">
+</p>
 
-**System moments.** They appear for a moment, then step aside:
-- Volume, microphone mute and brightness, with a level bar. They replace Noctalia's OSD for those.
-- Charging (with when it'll be full), unplugged, fully charged, and battery low at 20, 10 and 5 %. The bar already has
-  the percentage, so only a low battery repeats it.
-- Bluetooth headphones connecting, with their battery, and disconnecting.
-- Screenshots, with a preview. Click it to open the file.
-- A dot while your screen is being shared or recorded.
+<p align="center">
+  <img src="docs/requests.png" alt="Requests: a command, an edit with two more waiting, a question, several answers, a practice nudge" width="840">
+</p>
 
-**The card is a brief, not a window.** You glance at the island for two seconds and ask one of three things: does
-anything need me, what is it doing and is it going well, what happened while I wasn't looking. The card answers
-whichever is true right now, and nothing else. It has no tabs and no settings: volume and brightness speak up in the
-pill when they change, and that's enough.
-One session is the **hero**: the one waiting on you, else one working where you can't see it, else the one that just
-finished.
-- **Headline.** The task in words: what you asked, if your prompt said something ("yes, do it" doesn't), else the
-  topic Claude gave the session. Under it, one line of facts: *kinvault · 4m in · 3 files +58 −12 · 1 failed*.
-  Click it to jump to that terminal.
-- **Working.** A live timeline of the turn hangs from Ember on a thin rail, newest first. The current step glows,
-  pulses and counts its seconds. Earlier steps say what they changed (+15 −3) and when. A step that failed says so in
-  red. Subagents branch off the rail, each opening into its own steps.
-- **Just finished.** Claude's most informative sentence beside a green bar. The bar is amber if Claude admits
-  something failed, and red with the error if the turn stopped.
-- **Waiting.** What it's asking (*Wants to run go test -race … · waiting 1m*) and a button to answer it in the
-  terminal.
-- **Quiet.** A greeting that knows the time, your day in one line (*7 tasks done · 2h 14m with Claude · mostly
-  ember*), and the day hour by hour.
-- **Then one line each** for other sessions (*Done ·*, *Stopped ·*, *Needs you ·*, or what they're doing). Click one
-  and it becomes the hero. Then the song, with its controls under your pointer, and edge's practice line.
+### Music
 
-**Requests** have an eyebrow that says who wants what (*KINVAULT WANTS TO RUN*), Claude's own words as the title, and
-the command once, syntax-tinted. A hairline on the rim drains while the request waits and turns amber at the end.
-Questions are one grouped list with numbered options.
+<img align="right" src="docs/demo/music.webp" alt="Music: the cover in its ring, the card's now playing, pause and play, the volume" width="440">
 
-Every motion is a spring. The pill swells under your pointer. The card opens with the width leading and a
-little overshoot on the drop, and folds up first when it closes. Rows arrive one after another, and rows that move
-glide. Numbers roll, a check draws itself when something's done, and a blue light breathes around the pill while
-Claude waits on you. Corners are continuous (superellipse) rather than circular arcs. Text in any script draws: styled Unicode letters fold to plain ones, and missing characters come from
-a system font found through fontconfig.
+Any MPRIS player. In the pill, the cover is a disc with the song as a ring around it. In the card, the cover sits on
+a haze of its own colours, with controls, a scrubber you can drag, and the time at both ends. **The equaliser
+listens**: while a song plays, Ember reads the output's levels (`parec`, 8 kHz mono) and splits them into low, mid
+and high, 25 times a second. Nothing is kept, and it stops when the music does.
+
+<br clear="right">
+
+### Moments
+
+<img align="right" src="docs/demo/moments.webp" alt="Moments: charging, headphones, a screenshot, brightness, a session waiting" width="400">
+
+They appear for a moment, then step aside:
+
+- volume, microphone and brightness as you press the keys, with glyphs that follow the level;
+- charging (and when it'll be full), unplugged, battery low at 20, 10 and 5 %;
+- Bluetooth headphones connecting, with their battery;
+- a screenshot, with a shutter flash and its preview (click it to open the file);
+- a dot while your screen is being shared.
+
+<br clear="right">
+
+<p align="center">
+  <img src="docs/pills.png" alt="Every state of the pill" width="840">
+</p>
+
+### Plugins: edge's dashboard
+
+<p align="center">
+  <img src="docs/demo/dash.webp" alt="edge's dashboard opening: the day's ring, the problem in progress, the week, the rating, the year, four numbers" width="760">
+</p>
+
+Parts that belong to tools not everyone has are plugins, asleep until their tool is installed. The first is
+**edge**, a practice coach: its day in the pill, its nudges on the island, and a dashboard that opens with a short
+choreography. See [Plugins](#plugins).
 
 ## Alive
 
@@ -111,15 +132,26 @@ Ember has a small mind. None of it is scripted animation. It is a handful of mod
   it's finished. A step running long shows its minutes. A session that went silent for half an hour (a killed Claude
   never says Stop) settles to idle.
 
-The colours follow Noctalia's wallpaper palette.
+Every motion is a spring or a short ease, designed one by one: the card opens with its width leading and a little
+overshoot on the drop and folds up first when it closes, rows arrive one after another and glide when they move,
+numbers roll, and every pulse keeps one 1.6 s beat. The whole design, with every token and timing, is in
+[docs/DESIGN.md](docs/DESIGN.md).
+
+The colours follow Noctalia's wallpaper palette, or your own (`[look]` in the config).
 
 ## Install
 
+> [!NOTE]
+> Ember is built and used daily on **niri** with the **Noctalia** shell. Other compositors with layer-shell should
+> work (the island itself only needs `zwlr_layer_shell_v1`), but they are less tested. Issues and reports are welcome.
+
 Requirements:
-- A wlroots-style compositor with `zwlr_layer_shell_v1`. niri is first-class: focus, terminal titles and screen
-  sharing come from its event stream. Hyprland and Sway can focus a session's terminal.
+- A Wayland compositor with `zwlr_layer_shell_v1` (niri, Hyprland, Sway, river…). **niri** is first-class: focus,
+  terminal titles and screen sharing come from its event stream. Hyprland and Sway can focus a session's terminal.
 - Go 1.27+ to build.
-- Optional: `wpctl` and `pactl` (PipeWire) for volume, UPower for the battery, BlueZ for headphones, Claude Code 2.1+.
+- Linux with systemd (Ember runs as a user service).
+- Optional: [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 2.1+, PipeWire (`wpctl`, `pactl`, `parec`)
+  for volume and the listening equaliser, UPower for the battery, BlueZ for headphones, any MPRIS player for music.
 
 ```sh
 git clone https://github.com/Tejas242/ember && cd ember
@@ -143,7 +175,11 @@ ember doctor
 It checks the service, the compositor protocols (blur, cursor shape), the niri stream, music, volume, brightness,
 battery, Claude's hooks and the config, and says what to run for anything missing.
 
-**Noctalia.** Leave the bar's centre empty and Ember sits there, matching the bar's height. To keep Noctalia from
+**Your bar.** Ember hangs from the top edge, over the middle of whatever bar you use. Leave the bar's centre empty
+and tell Ember its height with `[look] bar_height` (Waybar, say, at 30 px: `bar_height = 30`), so the pill sits on
+its line.
+
+**Noctalia.** Ember reads the bar's height from Noctalia itself and follows its wallpaper palette. To keep Noctalia from
 showing a second volume and brightness popup, add this to `~/.config/noctalia/services.toml`:
 
 ```toml
@@ -208,7 +244,7 @@ Some of what Ember shows belongs to tools not everyone has. Those parts are plug
 (no watchers, no rows, no pages) until their tool is installed, and they wake within a minute of it appearing.
 `[plugins.<name>] enabled = "auto" | true | false` in the config decides otherwise, and `ember doctor` says which are on.
 
-**edge** ([edge](https://github.com/Tejas242/edge), a practice coach). Its day sits in the pill and the card, its
+**edge** (a practice coach for competitive programming; not public yet). Its day sits in the pill and the card, its
 notes and buttons on the island, and it has a dashboard (`ember dash edge`, or click its row in the card):
 
 - **the day**: a ring for today's tasks, whether Claude is locked, the streak's flame
@@ -256,7 +292,8 @@ settle_min      = 30    # a session silent this long is taken as stopped (a kill
 agent_quiet_min = 20    # the same for a subagent
 
 [look]
-opacity = 0.87  # the island's body: 1 is solid, lower lets the blur through (0.3-1)
+opacity    = 0.87  # the island's body: 1 is solid, lower lets the blur through (0.3-1)
+bar_height = 0     # your bar's thickness in px, so the pill sits on its line; 0 asks Noctalia, else 24 (16-64)
 # colours are hex, like "#72dd71"; "" follows Noctalia's theme
 green   = ""    # working, done
 blue    = ""    # waiting on you
@@ -300,6 +337,16 @@ testing.
   volume, inotify for the backlight and the screenshots folder, and niri's IPC socket for windows and casts. Nothing
   polls.
 
+## Making the pictures
+
+Every image and animation in this README is drawn by Ember's own renderer, from scripted scenes, over a made-up
+desktop: nothing is mocked up by hand.
+
+```sh
+make gallery   # every state of the island as stills, in ./preview
+make docs      # the README's stills, its animations (needs ffmpeg with libwebp) and the banner
+```
+
 ## Uninstall
 
 ```sh
@@ -308,6 +355,12 @@ make uninstall    # or: ember uninstall
 
 This removes Ember's hooks from Claude's settings and the service. Your config stays.
 
+## Credits
+
+- [Geist and Geist Mono](https://github.com/vercel/geist-font) by Vercel, under the SIL Open Font License 1.1.
+- Built for, and alongside, [Claude Code](https://docs.anthropic.com/en/docs/claude-code), whose hooks make the
+  whole thing possible.
+
 ## License
 
-MIT
+[MIT](LICENSE)
