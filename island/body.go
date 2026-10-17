@@ -18,7 +18,7 @@ import "math"
 
 const (
 	physStep = 1.0 / 240
-	gravity  = 320.0 // px/s²: a 2.6 px hop is in the air for a quarter of a second
+	gravity  = 700.0 // px/s²: a 2.6 px hop is in the air for 170 ms (a 16 px creature falls fast)
 )
 
 // osc is a damped spring around a rest value: x” = −k(x − rest) − c·x' + force.
@@ -58,6 +58,8 @@ type body struct {
 	core     osc     // the inner light, rest 1
 	coal     osc     // 0 a flame … 1 a coal
 	sqRest   float64 // a held squash (compacting): 1 normally
+	hold     float64 // a lean held by a muscle (a shake) or the dance's weight on one foot
+	leanK    float64 // its stiffness while a muscle holds it, 0 otherwise
 	leanRest float64 // a held lean (resting its head on the wall asleep)
 	coalRest float64
 
@@ -104,8 +106,8 @@ func (b *body) jump(h, ant float64) {
 func (b *body) takeOff() {
 	b.launch = 0
 	b.vy = math.Sqrt(2 * gravity * b.jumpH)
-	b.sq.v += b.vy * 0.06 // stretched as it leaves
-	b.tipH.v -= b.vy * 0.02
+	b.sq.v += b.vy * 0.04 // stretched as it leaves
+	b.tipH.v -= b.vy * 0.014
 	b.jumpH = 0
 }
 
@@ -169,31 +171,30 @@ func (b *body) tick(h, slotV float64) {
 	if b.y > 0 || b.vy > 0 {
 		b.vy -= gravity * h
 		b.y += b.vy * h
-		if b.y <= 0 { // landing: it squashes by how hard it hit, and maybe bounces once, small
+		if b.y <= 0 { // landing: it squashes by how hard it hit (the energy goes into the squash, not a bounce)
 			impact := -b.vy
-			b.y = 0
-			b.sq.v -= impact * 0.12
-			b.tipH.v -= impact * 0.02
-			b.tip.v += impact * 0.02 * sign64(b.lean.x)
-			if impact > 30 {
-				b.vy = impact * 0.18
-			} else {
-				b.vy = 0
-				if b.jumpH > 0 { // a jump asked for in the air goes now
-					b.jump(b.jumpH, 0.05)
-				}
+			b.y, b.vy = 0, 0
+			b.sq.v -= impact * 0.082
+			b.tipH.v -= impact * 0.014
+			b.tip.v += impact * 0.02 * math.Max(-1, math.Min(1, b.lean.x)) // the tip whips the way it leant
+			if b.jumpH > 0 {                                               // a jump asked for in the air goes now
+				b.jump(b.jumpH, 0.05)
 			}
 		}
 	}
 	sqTarget := b.sqRest
 	if b.y > 0 { // in the air it stretches with its speed
-		sqTarget += math.Min(math.Abs(b.vy)*0.0035, 0.18)
+		sqTarget += math.Min(math.Abs(b.vy)*0.0024, 0.18)
 	}
 	b.sq.step(sqTarget, 520, 0.36, 0, h)
 	b.sq.x = math.Max(0.55, math.Min(1.6, b.sq.x))
 
 	la := b.lean.v
-	b.lean.step(b.leanRest, 150, 0.42, -b.slotA*0.03, h)
+	lk, lz := 150.0, 0.42
+	if b.leanK > 0 { // a muscle holds it (a head shake): stiff and quick
+		lk, lz = b.leanK, 0.5
+	}
+	b.lean.step(b.leanRest+b.hold, lk, lz, -b.slotA*0.03, h)
 	b.tip.step(0, 80, 0.32, -(b.lean.v-la)/h*0.35, h)
 	b.tipH.step(0, 260, 0.38, 0, h)
 	b.core.step(1, 200, 0.55, 0, h)

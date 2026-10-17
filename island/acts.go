@@ -145,11 +145,7 @@ func (u *UI) actStep(now time.Time) {
 		case "nod": // two dips, the second smaller
 			beat(0, 0, func() { b.squash(2.4) })
 			beat(1, 0.2, func() { b.squash(1.5) })
-		case "shake": // its head goes side to side, its base planted: the eyes lead, the tip trails
-			beat(0, 0, func() { b.shove(36) })
-			beat(1, 0.14, func() { b.shove(-62) })
-			beat(2, 0.29, func() { b.shove(50) })
-			beat(3, 0.43, func() { b.shove(-22) })
+		case "shake": // its head goes side to side, held by a muscle, its base planted: the eyes lead, the tip trails
 		case "wake": // the coal catches: it shoots up and looks around
 			beat(0, 0, func() { b.brighten(8); b.sq.v += 4; b.jump(1.2, 0.05) })
 		case "stretch": // a big stretch, a tremble at the top, down again
@@ -184,7 +180,21 @@ func (u *UI) actStep(now time.Time) {
 			beat(0, 0, func() { b.squash(1) })
 		}
 	}
+	// held parts of an act: the shake is a muscle stepping the lean, faster than the body would swing by itself
+	b.hold, b.leanK = 0, 0
+	if ac.kind == "shake" && t < 0.6 {
+		b.leanK = 420
+		switch {
+		case t < 0.14:
+			b.hold = 1.8
+		case t < 0.29:
+			b.hold = -1.8
+		case t < 0.43:
+			b.hold = 1.2
+		}
+	}
 	if t > actLen[ac.kind] {
+		b.hold, b.leanK = 0, 0
 		u.act = nil
 		if ac.kind == "eyeroll" {
 			c := u.afterRoll
@@ -511,22 +521,36 @@ func (u *UI) listen(now time.Time) {
 	b := u.body
 	if !b.phones.want || !b.phones.seated || u.lastView != vCompact || !u.calm() || u.senses().working {
 		u.dancing = false // it dances only when nothing else matters
+		if u.act == nil {
+			b.hold = 0
+		}
 		return
 	}
-	lv, heard := u.audio.levels()
+	lv, at, heard := u.audio.sample()
 	if !heard {
 		u.dancing = false
+		if u.act == nil {
+			b.hold = 0
+		}
 		return
 	}
-	low := lv[0]
-	u.bassEnv += (low - u.bassEnv) * 0.12
-	if low > u.bassEnv*1.25+0.12 && now.Sub(u.beatAt) > 260*time.Millisecond {
-		u.beatAt = now
-		u.beatN++
-		b.squash(0.6 + 1.4*low)
-		side := float64(1 - 2*(u.beatN%2))
-		b.shove(side * (6 + 8*low))
-		b.phones.tilt.v += side * 0.6
+	if at != u.sampleAt { // each 40 ms of the song once, at any frame rate
+		u.sampleAt = at
+		low := lv[0]
+		u.bassEnv += (low - u.bassEnv) * 0.12
+		if low > u.bassEnv*1.25+0.12 && now.Sub(u.beatAt) > 260*time.Millisecond {
+			u.beatAt = now
+			u.beatN++
+			b.squash(0.6 + 1.4*low)
+			u.danceSide = float64(1-2*(u.beatN%2)) * (0.7 + 0.7*low) // its weight goes onto one side until the next beat
+			b.shove(3 * sign64(u.danceSide))
+			b.phones.tilt.v += sign64(u.danceSide) * 0.6
+		}
+	}
+	if u.act == nil && now.Sub(u.beatAt) < 900*time.Millisecond {
+		b.hold = u.danceSide
+	} else if u.act == nil {
+		b.hold = 0
 	}
 	u.dancing = u.beatN >= 4 && now.Sub(u.beatAt) < 2*time.Second
 	if now.Sub(u.beatAt) > 4*time.Second {

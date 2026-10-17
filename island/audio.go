@@ -89,6 +89,16 @@ func (a *audio) read(cmd *exec.Cmd, r io.Reader) {
 	}
 }
 
+// sample is the three bands and when they were measured, if fresh.
+func (a *audio) sample() ([3]float64, time.Time, bool) {
+	if a == nil {
+		return [3]float64{}, time.Time{}, false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.v, a.at, time.Since(a.at) < 250*time.Millisecond
+}
+
 // levels are the three bands, if fresh.
 func (a *audio) levels() ([3]float64, bool) {
 	if a == nil {

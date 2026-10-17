@@ -239,10 +239,15 @@ type UI struct {
 	bassEnv     float64
 	beatAt      time.Time
 	beatN       int
-	travelTo    float32 // where its slot last was: a jump in it is a trip, taken with a hop
+	danceSide   float64   // where its weight is: one side, then the other, beat by beat
+	sampleAt    time.Time // the song's last sample it listened to
+	travelTo    float32   // where its slot last was: a jump in it is a trip, taken with a hop
 	travelling  bool
-	flare       bool  // the Done playing now was earned: a long or hard-won turn
-	afterRoll   cheer // the Done that follows the eye-roll
+	tripFrom    float64   // where the trip left from
+	tripAt      time.Time // when it left the ground (after its crouch)
+	tripAir     float64   // how long it's in the air
+	flare       bool      // the Done playing now was earned: a long or hard-won turn
+	afterRoll   cheer     // the Done that follows the eye-roll
 	gulpAt      time.Time
 	greetAt     time.Time // a return found at startup or after a sleep: greet once it's calm
 	bond        *bond     // what Ember remembers about you
@@ -951,18 +956,29 @@ func (u *UI) stepEmber(dt float64, now time.Time) {
 		u.travelTo = rel
 	}
 	// a trip: its slot jumped somewhere else in the pill (onto a meter, back
-	// home). It hops and is carried there with some weight, leaning into it.
+	// home). It jumps there: a ballistic hop as high as the trip is long,
+	// crossing at an even pace and landing on the slot (wherever the morphing
+	// pill has taken it by then), so it never skates after it lands.
 	if u.lastView == vCompact && abs32(rel-u.travelTo) > 14 && math.Abs(u.ey.x-float64(sp.y)) < 8 {
-		u.travelling = true
-		u.body.jump(2.2, 0.05)
+		h := math.Max(1.6, math.Min(3.2, 1.2+math.Abs(float64(rel-u.travelTo))/40))
+		const ant = 0.04
+		u.travelling, u.tripFrom = true, u.ex.x
+		u.tripAt, u.tripAir = now.Add(time.Duration(ant*float64(time.Second))), hopFor(h)
+		u.body.jump(h, ant)
 	}
 	u.travelTo = rel
-	if u.travelling && math.Abs(u.ex.x-float64(sp.x)) < 0.6 && math.Abs(u.ex.v) < 8 {
-		u.travelling = false
-	}
+	x0 := u.ex.x
 	switch {
-	case u.travelling || sp.travel:
-		u.ex.stepK(float64(sp.x), dt, 190, 2*0.72*math.Sqrt(190))
+	case u.travelling:
+		k := math.Max(0, math.Min(1, now.Sub(u.tripAt).Seconds()/u.tripAir))
+		u.ex.x = u.tripFrom + (float64(sp.x)-u.tripFrom)*k
+		u.ex.v = (u.ex.x - x0) / math.Max(dt, 1e-3)
+		if k >= 1 {
+			u.travelling = false
+		}
+	case sp.travel: // riding a knob: it stands on it; the knob's moves are felt as lean
+		u.ex.x = float64(sp.x)
+		u.ex.v = (u.ex.x - x0) / math.Max(dt, 1e-3)
 	case u.lastView == vCompact && math.Abs(u.ey.x-float64(sp.y)) < 1 && math.Abs(u.ex.x-float64(sp.x)) < 60:
 		u.ex.x, u.ex.v = float64(sp.x), 0 // in the pill Ember sits in its slot, which rides the shape's edge
 	default:
