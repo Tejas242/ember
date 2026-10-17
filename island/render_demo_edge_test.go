@@ -1,3 +1,5 @@
+//go:build render
+
 package island
 
 import (
@@ -7,7 +9,7 @@ import (
 	"time"
 )
 
-// EMBER_DEMO=dir go test -run DemoEdge ./island: an evening with edge on the
+// EMBER_DEMO=dir go test -tags render -count=1 -run DemoEdge ./island: an evening with edge on the
 // island, played from the same messages edge sends over the socket: a
 // problem offered and started, a wrong answer, the accept, then a contest
 // round counting down, running and settling into upsolves.

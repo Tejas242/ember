@@ -1,3 +1,5 @@
+//go:build render
+
 package island
 
 import (
@@ -7,7 +9,6 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
-	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,7 +17,7 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
-// EMBER_PREVIEW=dir [EMBER_BG=screenshot.png] go test -run Gallery ./island
+// EMBER_PREVIEW=dir [EMBER_BG=screenshot.png] go test -tags render -count=1 -run Gallery ./island
 //
 // Every state of the island, composited over a real screenshot of the
 // desktop (EMBER_BG, a 1366×768 capture without Ember) with the blur niri
@@ -122,24 +123,6 @@ func onDesktop(u *UI, crop image.Rectangle) *image.RGBA {
 	return out.SubImage(crop).(*image.RGBA)
 }
 
-func galleryArt() *albumArt {
-	img := image.NewRGBA(image.Rect(0, 0, 64, 64))
-	for y := 0; y < 64; y++ {
-		for x := 0; x < 64; x++ {
-			dx, dy := float64(x)-22, float64(y)-20
-			d := math.Sqrt(dx*dx+dy*dy) / 60
-			r := 235 - 120*d
-			g := 120 - 60*d + float64(y)
-			b := 70 + 90*d
-			if (x/8+y/8)%5 == 0 {
-				r, g = r*0.85, g*0.9
-			}
-			img.Set(x, y, color.NRGBA{uint8(math.Min(255, r)), uint8(math.Min(255, math.Max(0, g))), uint8(math.Min(255, b)), 255})
-		}
-	}
-	return makeArt(img, "gallery")
-}
-
 // sheet lays shots out in a grid with a label over each, at 2×.
 func sheet(t *testing.T, name string, shots []galleryShot, cols int) {
 	if len(shots) == 0 {
@@ -178,74 +161,6 @@ func single(t *testing.T, name string, img *image.RGBA) {
 	}
 	png.Encode(f, big)
 	f.Close()
-}
-
-type galleryScene struct {
-	clock time.Time
-	a     *app
-}
-
-func newScene() *galleryScene {
-	g := &galleryScene{clock: time.Date(2026, 10, 15, 17, 24, 0, 0, time.Local)}
-	g.a = newTestApp(&g.clock)
-	u := NewUI(surfW, surfH, 22)
-	u.now, u.mind, u.day = g.a.ui.now, g.a.ui.mind, g.a.ui.day
-	u.start, u.lastBlink, u.bounceAt = g.clock, g.clock, g.clock.Add(-time.Hour)
-	g.a.ui = u
-	return g
-}
-
-func (g *galleryScene) run(d time.Duration) {
-	for end := g.clock.Add(d); g.clock.Before(end); {
-		g.clock = g.clock.Add(time.Second / 60)
-		g.a.ui.renderDamage()
-	}
-}
-
-var gallerySteps = []map[string]any{
-	{"tool_name": "Read", "tool_input": map[string]any{"file_path": "/x/store/compact.go"}},
-	{"tool_name": "Edit", "tool_input": map[string]any{"file_path": "/x/store/quota.go", "old_string": "a\nb\nc", "new_string": "a\nb\nc\nd\ne\nf\ng\nh\ni\nj\nk\nl\nm\nn\no\np\nq\nr"}},
-	{"tool_name": "Bash", "tool_input": map[string]any{"command": "go test ./store/...", "description": "Run the store tests"}, "fail": true},
-	{"tool_name": "Edit", "tool_input": map[string]any{"file_path": "/x/store/store.go", "old_string": "a\nb\nc", "new_string": "a\nx\ny\nz\nw"}},
-	{"tool_name": "Bash", "tool_input": map[string]any{"command": "go test -race ./...", "description": "Run the whole suite under the race detector"}},
-}
-
-func (g *galleryScene) work(id, project, prompt string, n int) {
-	hookAt(g.a, "UserPromptSubmit", id, project, map[string]any{"prompt": prompt})
-	for i, st := range gallerySteps[:n] {
-		g.clock = g.clock.Add(41 * time.Second)
-		hookAt(g.a, "PreToolUse", id, project, map[string]any{"tool_name": st["tool_name"], "tool_input": st["tool_input"]})
-		if i < n-1 {
-			ev := "PostToolUse"
-			if st["fail"] == true {
-				ev = "PostToolUseFailure"
-			}
-			hookAt(g.a, ev, id, project, map[string]any{"tool_name": st["tool_name"]})
-		}
-	}
-}
-
-func (g *galleryScene) agent(id, project, aid, desc string, steps int) {
-	hookAt(g.a, "PreToolUse", id, project, map[string]any{"tool_name": "Agent", "tool_input": map[string]any{"description": desc, "subagent_type": "Explore"}})
-	hookAt(g.a, "SubagentStart", id, project, map[string]any{"agent_id": aid, "agent_type": "Explore"})
-	for _, st := range []map[string]any{
-		{"tool_name": "Grep", "tool_input": map[string]any{"pattern": "segment.Lock"}},
-		{"tool_name": "Read", "tool_input": map[string]any{"file_path": "/x/store/segment.go"}},
-	}[:steps] {
-		g.clock = g.clock.Add(12 * time.Second)
-		hookAt(g.a, "PreToolUse", id, project, map[string]any{"agent_id": aid, "agent_type": "Explore", "tool_name": st["tool_name"], "tool_input": st["tool_input"]})
-	}
-}
-
-func (g *galleryScene) music(playing bool) {
-	g.a.ui.track = &Track{Player: "p", Title: "Instant Crush", Artist: "Daft Punk, Julian Casablancas", Playing: playing,
-		Length: 5*time.Minute + 37*time.Second, Position: 2 * time.Minute, PosAt: g.clock}
-	g.a.ui.art = galleryArt()
-}
-
-func (g *galleryScene) edge() {
-	g.a.ui.edge = &EdgeStatus{Today: 1, Need: 2, Streak: 4}
-	g.a.ui.dashboards["edge"] = edgeDash{}
 }
 
 func TestGallery(t *testing.T) {
@@ -525,4 +440,21 @@ func TestGallery(t *testing.T) {
 		}
 	}
 	sheet(t, "gallery-dash", dash, 2)
+}
+
+func (g *galleryScene) agent(id, project, aid, desc string, steps int) {
+	hookAt(g.a, "PreToolUse", id, project, map[string]any{"tool_name": "Agent", "tool_input": map[string]any{"description": desc, "subagent_type": "Explore"}})
+	hookAt(g.a, "SubagentStart", id, project, map[string]any{"agent_id": aid, "agent_type": "Explore"})
+	for _, st := range []map[string]any{
+		{"tool_name": "Grep", "tool_input": map[string]any{"pattern": "segment.Lock"}},
+		{"tool_name": "Read", "tool_input": map[string]any{"file_path": "/x/store/segment.go"}},
+	}[:steps] {
+		g.clock = g.clock.Add(12 * time.Second)
+		hookAt(g.a, "PreToolUse", id, project, map[string]any{"agent_id": aid, "agent_type": "Explore", "tool_name": st["tool_name"], "tool_input": st["tool_input"]})
+	}
+}
+
+func (g *galleryScene) edge() {
+	g.a.ui.edge = &EdgeStatus{Today: 1, Need: 2, Streak: 4}
+	g.a.ui.dashboards["edge"] = edgeDash{}
 }

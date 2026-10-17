@@ -1,3 +1,5 @@
+//go:build render
+
 package island
 
 import (
@@ -54,7 +56,7 @@ func sampleRounds(now time.Time, live bool) *EdgeRounds {
 	return rs
 }
 
-// EMBER_PREVIEW=dir go test -run PreviewRounds ./island: the pill before,
+// EMBER_PREVIEW=dir go test -tags render -count=1 -run PreviewRounds ./island: the pill before,
 // during and after a round, the card's row, and the dashboard's section.
 func TestPreviewRounds(t *testing.T) {
 	dir := os.Getenv("EMBER_PREVIEW")

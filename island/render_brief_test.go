@@ -1,3 +1,5 @@
+//go:build render
+
 package island
 
 import (
@@ -12,7 +14,7 @@ import (
 	"time"
 )
 
-// EMBER_PREVIEW=dir go test -run PreviewBrief ./island: the card in each of its moods.
+// EMBER_PREVIEW=dir go test -tags render -count=1 -run PreviewBrief ./island: the card in each of its moods.
 func TestPreviewBrief(t *testing.T) {
 	dir := os.Getenv("EMBER_PREVIEW")
 	if dir == "" {

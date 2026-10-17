@@ -1,3 +1,5 @@
+//go:build render
+
 package island
 
 import (
@@ -18,7 +20,7 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
-// EMBER_DEMO=dir go test -run Demo ./island renders the README's demos:
+// EMBER_DEMO=dir go test -tags render -count=1 -run Demo ./island renders the README's demos:
 // scripted scenes played on the real renderer, frame by frame, over a made-up
 // wallpaper and bar, with a pointer, encoded to animated WebP by ffmpeg.
 // Nothing comes from the machine they're made on: the default palette, a
@@ -549,5 +551,29 @@ func TestBanner(t *testing.T) {
 		}
 		png.Encode(f, big.img)
 		f.Close()
+	}
+}
+
+// glow fills r with a soft radial light of col centred on (cx, cy), fading
+// out by radius rad: the music card takes on the cover's colour.
+func (c *canvas) glow(r image.Rectangle, cx, cy, rad float32, col color.NRGBA, strength float64) {
+	r = r.Intersect(c.img.Rect)
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		row := c.img.Pix[y*c.img.Stride:]
+		dy := float32(y) + 0.5 - cy
+		for x := r.Min.X; x < r.Max.X; x++ {
+			dx := float32(x) + 0.5 - cx
+			d := (dx*dx + dy*dy) / (rad * rad)
+			if d >= 1 {
+				continue
+			}
+			k := (1 - d) * (1 - d) * float32(strength)
+			i := x * 4
+			fi := 1 - k
+			row[i] = uint8(float32(col.R)*k + float32(row[i])*fi)
+			row[i+1] = uint8(float32(col.G)*k + float32(row[i+1])*fi)
+			row[i+2] = uint8(float32(col.B)*k + float32(row[i+2])*fi)
+			row[i+3] = uint8(255*k + float32(row[i+3])*fi)
+		}
 	}
 }

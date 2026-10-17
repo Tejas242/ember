@@ -1,3 +1,5 @@
+//go:build render
+
 package island
 
 import (
@@ -13,7 +15,7 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
-// EDGE_PREVIEW=dir go test -run Preview ./island renders each state over a mock bar.
+// EMBER_PREVIEW=dir go test -tags render -count=1 -run Preview ./island renders each state over a mock bar.
 func TestPreview(t *testing.T) {
 	dir := os.Getenv("EMBER_PREVIEW")
 	if dir == "" {

@@ -1,3 +1,5 @@
+//go:build render
+
 package island
 
 import (
@@ -11,7 +13,7 @@ import (
 	"time"
 )
 
-// EMBER_PREVIEW=dir go test -run PreviewMoments ./island: the system moments, stacked.
+// EMBER_PREVIEW=dir go test -tags render -count=1 -run PreviewMoments ./island: the system moments, stacked.
 func TestPreviewMoments(t *testing.T) {
 	dir := os.Getenv("EMBER_PREVIEW")
 	if dir == "" {

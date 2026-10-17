@@ -1,3 +1,5 @@
+//go:build render
+
 package island
 
 import (
@@ -101,7 +103,7 @@ func sampleStats(now time.Time) *EdgeStats {
 	return &st
 }
 
-// EMBER_PREVIEW=dir go test -run PreviewDash ./island: edge's dashboard as
+// EMBER_PREVIEW=dir go test -tags render -count=1 -run PreviewDash ./island: edge's dashboard as
 // it opens, settled, with a day under the pointer, and from today's real
 // `edge stats` if EMBER_EDGE_STATS names a file.
 func TestPreviewDash(t *testing.T) {

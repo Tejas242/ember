@@ -1,3 +1,5 @@
+//go:build render
+
 package island
 
 import (

@@ -1,3 +1,5 @@
+//go:build render
+
 package island
 
 import (
@@ -12,7 +14,7 @@ import (
 	"time"
 )
 
-// EMBER_PREVIEW=dir go test -run PreviewBoard ./island: the card with
+// EMBER_PREVIEW=dir go test -tags render -count=1 -run PreviewBoard ./island: the card with
 // several sessions and their subagents, and the pill saying "Clauding…".
 func TestPreviewBoard(t *testing.T) {
 	dir := os.Getenv("EMBER_PREVIEW")

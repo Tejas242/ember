@@ -1,3 +1,5 @@
+//go:build render
+
 package island
 
 import (
@@ -15,7 +17,7 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
-// EMBER_MASCOT=dir [EMBER_BG=screenshot.png] go test -run MascotPreview ./island
+// EMBER_MASCOT=dir [EMBER_BG=screenshot.png] go test -tags render -count=1 -run MascotPreview ./island
 //
 // Ember up close: every pill state at its real 1× pixels (enlarged without
 // smoothing, so what you see is what the screen gets), and each act as a
