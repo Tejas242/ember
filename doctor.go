@@ -70,7 +70,7 @@ func doctor() {
 	}
 	note := func(what, detail string) { fmt.Printf("%s %-14s %s\n", yellow, what, detail) }
 
-	exe, _ := os.Executable()
+	exe, _ := executable() // the path install writes into the hooks
 	fmt.Printf("ember %s  %s\n\n", versionString(), exe)
 
 	active := exec.Command("systemctl", "--user", "is-active", "--quiet", "ember.service").Run() == nil
