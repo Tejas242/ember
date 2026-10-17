@@ -351,8 +351,9 @@ testing.
   polls.
 
 The code: `cmd/ember` is the command (install, doctor, the hook); `internal/island` is the island itself (state,
-drawing, Ember); `internal/wayland` is its Wayland client; `internal/ipc`, `internal/config` and `internal/xdg` are
-the socket protocol, the config file and the directories. `make check` runs everything CI does.
+drawing, Ember); `internal/wayland` is its Wayland client; `internal/source` holds the watchers (players, battery, volume, niri, …),
+each supervised and restarted on its own; `internal/ipc`, `internal/config` and `internal/xdg` are the socket
+protocol, the config file and the directories. `make check` runs everything CI does.
 
 ## Making the pictures
 
