@@ -1,67 +1,29 @@
 package island
 
 import (
-	"bufio"
-	"bytes"
 	"image"
-	"log"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"regexp"
 	"runtime/debug"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
-	"unsafe"
 
-	"github.com/godbus/dbus/v5"
+	"github.com/Tejas242/ember/internal/source"
 	xdraw "golang.org/x/image/draw"
-	"golang.org/x/sys/unix"
 )
 
 // System moments: battery, Bluetooth audio, volume, microphone, brightness,
-// screenshots. Each watcher sleeps until the system tells it something
-// changed, then posts to the main loop. Nothing polls.
+// screenshots. The watchers are in package source; these turn what they
+// say into moments.
 
-func startSystem(posts chan<- func(*app)) {
-	go watchBattery(posts)
-	go watchBluetooth(posts)
-	go watchVolume(posts)
-	go watchFiles(posts)
-	go watchShell(posts)
-}
-
-// watchShell notices the desktop shell (Noctalia) starting again: its new
-// bar is a newer surface on our layer and would cover the island, so the
-// island raises itself once the bar is up. Event-driven: the shell's D-Bus
-// names change owner when it restarts.
-func watchShell(posts chan<- func(*app)) {
-	bus, err := dbus.ConnectSessionBus()
-	if err != nil {
-		return
-	}
-	bus.AddMatchSignal(dbus.WithMatchInterface("org.freedesktop.DBus"), dbus.WithMatchMember("NameOwnerChanged"),
-		dbus.WithMatchArg0Namespace("dev.noctalia"))
-	sig := make(chan *dbus.Signal, 8)
-	bus.Signal(sig)
-	var last time.Time
-	for s := range sig {
-		if len(s.Body) < 3 {
-			continue
-		}
-		if owner, _ := s.Body[2].(string); owner == "" || time.Since(last) < 5*time.Second {
-			continue // a name going away, or the same restart's other names
-		}
-		last = time.Now()
-		go func() {
-			for _, d := range []time.Duration{1500 * time.Millisecond, 3 * time.Second} { // the bar maps a moment after the names
-				time.Sleep(d)
-				posts <- func(a *app) { a.raise("the shell restarted") }
-			}
-		}()
-	}
+func startSystem(emit source.Emit) {
+	go source.Battery(emit)
+	go source.Bluetooth(emit)
+	go source.Levels(emit)
+	go source.Backlight(emit)
+	go source.Screenshots(emit)
+	go source.Shell(emit)
+	go source.ShellSettings(emit)
 }
 
 // ---- battery (UPower) ----
@@ -71,47 +33,6 @@ type power struct {
 	state    uint32 // 1 charging, 2 discharging, 4 full, 5 pending charge
 	present  bool
 	tte, ttf int64 // seconds to empty / to full, 0 if unknown
-}
-
-func readPower(bus *dbus.Conn) (power, bool) {
-	obj := bus.Object("org.freedesktop.UPower", "/org/freedesktop/UPower/devices/DisplayDevice")
-	var props map[string]dbus.Variant
-	if err := obj.Call("org.freedesktop.DBus.Properties.GetAll", 0, "org.freedesktop.UPower.Device").Store(&props); err != nil {
-		return power{}, false
-	}
-	p := power{}
-	p.pct, _ = props["Percentage"].Value().(float64)
-	p.state, _ = props["State"].Value().(uint32)
-	p.present, _ = props["IsPresent"].Value().(bool)
-	p.tte, _ = props["TimeToEmpty"].Value().(int64)
-	p.ttf, _ = props["TimeToFull"].Value().(int64)
-	return p, p.present
-}
-
-func watchBattery(posts chan<- func(*app)) {
-	bus, err := dbus.ConnectSystemBus()
-	if err != nil {
-		return
-	}
-	last, ok := readPower(bus)
-	if !ok {
-		bus.Close()
-		return // a desktop: nothing to say
-	}
-	posts <- func(a *app) { a.ui.power = &last }
-	bus.AddMatchSignal(dbus.WithMatchInterface("org.freedesktop.DBus.Properties"), dbus.WithMatchMember("PropertiesChanged"),
-		dbus.WithMatchObjectPath("/org/freedesktop/UPower/devices/DisplayDevice"))
-	sig := make(chan *dbus.Signal, 8)
-	bus.Signal(sig)
-	for range sig {
-		p, ok := readPower(bus)
-		if !ok {
-			continue
-		}
-		prev := last
-		last = p
-		posts <- func(a *app) { a.ui.power = &p; a.powerChanged(prev, p) }
-	}
 }
 
 func charging(s uint32) bool { return s == 1 || s == 4 || s == 5 }
@@ -160,48 +81,6 @@ func pctText(p float64) string { return strconv.Itoa(int(p+0.5)) + "%" }
 
 // ---- Bluetooth audio (BlueZ) ----
 
-func watchBluetooth(posts chan<- func(*app)) {
-	bus, err := dbus.ConnectSystemBus()
-	if err != nil {
-		return
-	}
-	bus.AddMatchSignal(dbus.WithMatchInterface("org.freedesktop.DBus.Properties"), dbus.WithMatchMember("PropertiesChanged"),
-		dbus.WithMatchSender("org.bluez"), dbus.WithMatchPathNamespace("/org/bluez"), dbus.WithMatchArg(0, "org.bluez.Device1"))
-	sig := make(chan *dbus.Signal, 8)
-	bus.Signal(sig)
-	for s := range sig {
-		if len(s.Body) < 2 {
-			continue
-		}
-		changed, _ := s.Body[1].(map[string]dbus.Variant)
-		v, ok := changed["Connected"]
-		if !ok {
-			continue
-		}
-		on, _ := v.Value().(bool)
-		dev := bus.Object("org.bluez", s.Path)
-		str := func(prop string) string {
-			v, err := dev.GetProperty("org.bluez.Device1." + prop)
-			if err != nil {
-				return ""
-			}
-			x, _ := v.Value().(string)
-			return x
-		}
-		name, kind := str("Alias"), str("Icon")
-		pct := -1.0
-		if on { // the battery level shows up a moment after the link
-			time.Sleep(1500 * time.Millisecond)
-			if v, err := dev.GetProperty("org.bluez.Battery1.Percentage"); err == nil {
-				if b, ok := v.Value().(byte); ok {
-					pct = float64(b)
-				}
-			}
-		}
-		posts <- func(a *app) { a.deviceChanged(name, kind, on, pct) }
-	}
-}
-
 func (a *app) deviceChanged(name, kind string, on bool, pct float64) {
 	if !a.cfg.Devices {
 		return
@@ -229,73 +108,6 @@ type level struct {
 	v     float64
 	muted bool
 	ok    bool
-}
-
-var volRe = regexp.MustCompile(`Volume:\s*([0-9.]+)(\s*\[MUTED\])?`)
-
-func readLevel(target string) level {
-	out, err := exec.Command("wpctl", "get-volume", target).Output()
-	if err != nil {
-		return level{}
-	}
-	m := volRe.FindSubmatch(out)
-	if m == nil {
-		return level{}
-	}
-	v, _ := strconv.ParseFloat(string(m[1]), 64)
-	return level{v: v, muted: len(m[2]) > 0, ok: true}
-}
-
-func watchVolume(posts chan<- func(*app)) {
-	if _, err := exec.LookPath("pactl"); err != nil {
-		return
-	}
-	if _, err := exec.LookPath("wpctl"); err != nil {
-		return
-	}
-	for {
-		cmd := exec.Command("pactl", "subscribe")
-		out, err := cmd.StdoutPipe()
-		if err != nil || cmd.Start() != nil {
-			return
-		}
-		sink, src := readLevel("@DEFAULT_AUDIO_SINK@"), readLevel("@DEFAULT_AUDIO_SOURCE@")
-		first := sink
-		posts <- func(a *app) { a.ui.vol = first }
-		events := make(chan struct{}, 1)
-		go func() {
-			sc := bufio.NewScanner(out)
-			for sc.Scan() {
-				ln := sc.Text()
-				if strings.Contains(ln, "'change' on sink #") || strings.Contains(ln, "'change' on source #") || strings.Contains(ln, "on server") {
-					select {
-					case events <- struct{}{}:
-					default:
-					}
-				}
-			}
-			close(events)
-		}()
-		for range events {
-			time.Sleep(25 * time.Millisecond) // a key press sends a burst
-			select {
-			case <-events:
-			default:
-			}
-			ns, nm := readLevel("@DEFAULT_AUDIO_SINK@"), readLevel("@DEFAULT_AUDIO_SOURCE@")
-			if ns.ok && (ns.v != sink.v || ns.muted != sink.muted) {
-				l := ns
-				posts <- func(a *app) { a.volumeChanged(l) }
-			}
-			if nm.ok && src.ok && nm.muted != src.muted {
-				muted := nm.muted
-				posts <- func(a *app) { a.micChanged(muted) }
-			}
-			sink, src = ns, nm
-		}
-		cmd.Wait()
-		time.Sleep(3 * time.Second) // the sound server restarted
-	}
 }
 
 func (a *app) volumeChanged(l level) {
@@ -332,150 +144,7 @@ func (a *app) micChanged(muted bool) {
 	a.ui.Moment(m)
 }
 
-// ---- brightness and screenshots (inotify) ----
-
-func backlights() []string {
-	ds, _ := filepath.Glob("/sys/class/backlight/*")
-	return ds
-}
-
-func readInt(path string) int {
-	b, _ := os.ReadFile(path)
-	n, _ := strconv.Atoi(strings.TrimSpace(string(b)))
-	return n
-}
-
-// screenshotDirs is where screenshots land: Noctalia's setting, else the usual place.
-func screenshotDirs() []string {
-	h, _ := os.UserHomeDir()
-	dirs := []string{filepath.Join(h, "Pictures", "Screenshots")}
-	if out, err := exec.Command("noctalia", "config", "export").Output(); err == nil {
-		inShot := false
-		for _, ln := range strings.Split(string(out), "\n") {
-			ln = strings.TrimSpace(ln)
-			if strings.HasPrefix(ln, "[") {
-				inShot = strings.HasSuffix(ln, "screenshot]")
-				continue
-			}
-			if k, v, ok := strings.Cut(ln, "="); ok && inShot && strings.TrimSpace(k) == "directory" {
-				d := strings.Trim(strings.TrimSpace(v), `"`)
-				if strings.HasPrefix(d, "~/") {
-					d = filepath.Join(h, d[2:])
-				}
-				dirs = append([]string{d}, dirs...)
-			}
-		}
-	}
-	return dirs
-}
-
-func watchFiles(posts chan<- func(*app)) {
-	fd, err := unix.InotifyInit1(unix.IN_CLOEXEC)
-	if err != nil {
-		return
-	}
-	type watch struct {
-		dir   string
-		light bool
-		shell bool // Noctalia's settings and config: a change can rebuild the bar
-	}
-	wds := map[int32]watch{}
-	for _, d := range backlights() {
-		if wd, err := unix.InotifyAddWatch(fd, filepath.Join(d, "brightness"), unix.IN_MODIFY); err == nil {
-			wds[int32(wd)] = watch{dir: d, light: true}
-		}
-	}
-	seen := map[string]bool{}
-	for _, d := range screenshotDirs() {
-		if seen[d] {
-			continue
-		}
-		seen[d] = true
-		if wd, err := unix.InotifyAddWatch(fd, d, unix.IN_CLOSE_WRITE|unix.IN_MOVED_TO); err == nil {
-			wds[int32(wd)] = watch{dir: d}
-		}
-	}
-	h, _ := os.UserHomeDir()
-	for _, d := range []string{filepath.Join(h, ".config", "noctalia"), filepath.Join(h, ".local", "state", "noctalia")} {
-		if wd, err := unix.InotifyAddWatch(fd, d, unix.IN_CLOSE_WRITE|unix.IN_MOVED_TO); err == nil {
-			wds[int32(wd)] = watch{dir: d, shell: true}
-		}
-	}
-	if len(wds) == 0 {
-		unix.Close(fd)
-		return
-	}
-	var raiseAt time.Time
-	for _, d := range backlights() { // the starting level, quietly
-		if cur, top := readInt(filepath.Join(d, "brightness")), readInt(filepath.Join(d, "max_brightness")); top > 0 {
-			v := float64(cur) / float64(top)
-			posts <- func(a *app) { a.ui.light = v }
-			break
-		}
-	}
-	var mu sync.Mutex
-	lightDue := false
-	buf := make([]byte, 64<<10)
-	for {
-		n, err := unix.Read(fd, buf)
-		if err != nil {
-			if err == unix.EINTR {
-				continue
-			}
-			log.Println("inotify:", err)
-			return
-		}
-		for off := 0; off+unix.SizeofInotifyEvent <= n; {
-			ev := (*unix.InotifyEvent)(unsafe.Pointer(&buf[off]))
-			name := ""
-			if ev.Len > 0 {
-				raw := buf[off+unix.SizeofInotifyEvent : off+unix.SizeofInotifyEvent+int(ev.Len)]
-				name = string(bytes.TrimRight(raw, "\x00"))
-			}
-			off += unix.SizeofInotifyEvent + int(ev.Len)
-			w, ok := wds[ev.Wd]
-			if !ok {
-				continue
-			}
-			if w.shell {
-				// the settings window or a config edit: the bar may be rebuilt on top of us
-				if (name == "settings.toml" || strings.HasSuffix(name, ".toml") && strings.Contains(w.dir, ".config")) && time.Since(raiseAt) > 2*time.Second {
-					raiseAt = time.Now()
-					go func() {
-						for _, d := range []time.Duration{700 * time.Millisecond, 2 * time.Second} { // the bar rebuilds a moment later
-							time.Sleep(d)
-							posts <- func(a *app) { a.raise("the shell's settings changed") }
-						}
-					}()
-				}
-				continue
-			}
-			if w.light {
-				mu.Lock()
-				if !lightDue { // several writes per key press: show the last
-					lightDue = true
-					go func(dir string) {
-						time.Sleep(30 * time.Millisecond)
-						mu.Lock()
-						lightDue = false
-						mu.Unlock()
-						cur, top := readInt(filepath.Join(dir, "brightness")), readInt(filepath.Join(dir, "max_brightness"))
-						if top > 0 {
-							v := float64(cur) / float64(top)
-							posts <- func(a *app) { a.brightnessChanged(v) }
-						}
-					}(w.dir)
-				}
-				mu.Unlock()
-				continue
-			}
-			ext := strings.ToLower(filepath.Ext(name))
-			if ext == ".png" || ext == ".jpg" || ext == ".jpeg" {
-				go screenshotTaken(posts, filepath.Join(w.dir, name))
-			}
-		}
-	}
-}
+// ---- brightness and screenshots ----
 
 func (a *app) brightnessChanged(v float64) {
 	if a.ui.drag == "sys:light" {
@@ -542,49 +211,3 @@ func scaleThumb(src image.Image, w, h int) *image.RGBA {
 }
 
 // ---- controls (the System page) ----
-
-func setVolume(frac float64) {
-	exec.Command("wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", strconv.FormatFloat(max(0, min(1, frac)), 'f', 3, 64)).Run()
-}
-
-func nudgeVolume(dir int) {
-	step := "5%+"
-	if dir < 0 {
-		step = "5%-"
-	}
-	exec.Command("wpctl", "set-volume", "-l", "1", "@DEFAULT_AUDIO_SINK@", step).Run()
-}
-
-func toggleMute() { exec.Command("wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle").Run() }
-
-// setBrightness goes through logind, which lets the seat's user set it
-// without root. Never fully dark: the screen must stay readable.
-func setBrightness(frac float64) {
-	ds := backlights()
-	if len(ds) == 0 {
-		return
-	}
-	top := readInt(filepath.Join(ds[0], "max_brightness"))
-	if top <= 0 {
-		return
-	}
-	v := uint32(max(0.03, min(1, frac)) * float64(top))
-	bus, err := dbus.ConnectSystemBus()
-	if err != nil {
-		return
-	}
-	defer bus.Close()
-	bus.Object("org.freedesktop.login1", "/org/freedesktop/login1/session/auto").
-		Call("org.freedesktop.login1.Session.SetBrightness", 0, "backlight", filepath.Base(ds[0]), v)
-}
-
-func nudgeBrightness(dir int) {
-	ds := backlights()
-	if len(ds) == 0 {
-		return
-	}
-	cur, top := readInt(filepath.Join(ds[0], "brightness")), readInt(filepath.Join(ds[0], "max_brightness"))
-	if top > 0 {
-		setBrightness(float64(cur)/float64(top) + float64(dir)*0.05)
-	}
-}

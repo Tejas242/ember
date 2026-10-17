@@ -38,6 +38,32 @@ func (a *app) handle(e source.Event) {
 		a.castsChanged(e.N)
 	case source.NiriDown:
 		a.desk.live = false
+	case source.Power:
+		p := power{pct: e.Pct, state: e.State, present: e.Present, tte: e.TTE, ttf: e.TTF}
+		prev := a.ui.power
+		a.ui.power = &p
+		if !e.First && prev != nil {
+			a.powerChanged(*prev, p)
+		}
+	case source.Device:
+		a.deviceChanged(e.Name, e.Kind, e.On, e.Pct)
+	case source.Volume:
+		l := level{v: e.V, muted: e.Muted, ok: e.OK}
+		if e.First {
+			a.ui.vol = l
+		} else {
+			a.volumeChanged(l)
+		}
+	case source.Mic:
+		a.micChanged(e.Muted)
+	case source.Brightness:
+		if e.First {
+			a.ui.light = e.V
+		} else {
+			a.brightnessChanged(e.V)
+		}
+	case source.ShellChanged:
+		a.raise(e.Why)
 	case source.Screenshot:
 		if e.Path == "" {
 			a.screenshot("", nil)

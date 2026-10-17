@@ -188,7 +188,7 @@ func Run() error {
 	a.reloadConfig()
 	a.loadSessions()
 	a.music = startMusic(posts)
-	startSystem(posts)
+	startSystem(emitter(posts))
 	go source.Niri(emitter(posts))
 	frameDue := false
 	win.OnPointer = func(e wayland.PointerEvent) {
@@ -470,20 +470,20 @@ func (a *app) key(k string) {
 			a.focusSession(s.Pids)
 		}
 	case k == "sys:mute":
-		go toggleMute()
+		go source.ToggleMute()
 	case strings.HasPrefix(k, "sys:vol:nudge:"), strings.HasPrefix(k, "sys:light:nudge:"):
 		dir, _ := strconv.Atoi(k[strings.LastIndexByte(k, ':')+1:])
 		if strings.HasPrefix(k, "sys:vol") {
-			go nudgeVolume(dir)
+			go source.NudgeVolume(dir)
 		} else {
-			go nudgeBrightness(dir)
+			go source.NudgeBrightness(dir)
 		}
 	case strings.HasPrefix(k, "sys:vol:"):
 		f, _ := strconv.ParseFloat(strings.TrimPrefix(k, "sys:vol:"), 64)
-		go setVolume(f)
+		go source.SetVolume(f)
 	case strings.HasPrefix(k, "sys:light:"):
 		f, _ := strconv.ParseFloat(strings.TrimPrefix(k, "sys:light:"), 64)
-		go setBrightness(f)
+		go source.SetBrightness(f)
 	case strings.HasPrefix(k, "open:"):
 		go exec.Command("xdg-open", strings.TrimPrefix(k, "open:")).Run()
 	case strings.HasPrefix(k, "music:seek:") && a.track != nil:
