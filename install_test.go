@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -295,5 +296,32 @@ func TestInstallKeepsSettings(t *testing.T) {
 	}
 	if len(*calls) != 2 {
 		t.Fatalf("systemctl calls %q", *calls)
+	}
+}
+
+func TestUnitText(t *testing.T) {
+	u := unitText("/opt/ember/bin/ember")
+	unitSec, serviceSec, _ := strings.Cut(u, "[Service]")
+	for _, l := range []string{"StartLimitIntervalSec=60", "StartLimitBurst=5"} {
+		if !strings.Contains(unitSec, "\n"+l+"\n") {
+			t.Errorf("[Unit] lacks %s", l)
+		}
+	}
+	for _, l := range []string{"ExecStart=/opt/ember/bin/ember", "Restart=always", "RestartSec=3",
+		"RestartPreventExitStatus=78", "Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin"} {
+		if !strings.Contains(serviceSec, "\n"+l+"\n") {
+			t.Errorf("[Service] lacks %s", l)
+		}
+	}
+	if !strings.Contains(u, "[Install]\nWantedBy=graphical-session.target\n") {
+		t.Error("no [Install]")
+	}
+}
+
+// No Wayland is exit 78, the code the unit won't restart on.
+func TestRunExit(t *testing.T) {
+	if runExit(nil) != 0 || runExit(errors.New("boom")) != 1 ||
+		runExit(fmt.Errorf("%w at /run/x", island.ErrNoWayland)) != 78 || exNoWayland != 78 {
+		t.Fatal("wrong exit codes")
 	}
 }

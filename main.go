@@ -5,6 +5,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -179,11 +180,25 @@ func main() {
 }
 
 func runIsland([]string) int {
-	if err := island.Run(); err != nil {
+	err := island.Run()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "ember:", err)
-		return 1
 	}
-	return 0
+	return runExit(err)
+}
+
+// exNoWayland (EX_CONFIG) is the unit's RestartPreventExitStatus: with no
+// compositor, systemd stops instead of restarting the island forever.
+const exNoWayland = 78
+
+func runExit(err error) int {
+	switch {
+	case err == nil:
+		return 0
+	case errors.Is(err, island.ErrNoWayland):
+		return exNoWayland
+	}
+	return 1
 }
 
 func runInstall([]string) int {

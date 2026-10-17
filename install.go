@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,21 +15,29 @@ import (
 	"github.com/Tejas242/ember/island"
 )
 
-const unit = `[Unit]
+// unitText is the systemd user unit that runs exe. A crash restarts it, but
+// five starts within a minute stop trying, and exit 78 (no Wayland) never
+// restarts.
+func unitText(exe string) string {
+	return `[Unit]
 Description=Ember: a dynamic island for Claude Code, music and the clock
 PartOf=graphical-session.target
 After=graphical-session.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
-ExecStart=%s
+ExecStart=` + exe + `
 Restart=always
 RestartSec=3
-Environment=PATH=%%h/.local/bin:/usr/local/bin:/usr/bin
+RestartPreventExitStatus=` + strconv.Itoa(exNoWayland) + `
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin
 Environment=GOGC=50 GOMEMLIMIT=16MiB
 
 [Install]
 WantedBy=graphical-session.target
 `
+}
 
 // transient says why exe won't last, or "": a binary under the temp dir, in
 // Go's build cache or left by `go run` is gone by the next boot (or the next
@@ -109,7 +118,7 @@ func install(exe string) error {
 	if err := os.MkdirAll(filepath.Dir(u), 0o755); err != nil {
 		return err
 	}
-	if err := xdg.AtomicWrite(u, []byte(fmt.Sprintf(unit, exe)), 0o644); err != nil {
+	if err := xdg.AtomicWrite(u, []byte(unitText(exe)), 0o644); err != nil {
 		return err
 	}
 	for _, args := range [][]string{{"daemon-reload"}, {"enable", "ember.service"}, {"restart", "ember.service"}} {

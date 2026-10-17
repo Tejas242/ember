@@ -179,6 +179,9 @@ func parseBar(cfg string, b barLook) barLook {
 
 // Run opens the island and serves until the compositor goes away.
 func Run() error {
+	if err := waitWayland(); err != nil {
+		return err
+	}
 	posts := make(chan func(*app), 64)
 	if _, err := listen(posts); err != nil {
 		return err

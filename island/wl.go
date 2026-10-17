@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -40,7 +41,16 @@ type msg struct {
 	fds  []int
 }
 
-func dial() (*conn, error) {
+// ErrNoWayland: no compositor to draw on. The service doesn't restart on it
+// (the island exits 78, the unit's RestartPreventExitStatus): without a
+// graphical session there's nothing to retry.
+var ErrNoWayland = errors.New("no Wayland socket")
+
+// waylandWait is how long the island waits for the compositor's socket to
+// appear, for a session that is still starting.
+var waylandWait = 5 * time.Second
+
+func waylandSocket() string {
 	name := os.Getenv("WAYLAND_DISPLAY")
 	if name == "" {
 		name = "wayland-0"
@@ -48,6 +58,24 @@ func dial() (*conn, error) {
 	if !filepath.IsAbs(name) {
 		name = filepath.Join(os.Getenv("XDG_RUNTIME_DIR"), name)
 	}
+	return name
+}
+
+// waitWayland returns once the compositor's socket exists, or ErrNoWayland.
+func waitWayland() error {
+	name := waylandSocket()
+	for deadline := time.Now().Add(waylandWait); ; time.Sleep(100 * time.Millisecond) {
+		if _, err := os.Stat(name); err == nil {
+			return nil
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("%w at %s: not starting without a graphical session", ErrNoWayland, name)
+		}
+	}
+}
+
+func dial() (*conn, error) {
+	name := waylandSocket()
 	s, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: name, Net: "unix"})
 	if err != nil {
 		return nil, err
