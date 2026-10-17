@@ -11,7 +11,7 @@ GOVULNCHECK := golang.org/x/vuln/cmd/govulncheck@v1.4.0
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null)
 
 build:
-	CGO_ENABLED=0 go build -trimpath -ldflags='-s -w -X main.version=$(VERSION)' -o ember .
+	CGO_ENABLED=0 go build -trimpath -ldflags='-s -w -X main.version=$(VERSION)' -o ember ./cmd/ember
 
 # builds, installs the binary, then sets up the service, Claude Code's hooks and the config
 install: build

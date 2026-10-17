@@ -114,7 +114,7 @@ func TestPatchSettingsFixture(t *testing.T) {
 
 // The README shows the config file exactly as install writes it.
 func TestReadmeConfig(t *testing.T) {
-	b, err := os.ReadFile("README.md")
+	b, err := os.ReadFile("../../README.md")
 	if err != nil {
 		t.Fatal(err)
 	}
