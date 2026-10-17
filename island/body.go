@@ -150,7 +150,7 @@ func (b *body) add(p particle) {
 // (px/s, at s = 16): a change in it is felt as inertia.
 func (b *body) step(dt, slotV float64) {
 	b.acc += math.Min(dt, 0.5)
-	for b.acc >= physStep {
+	for b.acc >= physStep-1e-9 { // a hair of slack: 1/6 s is 40 steps, not 39 and a remainder
 		b.acc -= physStep
 		b.tick(physStep, slotV)
 	}
@@ -173,7 +173,7 @@ func (b *body) tick(h, slotV float64) {
 		if b.y <= 0 { // landing: it squashes by how hard it hit, and maybe bounces once, small
 			impact := -b.vy
 			b.y = 0
-			b.sq.v -= impact * 0.07
+			b.sq.v -= impact * 0.12
 			b.tipH.v -= impact * 0.02
 			b.tip.v += impact * 0.02 * sign64(b.lean.x)
 			if impact > 30 {
@@ -194,7 +194,7 @@ func (b *body) tick(h, slotV float64) {
 	b.sq.x = math.Max(0.55, math.Min(1.6, b.sq.x))
 
 	la := b.lean.v
-	b.lean.step(b.leanRest, 150, 0.42, -b.slotA*0.011, h)
+	b.lean.step(b.leanRest, 150, 0.42, -b.slotA*0.03, h)
 	b.tip.step(0, 80, 0.32, -(b.lean.v-la)/h*0.35, h)
 	b.tipH.step(0, 260, 0.38, 0, h)
 	b.core.step(1, 200, 0.55, 0, h)
