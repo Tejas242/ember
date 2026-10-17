@@ -161,6 +161,8 @@ git clone https://github.com/Tejas242/ember && cd ember
 make install
 ```
 
+Or with Go alone: `go install github.com/Tejas242/ember/cmd/ember@latest`, then `ember install`.
+
 `make install` puts the binary in `~/.local/bin` and runs `ember install`. That command:
 - writes and starts `ember.service` (a systemd user service that starts with your session);
 - adds Ember's hooks to `~/.claude/settings.json`, keeping a backup at `settings.json.pre-ember` and leaving your
