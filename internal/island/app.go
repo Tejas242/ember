@@ -17,6 +17,7 @@ import (
 
 	"github.com/Tejas242/ember/internal/config"
 	"github.com/Tejas242/ember/internal/ipc"
+	"github.com/Tejas242/ember/internal/source"
 	"github.com/Tejas242/ember/internal/wayland"
 	"github.com/Tejas242/ember/internal/xdg"
 )
@@ -188,7 +189,7 @@ func Run() error {
 	a.loadSessions()
 	a.music = startMusic(posts)
 	startSystem(posts)
-	go watchNiri(posts)
+	go source.Niri(emitter(posts))
 	frameDue := false
 	win.OnPointer = func(e wayland.PointerEvent) {
 		redraw, hand := a.ui.pointer(fromWayland(e))

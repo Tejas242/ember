@@ -1,147 +1,29 @@
 package island
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
-	"net"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/Tejas242/ember/internal/source"
 )
 
-// The desktop as niri sees it, kept current by `niri msg -j event-stream`:
-// which window has focus (so "Done" stays quiet while you're looking), what
-// each terminal is titled (Claude names its sessions there), and whether
-// the screen is being cast.
+// The desktop as niri sees it, kept current by its event stream (package
+// source): which window has focus (so "Done" stays quiet while you're
+// looking), what each terminal is titled (Claude names its sessions there),
+// and whether the screen is being cast.
 
-type deskWindow struct {
-	ID      int    `json:"id"`
-	Title   string `json:"title"`
-	AppID   string `json:"app_id"`
-	Pid     int    `json:"pid"`
-	Focused bool   `json:"is_focused"`
-}
+type deskWindow = source.Window
 
 type desktop struct {
 	live    bool // the stream is up
 	windows map[int]deskWindow
 	focused int
 	casts   int
-}
-
-// niriSocket is niri's IPC socket: $NIRI_SOCKET, else the one in the runtime dir.
-func niriSocket() string {
-	if s := os.Getenv("NIRI_SOCKET"); s != "" {
-		return s
-	}
-	ms, _ := filepath.Glob(filepath.Join(os.Getenv("XDG_RUNTIME_DIR"), "niri.*.sock"))
-	if len(ms) > 0 {
-		return ms[len(ms)-1]
-	}
-	return ""
-}
-
-func watchNiri(posts chan<- func(*app)) {
-	for {
-		if sock := niriSocket(); sock != "" {
-			streamNiri(posts, sock)
-			posts <- func(a *app) { a.desk.live = false }
-		}
-		time.Sleep(5 * time.Second) // niri restarted, or isn't the compositor
-	}
-}
-
-// streamNiri speaks niri's IPC directly (no `niri msg` process): ask for
-// the event stream, then read one JSON event per line.
-func streamNiri(posts chan<- func(*app), sock string) {
-	c, err := net.Dial("unix", sock)
-	if err != nil {
-		return
-	}
-	defer c.Close()
-	if _, err := c.Write([]byte("\"EventStream\"\n")); err != nil {
-		return
-	}
-	sc := bufio.NewScanner(c)
-	sc.Buffer(make([]byte, 64<<10), 8<<20)
-	for sc.Scan() {
-		var ev struct {
-			WindowsChanged *struct {
-				Windows []deskWindow `json:"windows"`
-			}
-			WindowOpenedOrChanged *struct {
-				Window deskWindow `json:"window"`
-			}
-			WindowClosed *struct {
-				ID int `json:"id"`
-			}
-			WindowFocusChanged *struct {
-				ID *int `json:"id"`
-			}
-			CastsChanged *struct {
-				Casts []json.RawMessage `json:"casts"`
-			}
-			ScreenshotCaptured *struct {
-				Path *string `json:"path"`
-			}
-		}
-		if json.Unmarshal(sc.Bytes(), &ev) != nil {
-			continue
-		}
-		switch {
-		case ev.WindowsChanged != nil:
-			ws := ev.WindowsChanged.Windows
-			posts <- func(a *app) {
-				a.desk.live, a.desk.windows, a.desk.focused = true, map[int]deskWindow{}, 0
-				for _, w := range ws {
-					a.desk.windows[w.ID] = w
-					if w.Focused {
-						a.desk.focused = w.ID
-					}
-				}
-				a.deskChanged()
-			}
-		case ev.WindowOpenedOrChanged != nil:
-			w := ev.WindowOpenedOrChanged.Window
-			posts <- func(a *app) {
-				if a.desk.windows == nil {
-					a.desk.windows = map[int]deskWindow{}
-				}
-				a.desk.windows[w.ID] = w
-				if w.Focused {
-					a.desk.focused = w.ID
-				}
-				a.deskChanged()
-			}
-		case ev.WindowClosed != nil:
-			id := ev.WindowClosed.ID
-			posts <- func(a *app) { delete(a.desk.windows, id); a.quiet = true }
-		case ev.WindowFocusChanged != nil:
-			id := 0
-			if ev.WindowFocusChanged.ID != nil {
-				id = *ev.WindowFocusChanged.ID
-			}
-			posts <- func(a *app) { a.desk.focused = id; a.deskChanged() }
-		case ev.CastsChanged != nil:
-			n := len(ev.CastsChanged.Casts)
-			posts <- func(a *app) { a.castsChanged(n) }
-		case ev.ScreenshotCaptured != nil:
-			path := ""
-			if p := ev.ScreenshotCaptured.Path; p != nil {
-				path = *p
-			}
-			if path != "" {
-				go screenshotTaken(posts, path)
-			} else {
-				posts <- func(a *app) { a.screenshot("", nil) }
-			}
-		}
-	}
 }
 
 // sessionTitle is the topic Claude Code puts in its terminal's title

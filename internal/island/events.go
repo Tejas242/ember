@@ -1,0 +1,48 @@
+package island
+
+import "github.com/Tejas242/ember/internal/source"
+
+// emitter turns the sources' events into posts on the island's loop.
+func emitter(posts chan<- func(*app)) source.Emit {
+	return func(e source.Event) { posts <- func(a *app) { a.handle(e) } }
+}
+
+// handle applies one event from a source, on the loop.
+func (a *app) handle(e source.Event) {
+	switch e := e.(type) {
+	case source.NiriWindows:
+		a.desk.live, a.desk.windows, a.desk.focused = true, map[int]deskWindow{}, 0
+		for _, w := range e.Windows {
+			a.desk.windows[w.ID] = w
+			if w.Focused {
+				a.desk.focused = w.ID
+			}
+		}
+		a.deskChanged()
+	case source.NiriWindow:
+		if a.desk.windows == nil {
+			a.desk.windows = map[int]deskWindow{}
+		}
+		a.desk.windows[e.Window.ID] = e.Window
+		if e.Window.Focused {
+			a.desk.focused = e.Window.ID
+		}
+		a.deskChanged()
+	case source.NiriWindowClosed:
+		delete(a.desk.windows, e.ID)
+		a.quiet = true
+	case source.NiriFocus:
+		a.desk.focused = e.ID
+		a.deskChanged()
+	case source.NiriCasts:
+		a.castsChanged(e.N)
+	case source.NiriDown:
+		a.desk.live = false
+	case source.Screenshot:
+		if e.Path == "" {
+			a.screenshot("", nil)
+		} else {
+			go screenshotTaken(a.posts, e.Path) // decoding is slow: off the loop
+		}
+	}
+}
