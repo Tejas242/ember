@@ -125,6 +125,7 @@ func TestReadmeConfig(t *testing.T) {
 // install refuses a binary that won't survive a reboot or a go clean.
 func TestTransient(t *testing.T) {
 	sandbox(t)
+	fakeSystemctl(t)
 	t.Setenv("TMPDIR", "/scratch/tmp")
 	for exe, bad := range map[string]bool{
 		"/tmp/go-build1234/b001/exe/ember":        true,
@@ -186,5 +187,113 @@ func TestHookTable(t *testing.T) {
 	}
 	if !strings.Contains(string(out), `"timeout": 100`) {
 		t.Fatal("the request hooks' timeout isn't AskTimeout+10s")
+	}
+}
+
+// fakeSystemctl stands in for systemctl --user and records what it was asked.
+func fakeSystemctl(t *testing.T) *[]string {
+	t.Helper()
+	var calls []string
+	old := systemctl
+	systemctl = func(args ...string) ([]byte, error) { calls = append(calls, strings.Join(args, " ")); return nil, nil }
+	t.Cleanup(func() { systemctl = old })
+	return &calls
+}
+
+func TestInstallNoClaude(t *testing.T) {
+	h := sandbox(t)
+	calls := fakeSystemctl(t)
+	exe := "/opt/ember/bin/ember"
+	if err := install(exe); err != nil {
+		t.Fatal(err)
+	}
+	if fileExists(filepath.Join(h, ".claude")) {
+		t.Fatal("install made a ~/.claude for a Claude Code that isn't there")
+	}
+	u, err := os.ReadFile(filepath.Join(h, ".config", "systemd", "user", "ember.service"))
+	if err != nil || !strings.Contains(string(u), "ExecStart="+exe+"\n") {
+		t.Fatalf("service: %v %q", err, u)
+	}
+	if c, err := os.ReadFile(filepath.Join(h, ".config", "ember", "config.toml")); err != nil || string(c) != island.DefaultConfigText {
+		t.Fatalf("config: %v", err)
+	}
+	if strings.Join(*calls, ";") != "daemon-reload;enable ember.service;restart ember.service" {
+		t.Fatalf("systemctl calls %q", *calls)
+	}
+}
+
+func TestInstallCreatesSettings(t *testing.T) {
+	h := sandbox(t)
+	fakeSystemctl(t)
+	os.MkdirAll(filepath.Join(h, ".claude"), 0o755)
+	exe := "/opt/ember/bin/ember"
+	if err := install(exe); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(h, ".claude", "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, stale := hookCountIn(raw, exe); n != len(emberHooks) || stale != 0 {
+		t.Fatalf("%d hooks (%d stale)", n, stale)
+	}
+	if fileExists(filepath.Join(h, ".claude", "settings.json.pre-ember")) {
+		t.Fatal("backed up a file that didn't exist")
+	}
+}
+
+func TestInstallKeepsSettings(t *testing.T) {
+	h := sandbox(t)
+	fakeSystemctl(t)
+	settings := filepath.Join(h, ".claude", "settings.json")
+	os.MkdirAll(filepath.Dir(settings), 0o755)
+	os.WriteFile(settings, []byte(settingsFixture), 0o600)
+	cfg := filepath.Join(h, ".config", "ember", "config.toml")
+	os.MkdirAll(filepath.Dir(cfg), 0o755)
+	os.WriteFile(cfg, []byte("clock = \"24h\"\n"), 0o644)
+
+	exe := "/opt/ember/bin/ember"
+	if err := install(exe); err != nil {
+		t.Fatal(err)
+	}
+	if fi, _ := os.Stat(settings); fi.Mode().Perm() != 0o600 {
+		t.Fatalf("settings mode became %v", fi.Mode().Perm())
+	}
+	if b, _ := os.ReadFile(settings + ".pre-ember"); string(b) != settingsFixture {
+		t.Fatal("no backup of the original")
+	}
+	raw, _ := os.ReadFile(settings)
+	if n, stale := hookCountIn(raw, exe); n != len(emberHooks) || stale != 0 || !strings.Contains(string(raw), "edge hook") {
+		t.Fatalf("%d hooks (%d stale): %s", n, stale, raw)
+	}
+	if b, _ := os.ReadFile(cfg); string(b) != "clock = \"24h\"\n" {
+		t.Fatal("overwrote the config")
+	}
+	if es, _ := os.ReadDir(filepath.Dir(settings)); len(es) != 2 {
+		t.Fatalf("left temp files: %v", es)
+	}
+
+	os.WriteFile(settings, []byte("{not json"), 0o600) // a broken file is left alone
+	if err := install(exe); err == nil {
+		t.Fatal("installed over settings it couldn't read")
+	}
+	if b, _ := os.ReadFile(settings); string(b) != "{not json" {
+		t.Fatal("touched a settings file it couldn't parse")
+	}
+	os.WriteFile(settings, raw, 0o600)
+
+	calls := fakeSystemctl(t)
+	if err := uninstall(); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ = os.ReadFile(settings)
+	if n, _ := hookCountIn(raw, exe); n != 0 || !strings.Contains(string(raw), "edge hook") {
+		t.Fatalf("uninstall left %d hooks: %s", n, raw)
+	}
+	if fileExists(filepath.Join(h, ".config", "systemd", "user", "ember.service")) || !fileExists(cfg) {
+		t.Fatal("uninstall must remove the service and keep the config")
+	}
+	if len(*calls) != 2 {
+		t.Fatalf("systemctl calls %q", *calls)
 	}
 }

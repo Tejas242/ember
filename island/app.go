@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Tejas242/ember/internal/xdg"
 )
 
 const (
@@ -1091,7 +1093,7 @@ func sessionsPath() string { return filepath.Join(filepath.Dir(SockPath()), "emb
 func (a *app) saveSessions() {
 	b, err := json.Marshal(a.ui.sessions)
 	if err == nil {
-		os.WriteFile(sessionsPath(), b, 0o600)
+		xdg.AtomicWrite(sessionsPath(), b, 0o600)
 	}
 }
 

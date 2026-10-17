@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Tejas242/ember/internal/xdg"
 	"github.com/Tejas242/ember/island"
 )
 
@@ -63,45 +64,56 @@ func executable() (string, error) {
 	return exe, nil
 }
 
+// systemctl runs `systemctl --user`; tests replace it.
+var systemctl = func(args ...string) ([]byte, error) {
+	return exec.Command("systemctl", append([]string{"--user"}, args...)...).CombinedOutput()
+}
+
+// unitPath is where systemd looks for the user's own units.
+func unitPath() string {
+	d := os.Getenv("XDG_CONFIG_HOME")
+	if d == "" {
+		h, _ := os.UserHomeDir()
+		d = filepath.Join(h, ".config")
+	}
+	return filepath.Join(d, "systemd", "user", "ember.service")
+}
+
+func settingsPath() string {
+	h, _ := os.UserHomeDir()
+	return filepath.Join(h, ".claude", "settings.json")
+}
+
 func install(exe string) error {
 	if why := transient(exe); why != "" {
 		return fmt.Errorf("won't install %s: %s, so it won't last.\n"+
 			"Install a lasting copy instead: make install (it puts ember in ~/.local/bin and runs ember install from there)", exe, why)
 	}
-	h, _ := os.UserHomeDir()
-	settings := filepath.Join(h, ".claude", "settings.json")
-	raw, err := os.ReadFile(settings)
-	if err != nil {
+	if err := installHooks(settingsPath(), exe); err != nil {
 		return err
 	}
-	if _, err := os.Stat(settings + ".pre-ember"); os.IsNotExist(err) {
-		os.WriteFile(settings+".pre-ember", raw, 0o644)
-	}
-	out, err := patchSettings(raw, exe, true)
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(settings, out, 0o644); err != nil {
-		return err
-	}
-	fmt.Println("hooks →", settings, "(backup: settings.json.pre-ember)")
 
-	if cfg := island.ConfigPath(); !mtimeOK(cfg) {
-		os.MkdirAll(filepath.Dir(cfg), 0o755)
-		if err := os.WriteFile(cfg, []byte(island.DefaultConfigText), 0o644); err == nil {
-			fmt.Println("config →", cfg)
+	if cfg := island.ConfigPath(); !fileExists(cfg) {
+		if err := os.MkdirAll(filepath.Dir(cfg), 0o755); err != nil {
+			return err
 		}
+		if err := xdg.AtomicWrite(cfg, []byte(island.DefaultConfigText), 0o644); err != nil {
+			return err
+		}
+		fmt.Println("config →", cfg)
 	} else {
 		fmt.Println("config kept:", cfg, "(ember doctor lists any new settings)")
 	}
 
-	dir := filepath.Join(h, ".config", "systemd", "user")
-	os.MkdirAll(dir, 0o755)
-	if err := os.WriteFile(filepath.Join(dir, "ember.service"), []byte(fmt.Sprintf(unit, exe)), 0o644); err != nil {
+	u := unitPath()
+	if err := os.MkdirAll(filepath.Dir(u), 0o755); err != nil {
+		return err
+	}
+	if err := xdg.AtomicWrite(u, []byte(fmt.Sprintf(unit, exe)), 0o644); err != nil {
 		return err
 	}
 	for _, args := range [][]string{{"daemon-reload"}, {"enable", "ember.service"}, {"restart", "ember.service"}} {
-		if o, err := exec.Command("systemctl", append([]string{"--user"}, args...)...).CombinedOutput(); err != nil {
+		if o, err := systemctl(args...); err != nil {
 			return fmt.Errorf("systemctl %v: %v: %s", args, err, o)
 		}
 	}
@@ -109,25 +121,55 @@ func install(exe string) error {
 	return nil
 }
 
-func mtimeOK(p string) bool { _, err := os.Stat(p); return err == nil }
+// installHooks puts Ember's hooks in Claude Code's settings, creating the
+// file if Claude hasn't yet, and backs the first version it saw up once.
+// Without a ~/.claude at all there's no Claude Code to hook: it says so and
+// skips them.
+func installHooks(settings, exe string) error {
+	if _, err := os.Stat(filepath.Dir(settings)); os.IsNotExist(err) {
+		fmt.Println("hooks skipped: no", filepath.Dir(settings), "(no Claude Code yet). Run ember install again once it's set up.")
+		return nil
+	}
+	raw, err := os.ReadFile(settings)
+	switch {
+	case os.IsNotExist(err):
+		raw = []byte("{}")
+	case err != nil:
+		return err
+	default:
+		if !fileExists(settings + ".pre-ember") {
+			if err := xdg.AtomicWrite(settings+".pre-ember", raw, 0o600); err != nil {
+				return err
+			}
+		}
+	}
+	out, err := patchSettings(raw, exe, true)
+	if err != nil {
+		return fmt.Errorf("%s: %w (left as it was)", settings, err)
+	}
+	if err := xdg.AtomicWrite(settings, out, 0o644); err != nil {
+		return err
+	}
+	fmt.Println("hooks →", settings, "(backup: settings.json.pre-ember)")
+	return nil
+}
 
 // uninstall removes Ember's hooks and its service; the config stays.
 func uninstall() error {
-	h, _ := os.UserHomeDir()
-	settings := filepath.Join(h, ".claude", "settings.json")
+	settings := settingsPath()
 	if raw, err := os.ReadFile(settings); err == nil {
 		out, err := patchSettings(raw, "", false)
 		if err != nil {
-			return err
+			return fmt.Errorf("%s: %w (left as it was)", settings, err)
 		}
-		if err := os.WriteFile(settings, out, 0o644); err != nil {
+		if err := xdg.AtomicWrite(settings, out, 0o644); err != nil {
 			return err
 		}
 		fmt.Println("hooks removed from", settings)
 	}
-	exec.Command("systemctl", "--user", "disable", "--now", "ember.service").Run()
-	os.Remove(filepath.Join(h, ".config", "systemd", "user", "ember.service"))
-	exec.Command("systemctl", "--user", "daemon-reload").Run()
+	systemctl("disable", "--now", "ember.service")
+	os.Remove(unitPath())
+	systemctl("daemon-reload")
 	fmt.Println("service stopped and removed. Your config stays at", island.ConfigPath())
 	return nil
 }

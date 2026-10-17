@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Tejas242/ember/internal/xdg"
 )
 
 // Ember's mind: the few models that make the island feel alive. All of them
@@ -335,7 +337,7 @@ func (h *habits) save() {
 	h.dirty = false
 	os.MkdirAll(filepath.Dir(habitsPath()), 0o755)
 	if b, err := json.Marshal(h); err == nil {
-		os.WriteFile(habitsPath(), b, 0o644)
+		xdg.AtomicWrite(habitsPath(), b, 0o644)
 	}
 }
 

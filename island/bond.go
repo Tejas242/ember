@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"time"
+
+	"github.com/Tejas242/ember/internal/xdg"
 )
 
 // ---- Ember's character: what it remembers, and when it may play ----
@@ -65,7 +67,7 @@ func (b *bond) save() {
 	b.dirty = false
 	os.MkdirAll(filepath.Dir(bondPath()), 0o755)
 	if data, err := json.Marshal(b); err == nil {
-		os.WriteFile(bondPath(), data, 0o644)
+		xdg.AtomicWrite(bondPath(), data, 0o644)
 	}
 }
 
