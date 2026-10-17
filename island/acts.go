@@ -577,7 +577,9 @@ func (u *UI) drawEmber(t float64, now time.Time) {
 	f := u.emberFire()
 	base := y + 0.45*s
 	if !m.asleep { // the light it casts on the island, brighter with its energy
-		u.cv.glowInside(u.emberRect(), x, base-s*0.45, s*1.5, f.mid, 0.08+0.16*m.arousal+0.25*float64(ps.flash))
+		gy, gr := base-s*0.45, s*1.5
+		r := image.Rect(int(x-gr), int(gy-gr), int(x+gr)+1, int(gy+gr)+1).Intersect(u.emberRect())
+		u.cv.glowInside(r, x, gy, gr, f.mid, 0.08+0.16*m.arousal+0.25*float64(ps.flash))
 	}
 	g := newGeo(x, base, s, ps)
 	u.cv.drawFlame(u.pal, x, base, s, ps, f, 1)

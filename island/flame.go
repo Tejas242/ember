@@ -200,7 +200,18 @@ func smoothstep(e0, e1, x float32) float32 {
 	return t * t * (3 - 2*t)
 }
 
-func lerpCol(a, b color.NRGBA, t float32) color.NRGBA { return mix(a, b, float64(t)) }
+// lerpCol mixes two colours, t 0..1, in integers: it runs for every pixel of Ember.
+func lerpCol(a, b color.NRGBA, t float32) color.NRGBA {
+	k := int32(t * 256)
+	if k <= 0 {
+		return a
+	}
+	if k >= 256 {
+		return b
+	}
+	l := func(x, y uint8) uint8 { return uint8((int32(x)*(256-k) + int32(y)*k) >> 8) }
+	return color.NRGBA{l(a.R, b.R), l(a.G, b.G), l(a.B, b.B), l(a.A, b.A)}
+}
 
 // drawFlame draws Ember standing on (cx, base), s tall, in fire f.
 func (c *canvas) drawFlame(p palette, cx, base, s float32, ps pose, f fire, a float64) {
@@ -224,15 +235,21 @@ func (c *canvas) drawFlame(p palette, cx, base, s float32, ps pose, f fire, a fl
 	x0, y0, x1, y1 := bounds(out[:])
 	top, h := y0, max(g.base-y0, 1)
 	r := g.s / 1.1 * 0.36
+	rowY, invR := float32(-1), 1/r
+	var rowCol color.NRGBA
+	var v, mid, side float32
 	c.fillShade(x0, y0, x1, y1, func(x, y float32) color.NRGBA {
-		v := (g.base - y) / h // 0 at its base … 1 at the tip
-		col := lerpCol(f.hot, f.mid, smoothstep(0, 0.32, v))
-		col = lerpCol(col, f.tip, smoothstep(0.58, 1.05, v))
-		// rounder: the sides fall off toward the tip colour
-		if e := smoothstep(0.62, 1.2, abs32(x-g.cx-ps.lean*g.k*v)/r) * 0.24 * (1 - v/2); e > 0 {
-			col = lerpCol(col, f.tip, e)
+		if y != rowY { // the gradient runs up the flame: work it out once a row
+			rowY = y
+			v = (g.base - y) / h // 0 at its base … 1 at the tip
+			rowCol = lerpCol(lerpCol(f.hot, f.mid, smoothstep(0, 0.32, v)), f.tip, smoothstep(0.58, 1.05, v))
+			mid, side = g.cx+ps.lean*g.k*v, 0.24*(1-v/2)
 		}
-		return col
+		// rounder: the sides fall off toward the tip colour
+		if d := abs32(x-mid) * invR; d > 0.62 {
+			return lerpCol(rowCol, f.tip, smoothstep(0.62, 1.2, d)*side)
+		}
+		return rowCol
 	}, cubicPath(out[:]))
 	_ = top
 
@@ -242,8 +259,7 @@ func (c *canvas) drawFlame(p palette, cx, base, s float32, ps pose, f fire, a fl
 	ih := max(iy1-iy0, 1)
 	glowTop := mix(f.hot, f.mid, 0.45)
 	c.fillShade(ix0, iy0, ix1, iy1, func(x, y float32) color.NRGBA {
-		v := (iy1 - y) / ih
-		return lerpCol(f.hot, glowTop, smoothstep(0.35, 1, v))
+		return lerpCol(f.hot, glowTop, smoothstep(0.35, 1, (iy1-y)/ih))
 	}, cubicPath(in[:]))
 
 	c.drawFace(p, g, f, a)
