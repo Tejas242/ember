@@ -103,6 +103,9 @@ func (m *mind) baseline(now time.Time, s senses) (arousal, valence float64) {
 	a *= circ
 	if m.away {
 		a = 0.06
+		if s.working { // keeping watch: Claude works while you're away, so Ember stays up
+			a = 0.4
+		}
 	}
 	v := 0.15
 	if s.music {

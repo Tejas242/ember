@@ -224,7 +224,11 @@ var (
 )
 
 const (
-	pillEnd  = 10 // the pill's ends
+	emberPill = 16 // Ember's height in the pill (of its 22 px)
+	emberKnob = 11 // and riding a meter, at its lowest
+	emberCard = 24 // atop the card's rail
+	emberGap  = 6  // between Ember and what it shows beside it
+	pillEnd   = 10 // the pill's ends
 	leadW    = 16 // the leading glyph's slot
 	leadGap  = 8
 	maxSub   = 160 // secondary words, at most
@@ -239,13 +243,32 @@ func (u *UI) pillLayout(l line, h float32) (left, right []seg, w float32) {
 	base := cy + 4.5
 	m := l.m
 
-	// the lead: Ember, the cover, a moment's icon or a screenshot
+	// the lead: Ember, always, and beside it what it's showing you (the
+	// cover, a moment's icon, a screenshot). On a meter Ember leaves its slot
+	// and rides the level as its knob.
+	knob := m != nil && m.meter
 	leadSlot := float32(leadW)
-	if m != nil && m.thumb != nil {
-		leadSlot = float32(m.thumb.Rect.Dx())
+	switch {
+	case knob:
+	case m != nil && m.thumb != nil:
+		leadSlot += emberGap + float32(m.thumb.Rect.Dx())
+	case m != nil:
+		leadSlot += emberGap + 16
+	case l.music && u.art != nil:
+		leadSlot += emberGap + 20
 	}
 	left = append(left, seg{w: leadSlot, draw: func(x float32) {
+		home := emberSpot{x: x + 8, y: cy + 1, s: emberPill, mood: l.mood, show: true}
+		u.spot = home
+		u.hits = append(u.hits, hit{image.Rect(int(x-2), 0, int(x+leadW+2), int(h)), "ember"}) // poke it
+		ix := x + leadW + emberGap // what Ember shows sits beside it
 		switch {
+		case knob && m.key == "osd:volume" && m.icon != "mute": // its waves follow the level
+			volumeGlyph(u.dc, x+8, cy, 15, float32(u.meter.x), m.tint)
+		case knob && m.icon == "sun": // its rays reach out with the brightness
+			sunGlyph(u.dc, x+8, cy, 15, float32(u.meter.x), m.tint)
+		case knob:
+			u.dc.icon(m.icon, x+8, cy, 15, m.tint)
 		case m != nil && m.thumb != nil:
 			th := m.thumb.Rect
 			drop := 0.0 // the preview drops into place
@@ -253,34 +276,24 @@ func (u *UI) pillLayout(l line, h float32) (left, right []seg, w float32) {
 				drop, u.tweening = 1-easeOut(k), true
 			}
 			ty := int(cy+0.5) - th.Dy()/2 - int(math.Round(9*drop))
-			draw.Draw(u.dc.img, th.Add(image.Pt(int(x), ty)), m.thumb, image.Point{}, draw.Over)
-			u.dc.frame(x, float32(ty), float32(th.Dx()), float32(th.Dy()), 3.5, 1, alpha(p.fg, 0.22))
-			u.spot = emberSpot{x: x + float32(th.Dx())/2, y: cy, s: 0, mood: moodIdle, show: true}
-		case m != nil && m.key == "osd:volume" && m.icon != "mute": // its waves follow the level
-			volumeGlyph(u.dc, x+8, cy, 15, float32(u.meter.x), m.tint)
-			u.spot = emberSpot{x: x + 8, y: cy + 1, s: 0, mood: l.mood, show: true}
-		case m != nil && m.icon == "sun": // its rays reach out with the brightness
-			sunGlyph(u.dc, x+8, cy, 15, float32(u.meter.x), m.tint)
-			u.spot = emberSpot{x: x + 8, y: cy + 1, s: 0, mood: l.mood, show: true}
+			draw.Draw(u.dc.img, th.Add(image.Pt(int(ix), ty)), m.thumb, image.Point{}, draw.Over)
+			u.dc.frame(ix, float32(ty), float32(th.Dx()), float32(th.Dy()), 3.5, 1, alpha(p.fg, 0.22))
 		case m != nil:
-			u.dc.icon(m.icon, x+8, cy, 15, m.tint)
-			u.spot = emberSpot{x: x + 8, y: cy + 1, s: 0, mood: l.mood, show: true} // Ember tucks into the icon
+			u.dc.icon(m.icon, ix+8, cy, 15, m.tint)
 		case l.music && u.art != nil: // the cover as a disc, the song as a ring around it
 			n := u.art.small.Rect.Dx()
-			u.dc.drawArt(u.art.small, int(x+8)-n/2, int(cy)-n/2, float32(n)/2, 1)
+			ccx := ix + 10
+			u.dc.drawArt(u.art.small, int(ccx)-n/2, int(cy)-n/2, float32(n)/2, 1)
 			if t := u.track; t != nil && t.Length > 0 {
 				acc, track := u.accent(p.fg), alpha(p.fg, 0.14)
-				u.lives = append(u.lives, live{r: image.Rect(int(x-4), int(cy-11), int(x+21), int(cy+12)), draw: func(c *canvas, _ float64) {
+				u.lives = append(u.lives, live{r: image.Rect(int(ccx-12), int(cy-11), int(ccx+13), int(cy+12)), draw: func(c *canvas, _ float64) {
 					k := math.Min(1, float64(t.pos(u.now()))/float64(t.Length))
-					c.arc(x+8, cy, 9.3, 1.3, 0, 2*math.Pi, track)
+					c.arc(ccx, cy, 9.3, 1.3, 0, 2*math.Pi, track)
 					if k > 0.005 {
-						ringArc(c, x+8, cy, 9.3, 1.3, -math.Pi/2, -math.Pi/2+2*math.Pi*k, acc)
+						ringArc(c, ccx, cy, 9.3, 1.3, -math.Pi/2, -math.Pi/2+2*math.Pi*k, acc)
 					}
 				}})
 			}
-			u.spot = emberSpot{x: x + 8, y: cy + 1, s: 0, mood: moodIdle, show: true} // Ember tucks into the cover
-		default:
-			u.spot = emberSpot{x: x + 8, y: cy + 1, s: 14, mood: l.mood, show: true}
 		}
 	}})
 
@@ -325,6 +338,9 @@ func (u *UI) pillLayout(l line, h float32) (left, right []seg, w float32) {
 			if k > 0 {
 				u.dc.roundRect(x, cy-2-stretch*0.08, max((meterW+stretch)*k, 4), 4+stretch*0.16, 2, m.tint)
 			}
+			// Ember rides the level as its knob, a little bigger the higher it is
+			ks := emberKnob + 3*k
+			u.spot = emberSpot{x: x + (meterW+stretch)*k, y: cy - 0.12*ks, s: ks, mood: l.mood, show: true, travel: true}
 		}})
 	}
 	if m != nil && m.right != "" { // the value rolls as it changes
@@ -643,9 +659,17 @@ func (u *UI) drawTrail(act string, x, cy, h float32) {
 		if ss := u.sessionList(); len(ss) > 0 && ss[0].State == "wait" {
 			m = moodWait
 		}
+		// there is one Ember: another session is a small ring turning (or, waiting, a blue light breathing)
 		col := p.moodColor(m)
 		u.lives = append(u.lives, live{r: image.Rect(int(x), 0, int(x+19), int(h)), draw: func(c *canvas, t float64) {
-			c.ember(p, x+9, cy+1, 11+k, m, t, 0, 0, col, 1, 0)
+			if m == moodWait {
+				b := 0.5 + 0.5*math.Sin(t*2*math.Pi/beat)
+				c.circle(x+9, cy, 3+0.6*k, alpha(col, 0.5+0.5*b))
+				return
+			}
+			c.arc(x+9, cy, 4.6+0.4*k, 1.4, 0, 2*math.Pi, alpha(col, 0.2))
+			a := float32(math.Mod(t*2*math.Pi/(2*beat), 2*math.Pi))
+			c.arc(x+9, cy, 4.6+0.4*k, 1.4, a, a+2.1, col)
 		}})
 	case "edge":
 		if e := u.edge; e != nil {

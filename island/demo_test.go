@@ -511,7 +511,9 @@ func TestBanner(t *testing.T) {
 		ebw := tracked(big, eyebrow, eb, 0, 0, 3.2, p.fg, false)
 		ex := center(ebw + 26)
 		strokeGlyph := func(x, y float32) { // the flame, small, before the eyebrow
-			big.emberX(p, x+9, y-6, 22, moodWork, 0.8, expr{lids: 1, energy: 0.6}, p.green, 1)
+			ps := restPose()
+			ps.eyeH = 4
+			big.drawFlame(p, x+9, y-6+0.45*22, 22, ps, fireOf(moodWork), 1)
 		}
 		strokeGlyph(ex, top)
 		tracked(big, eyebrow, eb, ex+26, top, 3.2, mix(p.green, p.fg, 0.45), true)

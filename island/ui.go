@@ -158,6 +158,7 @@ type emberSpot struct {
 	x, y, s float32
 	mood    mood
 	show    bool
+	travel  bool // it rides something that moves (a meter's knob): a spring with weight, not a snap
 }
 
 const (
@@ -230,8 +231,22 @@ type UI struct {
 	eqLevel     [3]float64  // its bars, smoothed
 	washImg     *image.RGBA // the cover's haze, scaled to the music section
 	washKey     string
-	gesture     string // Ember's reaction to what just happened: nod | shake | wince
-	gestureAt   time.Time
+	body        *body // Ember's physical self
+	act         *act  // what it's acting out, if anything
+	dancing     bool  // it has caught the song's beat
+	bassEnv     float64
+	beatAt      time.Time
+	beatN       int
+	travelTo    float32 // where its slot last was: a jump in it is a trip, taken with a hop
+	travelling  bool
+	doneA       float64 // how big the next Done's celebration is (how long the work took)
+	flare       bool    // and whether it was earned: a long or hard-won turn
+	rollNext    bool    // the next Done starts with an eye-roll ("You're absolutely right")
+	bond        *bond   // what Ember remembers about you
+	pokes       int
+	pokeAt      time.Time
+	petSince    time.Time // the pointer has rested on Ember (in the card) since
+	yawnCheck   time.Time
 	sleepK      float64 // how asleep the pill looks, 0..1
 	wasAsleep   bool
 	meter       spring // a moment's level bar
@@ -261,7 +276,7 @@ type UI struct {
 	}
 	ex, ey, es         spring // Ember's position and size, shared by every view
 	look               spring
-	emberCol           [3]float64
+	emberCol           [3][3]float64 // its fire: hot, body, tip
 	spot               emberSpot
 	lastView           view
 	lastKey            string
@@ -299,47 +314,18 @@ func NewUI(w, h int, barH float32) *UI {
 	u.day.roll(u.now())
 	u.habits = &habits{Counts: map[string]map[string]float64{}}
 	u.start, u.lastBlink, u.glanceAt = u.now(), u.now(), u.now()
-	c := u.pal.muted
-	u.emberCol = [3]float64{float64(c.R), float64(c.G), float64(c.B)}
+	u.body = newBody()
 	return u
 }
 
 func (u *UI) Invalidate() { u.dirty = true }
 
-// React: Ember answers what just happened with its body. It nods when you
+// React: Ember answers what you just did with its body. It nods when you
 // allow, shakes its head when you deny, winces when a step fails.
-func (u *UI) React(g string) { u.gesture, u.gestureAt = g, u.now() }
+func (u *UI) React(g string) { u.play(g, 0) }
 
-const gestureTime = 460 * time.Millisecond
-
-func (u *UI) gesturing() bool { return u.gesture != "" && u.now().Sub(u.gestureAt) < gestureTime }
-
-// gestureOffset is Ember's displacement and squash for the current reaction.
-func (u *UI) gestureOffset(now time.Time) (dx, dy, scale float32) {
-	scale = 1
-	if u.gesture == "" {
-		return
-	}
-	k := float64(now.Sub(u.gestureAt)) / float64(gestureTime)
-	if k >= 1 {
-		return
-	}
-	decay := float32(1 - k)
-	switch u.gesture {
-	case "nod": // two small dips, the second smaller
-		dy = 2.2 * float32(math.Sin(k*2*math.Pi*2)) * decay * decay
-		if dy < 0 {
-			dy *= 0.4
-		}
-	case "shake": // side to side, settling
-		dx = 2.4 * float32(math.Sin(k*2*math.Pi*3)) * decay
-	case "wince": // a quick flinch: smaller, a touch lower, then back
-		w := float32(math.Sin(math.Min(1, k*1.6) * math.Pi))
-		scale, dy = 1-0.16*w, 1.2*w
-	}
-	return
-}
-func (u *UI) Bounce() { u.bounceAt = u.now() }
+// Bounce: a small happy hop (edge's good news).
+func (u *UI) Bounce() { u.play("hop", 0) }
 
 // ---- cards ----
 
@@ -417,9 +403,34 @@ func (u *UI) Moment(m moment) {
 			u.meterBump = u.now()
 		}
 	}
+	fresh := u.moment == nil || u.moment.key != m.key
 	u.moment = &m
-	if m.mood == moodHappy {
-		u.Bounce()
+	if fresh {
+		u.momentAct(m)
+	}
+}
+
+// momentAct: Ember answers the news with its body.
+func (u *UI) momentAct(m moment) {
+	switch {
+	case m.mood == moodHappy && u.rollNext:
+		u.rollNext = false
+		u.play("eyeroll", 0) // then the Done, when it's done rolling
+	case m.mood == moodHappy:
+		u.play("done", u.doneA)
+		u.doneA = 0.3
+	case m.mood == moodError:
+		u.play("stopped", 0)
+	case m.key == "away":
+		u.play("hello", 0)
+	case m.icon == "bolt":
+		u.play("charge", 0)
+	case m.icon == "check":
+		u.play("hop", 0)
+	case m.thumb != nil:
+		u.play("shutter", 0)
+	case m.icon == "headphones" && m.sub == "Connected":
+		u.play("listen", 0)
 	}
 }
 
@@ -622,6 +633,11 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 	}
 	if u.mind.asleep != u.wasAsleep { // falling asleep or waking dims the pill or lights it
 		u.wasAsleep, u.dirty = u.mind.asleep, true
+		if u.mind.asleep {
+			u.play("sleep", 0) // a yawn, then it banks down to a coal
+		} else {
+			u.play("wake", 0)
+		}
 	}
 	if v == vCompact { // a chip that counts minutes changes without any event
 		if c := u.compactLine().tick(); c != u.lastChip {
@@ -799,7 +815,7 @@ func (u *UI) drawPeeks(n notch, behind int) {
 }
 
 func (u *UI) moving(settled bool, p float64, sliding, flashing bool) bool {
-	return !settled || p < 1 || sliding || flashing || u.tweening || u.mind.blinking(u.now()) || u.bouncing() || u.gesturing() || !u.emberSettled()
+	return !settled || p < 1 || sliding || flashing || u.tweening || u.mind.blinking(u.now()) || u.act != nil || u.body.busy() || u.travelling || !u.emberSettled()
 }
 
 // transition: the view is about to change. Opening the card notes the
@@ -911,77 +927,50 @@ func (u *UI) senses() senses {
 
 func (u *UI) stepEmber(dt float64, now time.Time) {
 	u.mind.step(now, u.senses())
-	if !u.spot.show {
-		return
-	}
-	if u.ex.x == 0 {
-		u.ex.x, u.ey.x, u.es.x = float64(u.spot.x), float64(u.spot.y), float64(u.spot.s)
-	}
-	if u.lastView == vCompact && math.Abs(u.ey.x-float64(u.spot.y)) < 1 && math.Abs(u.ex.x-float64(u.spot.x)) < 60 {
-		u.ex.x, u.ex.v = float64(u.spot.x), 0 // in the pill Ember sits in its slot, which rides the shape's edge
-	}
-	u.ex.stepK(float64(u.spot.x), dt, 600, 49) // critically damped and quick: Ember keeps up with the shape
-	u.ey.stepK(float64(u.spot.y), dt, 600, 49)
-	u.es.stepK(float64(u.spot.s), dt, 600, 49)
-	u.look.stepK(u.lookTarget(now), dt, 160, 22)
-	// colour: the mood's, pulled toward red by a bad mood, lifted by a good one
-	target := u.pal.moodColor(u.spot.mood)
-	if v := u.mind.valence; v < 0 {
-		target = mix(target, u.pal.red, math.Min(0.6, -v*0.6))
-	} else if v > 0.45 {
-		target = mix(target, colorWhite, (v-0.45)*0.25)
-	}
-	k := math.Min(1, dt*7) // colours blend over ~150 ms
-	u.emberCol[0] += (float64(target.R) - u.emberCol[0]) * k
-	u.emberCol[1] += (float64(target.G) - u.emberCol[1]) * k
-	u.emberCol[2] += (float64(target.B) - u.emberCol[2]) * k
-}
-
-// emberRect covers Ember, the light it casts, and its z's when asleep.
-func (u *UI) emberRect() image.Rectangle {
-	if !u.spot.show {
-		return image.Rectangle{}
-	}
-	x, y, s := float32(u.ex.x), float32(u.ey.x), float32(u.es.x)
-	g := s*1.5 + 4 // room for a nod or a shake
-	r := image.Rect(int(x-g), int(y-g), int(x+g)+2, int(y+g)+2)
-	if u.mind.asleep {
-		r = r.Union(image.Rect(int(x), 0, int(x+s+10), int(y)))
-	}
-	return r
-}
-
-func (u *UI) drawEmber(t float64, now time.Time) {
-	if !u.spot.show {
-		return
-	}
-	m := u.mind
-	bounce := float32(0)
-	if bt := now.Sub(u.bounceAt).Seconds(); bt < 0.7 {
-		bounce = float32(math.Abs(math.Sin(bt/0.7*2*math.Pi)) * (1 - bt/0.7))
-	}
-	col := color.NRGBA{uint8(u.emberCol[0]), uint8(u.emberCol[1]), uint8(u.emberCol[2]), 255}
-	x, y, s := float32(u.ex.x), float32(u.ey.x), float32(u.es.x)
-	gdx, gdy, gs := u.gestureOffset(now)
-	x, y, s = x+gdx, y+gdy, s*gs
-	s *= 1 + 0.06*float32(m.arousal-0.5) // a touch bigger when lively
-	if s > 2 && !m.asleep {              // the light it casts on the island, brighter with energy
-		u.cv.glowInside(u.emberRect(), x, y-s*0.2, s*1.5, col, 0.08+0.16*m.arousal)
-	}
-	u.cv.emberX(u.pal, x, y, s, u.spot.mood, t, expr{blink: float32(m.blink(now)), bounce: bounce,
-		look: float32(u.look.x), lids: float32(m.lids(now)), energy: float32(m.arousal)}, col, 1)
-	if m.asleep && s > 6 { // z's drift up and fade
-		f := face(fSemiBold, 7)
-		for i := 0; i < 2; i++ {
-			k := math.Mod(t/2.4+float64(i)*0.5, 1)
-			zx := x + s*0.45 + float32(k)*5
-			zy := y - s*0.3 - float32(k)*s*0.75
-			u.cv.text(f, "z", zx, zy, alpha(u.pal.muted, math.Sin(k*math.Pi)*0.9))
+	u.actStep(now)
+	u.listen(now)
+	if now.Sub(u.yawnCheck) > time.Minute { // around your bedtime, on the quiet clock, a yawn (twice a night at most)
+		u.yawnCheck = now
+		if u.bond.nearBedtime(now) && !u.mind.away && !u.mind.asleep && (u.primary() == "" || u.primary() == "clock") && !u.senses().working {
+			u.flourish("yawn", 45*time.Minute)
 		}
 	}
+	if !u.spot.show {
+		u.body.step(dt, 0)
+		return
+	}
+	sp := u.spot
+	rel := sp.x - u.shape.x // where its slot is in the pill: the pill's own edges move it too
+	if u.ex.x == 0 {
+		u.ex.x, u.ey.x, u.es.x = float64(sp.x), float64(sp.y), float64(sp.s)
+		u.travelTo = rel
+	}
+	// a trip: its slot jumped somewhere else in the pill (onto a meter, back
+	// home). It hops and is carried there with some weight, leaning into it.
+	if u.lastView == vCompact && abs32(rel-u.travelTo) > 14 && math.Abs(u.ey.x-float64(sp.y)) < 8 {
+		u.travelling = true
+		u.body.jump(2.2, 0.05)
+	}
+	u.travelTo = rel
+	if u.travelling && math.Abs(u.ex.x-float64(sp.x)) < 0.6 && math.Abs(u.ex.v) < 8 {
+		u.travelling = false
+	}
+	switch {
+	case u.travelling || sp.travel:
+		u.ex.stepK(float64(sp.x), dt, 190, 2*0.72*math.Sqrt(190))
+	case u.lastView == vCompact && math.Abs(u.ey.x-float64(sp.y)) < 1 && math.Abs(u.ex.x-float64(sp.x)) < 60:
+		u.ex.x, u.ex.v = float64(sp.x), 0 // in the pill Ember sits in its slot, which rides the shape's edge
+	default:
+		u.ex.stepK(float64(sp.x), dt, 600, 49) // critically damped and quick: Ember keeps up with the shape
+	}
+	u.ey.stepK(float64(sp.y), dt, 600, 49)
+	u.es.stepK(float64(sp.s), dt, 600, 49)
+	u.look.stepK(u.lookTarget(now), dt, 160, 22)
+	k := float64(u.es.x) / 16
+	u.body.step(dt, u.ex.v/math.Max(k, 0.5))
+	u.blendFire(dt)
 }
 
-func (u *UI) bouncing() bool { return u.now().Sub(u.bounceAt) < 700*time.Millisecond }
 
 // continuous: something animates at full rate (Ember flickering, music, a card).
 func (u *UI) continuous() bool {

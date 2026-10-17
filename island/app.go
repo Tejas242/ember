@@ -189,6 +189,7 @@ func Run() error {
 	a.ui.onKey = a.key
 	a.ui.audio = &audio{}
 	a.ui.habits = loadHabits()
+	a.ui.bond = loadBond(a.ui.now())
 	a.ui.day = loadDay(time.Now())
 	win.onIdle = func(idle bool) { a.presence(idle); a.ui.Invalidate() }
 	a.reloadConfig()
@@ -263,6 +264,7 @@ func Run() error {
 				saveDue = false
 			}
 			a.ui.habits.save()
+			a.ui.bond.save()
 			a.ui.day.save()
 			if p := a.cfg.look(loadPalette()); p != a.ui.pal { // the wallpaper palette changed
 				a.ui.pal = p
@@ -636,12 +638,14 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		s.Turn, s.Finished, s.Recap, s.Unseen, s.Asking = Turn{}, nil, nil, time.Time{}, ""
 		s.Prompt = firstLine(strings.TrimSpace(in.Prompt))
 		a.ui.mind.kick(now, 0.25, 0.05)
+		a.ui.play("ignite", 0) // it catches
 		a.ui.mind.novel["claude"] = now
 	case "PreCompact":
 		s.State, s.Label, s.Plus, s.Minus = "work", "Compacting the conversation", 0, 0
 	case "PostCompact":
 		if s.Label == "Compacting the conversation" {
 			s.Label = "Thinking"
+			a.ui.play("pop", 0) // squeezed, and now it springs back
 		}
 	case "StopFailure":
 		s.State, s.Label = "idle", ""
@@ -666,6 +670,7 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 	case "AskUserQuestion":
 		if answer != nil {
 			s.State = "wait"
+			a.ui.play("needs", 0)
 			return a.ask(s, in, tin, answer)
 		}
 	case "PreToolUse":
@@ -685,11 +690,16 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		s.Turn.step(now, in.Tool, tin)
 		a.ui.day.call(now)
 		a.ui.mind.toolCall(now)
+		a.ui.body.gulp(0.5) // a bite of fuel
 	case "PostToolUse":
 		if s.State == "wait" {
 			s.State = "work"
 		}
 		s.Asking = ""
+		if s.Turn.streak >= 3 { // it was failing, and now it isn't: relief
+			a.ui.play("relief", 0)
+			a.ui.mind.kick(now, 0, 0.25)
+		}
 		s.Turn.finish(false)
 	case "PostToolUseFailure":
 		s.Turn.finish(true)
@@ -700,11 +710,15 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 			return ""
 		}
 		s.State = "wait"
+		a.ui.play("needs", 0)
 		return a.permission(s, in, tin, answer)
 	case "Notification":
 		// a prompt in the terminal (the island timed out, or a dialog it
 		// can't show). idle_prompt is just "Claude is done": not a request.
 		if in.NotifyType == "permission_prompt" || in.NotifyType == "elicitation_dialog" {
+			if s.State != "wait" {
+				a.ui.play("needs", 0)
+			}
 			s.State = "wait"
 			if s.Asking == "" {
 				s.Asking = in.Message
@@ -720,6 +734,17 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		}
 		s.Recap = &Recap{Summary: summarize(in.LastMessage), At: now, Took: took, Steps: s.Turn.Count,
 			Files: len(s.Turn.Files), Plus: s.Turn.Plus, Minus: s.Turn.Minus, Failures: s.Turn.Failures}
+		a.ui.doneA = doneSize(took)
+		if b := a.ui.bond; b != nil {
+			long := b.turn(took)
+			hard := s.Turn.Failures >= 2 || s.Turn.Count >= 40 // failures overcome, or a lot of work
+			if (long || hard) && b.cooled("flare", 20*time.Minute, now) {
+				a.ui.flare, a.ui.doneA = true, math.Max(a.ui.doneA, 0.85)
+			}
+			if absolutelyRight.MatchString(in.LastMessage) && !a.ui.casting && b.cooled("eyeroll", 20*time.Hour, now) {
+				a.ui.rollNext = true
+			}
+		}
 		a.ui.day.done(now, s.Project, took)
 		s.Asking = ""
 		if !a.looking(s) {
@@ -798,8 +823,13 @@ func (a *app) presence(idle bool) {
 	}
 	m.away = false
 	m.kick(now, 0.45, 0.1) // you're back: Ember perks up
+	first := a.ui.bond != nil && a.ui.bond.back(m.awaySince, now)
 	if now.Sub(m.awaySince) > 30*time.Second {
-		a.ui.Bounce()
+		switch {
+		case first && now.Sub(m.awaySince) > 2*time.Hour && a.ui.flourish("stretch", 12*time.Hour): // the morning: a big stretch
+		default:
+			a.ui.play("hello", 0)
+		}
 		a.welcomeBack(now)
 	}
 }

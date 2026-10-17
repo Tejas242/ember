@@ -31,6 +31,7 @@ type Turn struct {
 	Files       map[string]bool `json:"files"`
 	Plus, Minus int
 	Failures    int
+	streak      int // steps failed in a row, just now
 }
 
 // Recap is a finished turn, for the card to tell afterwards.
@@ -77,6 +78,9 @@ func (t *Turn) finish(failed bool) {
 		t.Steps[n-1].Done, t.Steps[n-1].Failed = true, failed
 		if failed {
 			t.Failures++
+			t.streak++
+		} else {
+			t.streak = 0
 		}
 	}
 }

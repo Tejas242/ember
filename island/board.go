@@ -332,7 +332,10 @@ func (u *UI) divider(x, w, y float32) {
 // the way to that session's terminal.
 func (u *UI) heroHead(b brief, x, w, y float32) {
 	p, now := u.pal, u.now()
-	u.spot = emberSpot{x: x + railX, y: y + 25, s: 18, mood: b.mood, show: true}
+	u.spot = emberSpot{x: x + railX, y: y + 25, s: emberCard, mood: b.mood, show: true}
+	defer func() { // after the headline's own hit: resting the pointer on Ember pets it
+		u.hits = append(u.hits, hit{image.Rect(int(x+railX-12), int(y+8), int(x+railX+12), int(y+40)), "ember"})
+	}()
 	right := x + w - pad
 	tm := now.Format(u.TimeFmt)
 	tmw := measure(fCaption(), tm)

@@ -165,6 +165,7 @@ type canvas struct {
 	bodyPx  [4]byte         // the pixel bodyRow is made of
 	k       float64         // when set (0..1), everything drawn is faded by it: a live part arriving with its row
 	clipR   image.Rectangle // when set, text stays inside it (a rolling digit)
+	abuf    *image.Alpha    // coverage for shaded fills (Ember), reused
 }
 
 // fadeCol applies the canvas's fade to col.
@@ -457,7 +458,7 @@ func wrap(f font.Face, s string, maxW float32, n int) []string {
 	return lines
 }
 
-// ---- Ember: edge's mascot, a small flame with eyes ----
+// ---- moods ----
 
 type mood int
 
@@ -482,85 +483,6 @@ func (p palette) moodColor(m mood) color.NRGBA {
 		return p.yellow
 	}
 	return p.muted
-}
-
-// ember draws the flame centred on (cx, cy) with height s. t is seconds since
-// start, blink 0..1 (1 = eyes shut), bounce lifts it, look shifts the eyes
-// (-1 left … 1 right). body is the flame colour (moods blend between them),
-// alpha fades the whole thing with its content.
-func (c *canvas) ember(p palette, cx, cy, s float32, m mood, t float64, blink, bounce float32, body color.NRGBA, alpha float64, look float32) {
-	c.emberX(p, cx, cy, s, m, t, expr{blink: blink, bounce: bounce, look: look, lids: 1, energy: 0.6}, body, alpha)
-}
-
-// expr is Ember's expression, from the mind: lids 0 (shut) … 1, energy 0 … 1.
-type expr struct {
-	blink, bounce, look, lids, energy float32
-}
-
-func (c *canvas) emberX(p palette, cx, cy, s float32, m mood, t float64, e expr, body color.NRGBA, alpha float64) {
-	blink, bounce, look := e.blink, e.bounce, e.look
-	col := mixAlpha(body, alpha)
-	sway, stretch := float32(0), float32(1)
-	en := float64(e.energy)
-	switch m {
-	case moodWork: // flickers harder and faster the busier it is
-		f := 0.75 + 0.5*en
-		sway = float32((math.Sin(t*7*f)*0.06+math.Sin(t*11.3*f)*0.035)*(0.6+0.8*en)) * s
-		stretch = 1 + float32(math.Sin(t*9.1*f)*0.05*(0.6+0.8*en))
-	case moodWait:
-		stretch = 1 + float32(math.Sin(t*3*(0.8+0.6*en))*0.06)
-	case moodHappy:
-		stretch = 1 + float32(math.Sin(t*5)*0.03)
-	default: // idle: a breath whose pace follows its energy, a lazy sway
-		stretch = 1 + float32(math.Sin(t*1.6*(0.55+0.9*en))*0.05)
-		sway = float32(math.Sin(t*0.9*(0.6+0.6*en))*0.03) * s
-	}
-	cy -= bounce * s * 0.35
-	flame := func(scale, lift float32, col color.NRGBA) {
-		r := s * 0.36 * scale
-		by := cy + s*0.17 - lift
-		tx, ty := cx+r*0.3+sway*scale, by-s*0.74*scale*stretch
-		c.fillPath(cx-r*1.3, ty-2, cx+r*1.2+abs32(sway), by+r+2, col, func(ras *vector.Rasterizer, ox, oy float32) {
-			k := r * kappa
-			x, y := cx-ox, by-oy
-			tX, tY := tx-ox, ty-oy
-			ras.MoveTo(tX, tY)
-			ras.CubeTo(tX+r*0.12, tY+r*0.8, x+r*1.08, y-r*0.95, x+r, y)
-			ras.CubeTo(x+r, y+k, x+k, y+r, x, y+r)
-			ras.CubeTo(x-k, y+r, x-r, y+k, x-r, y)
-			lx, ly := x-r*0.9+sway*0.4, y-r*1.45*stretch
-			ras.CubeTo(x-r*1.06, y-r*0.55, x-r*1.12, y-r*1.1, lx, ly)
-			ras.CubeTo(x-r*0.72, y-r*1.2, x-r*0.48, y-r*1.08, x-r*0.28, y-r*1.12)
-			ras.CubeTo(x-r*0.08, y-r*1.5, tX-r*0.32, tY+r*0.62, tX, tY)
-			ras.ClosePath()
-		})
-	}
-	flame(1, 0, col)
-	flame(0.5, -s*0.1, mixAlpha(mix(body, color.NRGBA{255, 255, 255, 255}, 0.6), alpha))
-
-	eyeY := cy + s*0.19
-	gap := s * 0.125
-	ew, eh := s*0.1, s*0.17*(1-blink*0.85)
-	switch m {
-	case moodHappy: // content, shut-eye smile
-		eh = s * 0.045
-		eyeY -= s * 0.02
-	case moodWait: // looking up at you
-		eyeY -= s * 0.05
-	case moodNudge:
-		eh *= 0.6
-	}
-	ex := sway*0.3 + look*s*0.07
-	if e.lids < 0.15 { // asleep: closed eyes, two soft curves
-		for _, dx := range []float32{-gap, gap} {
-			c.arc(cx+dx+ex, eyeY-s*0.03, ew*0.75, max(s*0.045, 1), 0.2, math.Pi-0.2, mixAlpha(p.ink, alpha))
-		}
-		return
-	}
-	eh *= float32(math.Min(1, float64(e.lids)))
-	for _, dx := range []float32{-gap, gap} {
-		c.roundRect(cx+dx-ew/2+ex, eyeY-eh/2, ew, max(eh, 1.2), ew/2, mixAlpha(p.ink, alpha))
-	}
 }
 
 // glowInside lights the island's body (and only its body: transparent

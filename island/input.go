@@ -87,7 +87,7 @@ func (u *UI) pointer(e pointerEvent) (redraw, hand bool) {
 		u.hoverKey = k
 		redraw = true
 	}
-	for _, pre := range []string{"btn:", "opt:", "focus:", "close:", "music:", "trail", "sys:"} {
+	for _, pre := range []string{"btn:", "opt:", "focus:", "close:", "music:", "trail", "sys:", "ember"} {
 		hand = hand || strings.HasPrefix(k, pre)
 	}
 	return redraw, hand
@@ -162,6 +162,12 @@ func (u *UI) press(k string, button int) {
 			}
 		}
 		u.pinned, u.suppress = true, false
+	case k == "ember": // Ember itself
+		if u.currentView() == vCompact {
+			u.poke()
+		} else {
+			u.play("poke", 0)
+		}
 	case k == "panel": // the card's background closes it
 		u.pinned, u.suppress = false, true
 	case k == "rows:all": // "Show all" / "Show less"

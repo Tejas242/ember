@@ -495,7 +495,7 @@ func (u *UI) drawCard(c *Card, x, w float32) {
 		return
 	}
 	p := u.pal
-	u.spot = emberSpot{x: x + railX, y: 28, s: 18, mood: c.Mood, show: true}
+	u.spot = emberSpot{x: x + railX, y: 28, s: emberCard, mood: c.Mood, show: true}
 	inner := w - 2*pad
 	right := x + w - pad
 	tx := x + textX
