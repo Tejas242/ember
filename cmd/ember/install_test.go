@@ -12,7 +12,7 @@ import (
 
 	"github.com/Tejas242/ember/internal/config"
 	"github.com/Tejas242/ember/internal/ipc"
-	"github.com/Tejas242/ember/island"
+	"github.com/Tejas242/ember/internal/island"
 )
 
 // A settings.json with Ember's hooks under other names (a stale temp build,

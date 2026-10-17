@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/Tejas242/ember/internal/ipc"
-	"github.com/Tejas242/ember/island"
+	"github.com/Tejas242/ember/internal/island"
 )
 
 // command is one subcommand: its usage, how many arguments it takes, and

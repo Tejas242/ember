@@ -64,12 +64,12 @@ cover:
 # renders every state of the island to PNGs in ./preview
 preview:
 	mkdir -p preview
-	EMBER_PREVIEW=$(CURDIR)/preview go test -tags render -count=1 -run 'TestPreview|TestFilmstrip' ./island
+	EMBER_PREVIEW=$(CURDIR)/preview go test -tags render -count=1 -run 'TestPreview|TestFilmstrip' ./internal/island
 
 # every state of the island over a made-up desktop, as stills, in ./preview
 gallery:
 	mkdir -p preview
-	EMBER_PREVIEW=$(CURDIR)/preview EMBER_EDGE_STATS=$(XDG_RUNTIME_DIR)/edge/stats.json go test -tags render -count=1 -run TestGallery ./island
+	EMBER_PREVIEW=$(CURDIR)/preview EMBER_EDGE_STATS=$(XDG_RUNTIME_DIR)/edge/stats.json go test -tags render -count=1 -run TestGallery ./internal/island
 
 # the README's pictures: stills, animated demos (needs ffmpeg with libwebp) and the banner
 docs: gallery
@@ -82,11 +82,11 @@ docs: gallery
 
 demo:
 	mkdir -p docs/demo
-	EMBER_DEMO=$(CURDIR)/docs/demo go test -tags render -count=1 -run 'TestDemo$$|TestBanner' -timeout 30m ./island
+	EMBER_DEMO=$(CURDIR)/docs/demo go test -tags render -count=1 -run 'TestDemo$$|TestBanner' -timeout 30m ./internal/island
 
 # the landing page's frames: the same scenes on the page's own dark ground, in docs/site
 site-media:
 	rm -rf preview/site && mkdir -p preview/site docs/site
-	EMBER_GROUND=site EMBER_PREVIEW=$(CURDIR)/preview/site EMBER_DEMO=$(CURDIR)/preview/site go test -tags render -count=1 -run 'TestGallery|TestDemo$$' -timeout 30m ./island
+	EMBER_GROUND=site EMBER_PREVIEW=$(CURDIR)/preview/site EMBER_DEMO=$(CURDIR)/preview/site go test -tags render -count=1 -run 'TestGallery|TestDemo$$' -timeout 30m ./internal/island
 	cp preview/site/*.webp docs/site/
 	for f in preview/site/site-*.png; do ffmpeg -loglevel error -y -i $$f -c:v libwebp -quality 92 docs/site/$$(basename $$f .png).webp; done
