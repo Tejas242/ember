@@ -57,3 +57,41 @@ func TestReadmeConfig(t *testing.T) {
 		t.Fatal("README's Config section differs from island.DefaultConfigText")
 	}
 }
+
+// install refuses a binary that won't survive a reboot or a go clean.
+func TestTransient(t *testing.T) {
+	sandbox(t)
+	t.Setenv("TMPDIR", "/scratch/tmp")
+	for exe, bad := range map[string]bool{
+		"/tmp/go-build1234/b001/exe/ember":        true,
+		"/home/x/.cache/go-build/ab/ember":        true,
+		"/scratch/tmp/ember-pd":                   true,
+		"/tmp/claude-1000/scratchpad/ember":       true,
+		"/home/x/work/go-build555/b001/exe/ember": true,
+		"/home/x/.local/bin/ember":                false,
+		"/usr/local/bin/ember":                    false,
+		"/home/x/Gems/ember/ember":                false,
+		"/tmpfoo/ember":                           false,
+	} {
+		if got := transient(exe) != ""; got != bad {
+			t.Errorf("transient(%s) = %v, want %v", exe, got, bad)
+		}
+	}
+	err := install("/tmp/go-build1/b001/exe/ember")
+	if err == nil || !strings.Contains(err.Error(), "make install") || !strings.Contains(err.Error(), "~/.local/bin") {
+		t.Fatalf("install from go run: %v", err)
+	}
+}
+
+// sandbox points every directory install could touch at a fresh temp dir, so
+// a test can never reach the real settings, service or state.
+func sandbox(t *testing.T) string {
+	t.Helper()
+	d := t.TempDir()
+	t.Setenv("HOME", d)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(d, ".config"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(d, ".local", "state"))
+	t.Setenv("XDG_RUNTIME_DIR", filepath.Join(d, "run"))
+	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path="+filepath.Join(d, "run", "bus"))
+	return d
+}

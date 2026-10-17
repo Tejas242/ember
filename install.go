@@ -28,10 +28,44 @@ Environment=GOGC=50 GOMEMLIMIT=16MiB
 WantedBy=graphical-session.target
 `
 
-func install() error {
+// transient says why exe won't last, or "": a binary under the temp dir, in
+// Go's build cache or left by `go run` is gone by the next boot (or the next
+// `go clean`), and a service and hooks pointing at it would break.
+func transient(exe string) string {
+	exe = filepath.Clean(exe)
+	under := func(dir string) bool {
+		rel, err := filepath.Rel(filepath.Clean(dir), exe)
+		return err == nil && rel != "." && !strings.HasPrefix(rel, "..")
+	}
+	for _, el := range strings.Split(exe, string(filepath.Separator)) {
+		if strings.HasPrefix(el, "go-build") {
+			return "it was built by go run or into Go's build cache"
+		}
+	}
+	for _, d := range []string{os.TempDir(), "/tmp", "/var/tmp", "/dev/shm"} {
+		if under(d) {
+			return "it lives under " + d
+		}
+	}
+	return ""
+}
+
+// executable is this binary's real path.
+func executable() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
-		return err
+		return "", err
+	}
+	if r, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = r
+	}
+	return exe, nil
+}
+
+func install(exe string) error {
+	if why := transient(exe); why != "" {
+		return fmt.Errorf("won't install %s: %s, so it won't last.\n"+
+			"Install a lasting copy instead: make install (it puts ember in ~/.local/bin and runs ember install from there)", exe, why)
 	}
 	h, _ := os.UserHomeDir()
 	settings := filepath.Join(h, ".claude", "settings.json")

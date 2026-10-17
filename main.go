@@ -187,7 +187,11 @@ func runIsland([]string) int {
 }
 
 func runInstall([]string) int {
-	if err := install(); err != nil {
+	exe, err := executable()
+	if err == nil {
+		err = install(exe)
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "ember:", err)
 		return 1
 	}
