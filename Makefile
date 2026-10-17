@@ -3,8 +3,11 @@ BIN    := $(PREFIX)/bin/ember
 
 .PHONY: build install uninstall test preview gallery demo docs site-media
 
+# a static binary (no libc to drift under it), stamped with its version
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null)
+
 build:
-	go build -trimpath -ldflags='-s -w' -o ember .
+	CGO_ENABLED=0 go build -trimpath -ldflags='-s -w -X main.version=$(VERSION)' -o ember .
 
 # builds, installs the binary, then sets up the service, Claude Code's hooks and the config
 install: build
