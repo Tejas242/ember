@@ -56,13 +56,13 @@ Radii: the card 22 (continuous superellipse), hovers 10, buttons fully round (26
 
 | Situation | Lead | Label | Trailing |
 | --- | --- | --- | --- |
-| Quiet | Ember (breathing, blinking, asleep after a while) | time | — |
+| Quiet | Ember (breathing, blinking, a flame asleep against the pill's wall after a while) | time | — |
 | Something finished unseen | | time, then `kinvault done` in green (or `stopped` in red) | — |
-| Claude working (one) | Ember flickering green | project, a band of light passing every 2.4 s | elapsed (from a minute), rolling; amber once it's been quiet 3 min |
+| Claude working (one) | Ember, orange, reading the label, a gulp of fuel per tool call | project, a band of light passing every 2.4 s | elapsed (from a minute), rolling; amber once it's been quiet 3 min |
 | Claude working (several) | same | the session you can't see | `+2` chip, elapsed |
-| Needs you | Ember, blue, looking up | `kinvault needs you` | a blue light breathes around the pill, with a lit rim |
-| Done | Ember, happy, bounces | **Done** kinvault, the reply's best sentence | a check that strokes itself in |
-| Stopped on an error | Ember, red | **Stopped** kinvault, in words (`Rate limited`) | — |
+| Needs you | Ember, blue, hops and looks up at you | `kinvault needs you` | a blue light breathes around the pill, with a lit rim |
+| Done | Ember, gold, celebrates as big as the work was long | **Done** kinvault, the reply's best sentence | a check that strokes itself in |
+| Stopped on an error | Ember, red, flinches, a puff of smoke | **Stopped** kinvault, in words (`Rate limited`) | — |
 | Music | the cover | title, then the artist in secondary | the equaliser in the cover's colour; a hairline of the song along the rim |
 | Volume, brightness | icon | — | a 4 px meter, the value rolling |
 | Charging, headphones, screenshot | icon / thumbnail | what happened (`Charging`, `full in 40m`) | battery glyph; a value only where the bar has none (headphones, battery low) |
@@ -143,18 +143,74 @@ Every motion is physical (a spring) or a short ease. Nothing is linear except a 
 | Press | a control goes in at once under the finger (50 ms) and acts on release over it, so you can slide off one you regret |
 | Another session becomes the hero | the card cross-fades, the new hero's rows arrive staggered from the click, the lines that stay glide |
 | A step finishing | its green and white ease back to grey |
-| Done | Ember bounces; 180 ms in, one band of light crosses the pill (ease-in-out, 700 ms); a check strokes itself in |
+| Done | Ember celebrates; 180 ms in, one band of light crosses the pill (ease-in-out, 700 ms); a check strokes itself in |
 | Needs you | a blue light breathes around the pill (outside the bar), with a lit rim; it fades out when the wait is over |
 | One beat | every pulse keeps a 1.6 s beat: the step ring, the waiting pulse, the halo; orbits turn once in two beats |
 | Working | a band of light passes over the label every 2.4 s (1 s pass, eased); every shimmer passes together |
 | A new step | the old steps make room, then a bead of light runs down the thread from Ember into the new step (420 ms); the stretch to the live step glows green |
-| Ember reacts | a nod (two small dips) when you allow, a head shake when you deny, a flinch when a step fails |
+| Ember reacts | see *Ember* below: every motion of Ember's is physics |
 | The pill's song | the cover is a disc in a ring that fills as the song plays |
 | System pop-ups | volume waves come and go with the level, the sun's rays lengthen with brightness, the meter stretches and springs back past 100, the battery fills to its level, a screenshot flashes like a shutter and its preview drops in |
 | Asleep | the pill dims 16 % and the clock turns grey |
 | The equaliser | the song's own low, mid and high (25 Hz, rising fast, falling slowly) |
 | Queued requests | their edges peek out under the card, a stack |
 | Request countdown | a 1 px hairline on the rim drains from both ends; in the last 15 s it eases to amber and thickens |
+
+## Ember
+
+Ember is a character, the same one everywhere: a small flame with a face. It's in every pill, never tucked away.
+Beside it sits what it's showing you (the cover, a moment's icon, a screenshot). On a volume or brightness meter it
+jumps onto the rail and rides the level as its knob. When a song plays it wears headphones, and when it catches the
+beat (and nothing else matters) it dances.
+
+**Its own fire.** Ember ignores the theme and the wallpaper. Its mood is the flame's temperature: a calm coral
+ember, a working orange, the gold of a job done, the blue of a flame running hot because something needs you, a deep
+red when it stopped, a fire running low when things went quiet. Each fire has three stops (the hot base and core,
+the body, the cooler tips), drawn as a gradient. The face sits on the bright inner light, so dark eyes read on it.
+Its headphones are one cool blue, against the warm fire.
+
+**The face is pixels.** At the pill's 16 px, the eyes are 2 px wide, 2 px apart, snapped to whole pixels: an eye a
+pixel and a half wide on a fractional position is a grey smudge. Eye height is attention: 1 a blink, 2 drowsy, 3
+calm, 4 attentive, 5 startled. Lids and slants cut whole pixels. Faces an arc can't draw at that size are pixel
+glyphs: `^ ^` happy, `> <` a flinch, a sleeping curve, a 2×2 "o", a yawn. A glance moves the eyes one pixel at most.
+
+**A body with real physics** (island/body.go). It's a small mass that jumps and lands under gravity (700 px/s²: a
+2.6 px hop is 170 ms in the air). Landing squashes it by how hard it hit; leaving the ground stretches it. Its slot's
+acceleration is felt as inertia: the body shears back when it's carried off and forward when it stops; the tip lags
+the body. A trip across the pill (onto a meter, home again) is a ballistic hop that lands exactly on its slot. Sparks
+and smoke are particles, launched, buoyant, dragged by the air; a spark is one bright pixel. Headphones fall onto its
+head, bounce and ride it. It all integrates in fixed 1/240 s steps, so it's the same at 6 frames a second or 60,
+and it rests (no frames) when nothing moves.
+
+**Acts** (island/acts.go) answer what just happened: impulses to the body, a face over a timeline.
+
+| Act | When |
+| --- | --- |
+| Ignite | a prompt is sent: it crouches, catches with a flash, pops up throwing two sparks |
+| Gulp | each tool call of the session it's watching (one per 1.2 s at most): the flame swells and licks |
+| Needs you | a request or a question: a crouch, a hop, wide eyes, a double blink, a smaller hop |
+| Done | its size from how long the turn took (20 s small, 5 min the whole thing): a hop, sparks, a second hop; a flare if earned |
+| Stopped | it flinches back with `> <`, the flame gutters, two puffs of smoke; it stays slumped |
+| Wince, relief | a failed step; the first step that passes after three failures (a slow blink, an exhale) |
+| Nod, shake | you allow; you deny (the head held by a muscle, the eyes leading, the tip trailing) |
+| Sleep, wake | a yawn, then it banks low against the pill's wall, its light breathing; waking, it shoots up and looks around |
+| Moments | charging is a gulp of power with sparks, a screenshot's flash makes it blink hard, headphones put on |
+
+**Its character** (island/bond.go). Four traits decide what it does on its own. *Watchful:* every look has a cause.
+*Invested:* it feels how the work goes, honestly (smaller and worried while steps keep failing, squashed while Claude
+compacts, awake keeping watch while Claude works and you're away, smaller on a low battery, a game face during a
+contest round), and celebrates only what was earned (a turn three times your usual or ten minutes, or hard-won and
+ended well). *Self-sufficient:* it never adds words, width or light to the pill for itself. *Wry:* rarely, about
+something real: it rolls its eyes when Claude opens with "You're absolutely right".
+
+A flourish (the morning stretch, a yawn near your bedtime, the eye-roll) goes through a gate: only when the island
+is calm (nothing waits on you, nothing failed unseen, no card, no moment, nobody watching your screen), at most one
+every twenty minutes and five a day, each on its own cooldown. It remembers in `~/.local/state/ember/bond.json`:
+when your mornings start, your bedtime, a turn's usual length, the cooldowns.
+
+Click Ember and it takes you where the pill would (a waiting session, a Done); otherwise it's a poke: it squashes
+and looks at you, the third puffs it up, the sixth sends it into its coal for a moment. Rest the pointer on it in
+the card and it closes its eyes, pleased.
 
 ## Cost
 

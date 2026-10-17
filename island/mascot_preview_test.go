@@ -204,6 +204,18 @@ func mascotFilms() []mascotFilm {
 			}
 		}, frames: 200, zoom: 3, whole: true},
 		{name: "music", set: none, settle: time.Second, act: func(g *galleryScene) { g.music(true) }, frames: 120, zoom: 3, whole: true},
+		{name: "dance", set: func(g *galleryScene) { g.music(true) }, settle: 1500 * time.Millisecond, act: func(g *galleryScene) {
+			g.a.ui.audio = &audio{}
+		}, each: func(g *galleryScene, i int) { // a kick at 120 bpm
+			lv := 0.2
+			if i%30 < 2 {
+				lv = 0.95
+			}
+			a := g.a.ui.audio
+			a.mu.Lock()
+			a.v, a.at = [3]float64{lv, 0.4, 0.3}, time.Now()
+			a.mu.Unlock()
+		}, frames: 180, zoom: 4, w: 90},
 		{name: "poke", set: none, settle: time.Second, act: play("poke", 0), frames: 45, zoom: 4},
 		{name: "stretch", set: none, settle: time.Second, act: play("stretch", 0), frames: 120, zoom: 4},
 		{name: "eyeroll", set: none, settle: time.Second, act: play("eyeroll", 0), frames: 50, zoom: 4},
