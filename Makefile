@@ -62,7 +62,7 @@ preview:
 # every state of the island over a made-up desktop, as stills, in ./preview
 gallery:
 	mkdir -p preview
-	EMBER_PREVIEW=$(CURDIR)/preview go test -run TestGallery ./island
+	EMBER_PREVIEW=$(CURDIR)/preview EMBER_EDGE_STATS=$(XDG_RUNTIME_DIR)/edge/stats.json go test -run TestGallery ./island
 
 # the README's pictures: stills, animated demos (needs ffmpeg with libwebp) and the banner
 docs: gallery

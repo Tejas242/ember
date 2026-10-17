@@ -504,7 +504,8 @@ func TestGallery(t *testing.T) {
 		g.a.ui.pinned = true
 	}, func(g *galleryScene) { g.a.ui.press("s:e", 1); g.a.ui.Invalidate() }, open, cardCrop)
 
-	// edge's dashboard: the sample, and today's real stats if edge is running
+	// edge's dashboard: the sample, and today's real stats when EMBER_EDGE_STATS
+	// names edge's stats.json (make gallery passes it; tests never read it)
 	var dash []galleryShot
 	dashShot := func(label string, st *EdgeStats) {
 		g := newScene()
@@ -517,7 +518,7 @@ func TestGallery(t *testing.T) {
 		dash = append(dash, galleryShot{label, onDesktop(g.a.ui, image.Rect(surfW/2-290, 0, surfW/2+290, min(surfH, int(h)+20)))})
 	}
 	dashShot("edge's dashboard, mid-problem", sampleStats(time.Date(2026, 10, 15, 17, 24, 0, 0, time.Local)))
-	if b, err := os.ReadFile(filepath.Join(os.Getenv("XDG_RUNTIME_DIR"), "edge", "stats.json")); err == nil {
+	if b, err := os.ReadFile(os.Getenv("EMBER_EDGE_STATS")); err == nil {
 		var st EdgeStats
 		if json.Unmarshal(b, &st) == nil && st.Version >= 1 {
 			dashShot("edge's dashboard, today", &st)
