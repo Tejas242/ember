@@ -1,7 +1,11 @@
 PREFIX ?= $(HOME)/.local
 BIN    := $(PREFIX)/bin/ember
 
-.PHONY: build install uninstall test preview gallery demo docs site-media
+.PHONY: build install uninstall test check fmt vet lint race vuln cover preview gallery demo docs site-media
+
+# pinned tools, run through go run (nothing to install)
+STATICCHECK := honnef.co/go/tools/cmd/staticcheck@v0.8.1
+GOVULNCHECK := golang.org/x/vuln/cmd/govulncheck@v1.4.0
 
 # a static binary (no libc to drift under it), stamped with its version
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null)
@@ -21,6 +25,34 @@ uninstall:
 test:
 	go vet ./...
 	go test ./...
+
+# everything CI checks, in order: run this before a commit
+check: fmt
+	go vet ./...
+	go run $(STATICCHECK) ./...
+	go test -count=1 ./...
+	go test -race -count=1 ./...
+
+fmt:
+	@out=$$(gofmt -l .); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
+
+vet:
+	go vet ./...
+
+lint:
+	go run $(STATICCHECK) ./...
+
+race:
+	go test -race -count=1 ./...
+
+vuln:
+	go run $(GOVULNCHECK) ./...
+
+# coverage per function, and the total, in ./preview/cover.out
+cover:
+	mkdir -p preview
+	go test -coverprofile=preview/cover.out ./...
+	go tool cover -func=preview/cover.out | tail -1
 
 # renders every state of the island to PNGs in ./preview
 preview:
