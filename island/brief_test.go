@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Tejas242/ember/internal/ipc"
 )
 
 // hookAt feeds the app a Claude Code hook event, as the socket would.
@@ -12,7 +14,7 @@ func hookAt(a *app, event, session, project string, payload map[string]any) {
 	payload["session_id"] = session
 	payload["cwd"] = "/home/x/" + project
 	b, _ := json.Marshal(payload)
-	a.hook(inMsg{Type: "hook", Event: event, Payload: b}, nil)
+	a.hook(ipc.Msg{Type: "hook", Event: event, Payload: b}, nil)
 }
 
 func newTestApp(clock *time.Time) *app {

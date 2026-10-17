@@ -4,7 +4,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/Tejas242/ember/island"
+	"github.com/Tejas242/ember/internal/ipc"
 )
 
 // hook relays a Claude Code hook event. Only a permission request or a
@@ -15,11 +15,11 @@ func hook(args []string) int {
 	raw, _ := io.ReadAll(os.Stdin)
 	switch event {
 	case "PermissionRequest", "AskUserQuestion":
-		if out := island.Ask(event, raw); out != nil {
+		if out := ipc.Ask(event, raw); out != nil {
 			os.Stdout.Write(out)
 		}
 	default:
-		island.Send(event, raw)
+		ipc.Send(event, raw)
 	}
 	return 0
 }

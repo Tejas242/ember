@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Tejas242/ember/internal/ipc"
 	"github.com/Tejas242/ember/island"
 )
 
@@ -34,7 +35,7 @@ var commands []*command
 
 func init() {
 	send := func(name string) func([]string) int {
-		return func([]string) int { return cmdOrFail(island.Cmd(name, "")) }
+		return func([]string) int { return cmdOrFail(ipc.Cmd(name, "")) }
 	}
 	withArg := func(name string) func([]string) int {
 		return func(a []string) int {
@@ -42,7 +43,7 @@ func init() {
 			if len(a) > 0 {
 				arg = a[0]
 			}
-			return cmdOrFail(island.Cmd(name, arg))
+			return cmdOrFail(ipc.Cmd(name, arg))
 		}
 	}
 	commands = []*command{
@@ -72,7 +73,7 @@ func init() {
 		{group: 3, name: "hook", args: "<Event>", min: 1, max: 1, need: "a Claude Code hook event",
 			summary: "Claude Code's hook (installed for you)", run: hook},
 		{group: 3, name: "edge", args: "'<json>'", min: 1, max: 1, need: "a JSON message",
-			summary: "a message for the edge plugin", run: func(a []string) int { return cmdOrFail(island.Edge([]byte(a[0]))) }},
+			summary: "a message for the edge plugin", run: func(a []string) int { return cmdOrFail(ipc.Edge([]byte(a[0]))) }},
 	}
 	lookup("help").run = func(a []string) int { return help(a, os.Stdout, os.Stderr) }
 }

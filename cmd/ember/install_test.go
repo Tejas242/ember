@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Tejas242/ember/internal/ipc"
 	"github.com/Tejas242/ember/island"
 )
 
@@ -172,7 +173,7 @@ func TestHookTable(t *testing.T) {
 			t.Errorf("%s twice", key)
 		}
 		seen[key] = true
-		if !h.async && h.timeout <= island.AskTimeout+5*time.Second {
+		if !h.async && h.timeout <= ipc.AskTimeout+5*time.Second {
 			t.Errorf("%s: Claude would kill the hook (%v) before the island answers", key, h.timeout)
 		}
 		if h.async && h.timeout > 10*time.Second {

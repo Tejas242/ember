@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Tejas242/ember/internal/ipc"
 )
 
 // Several Claude Code sessions at once: each keeps its own story, requests
@@ -17,7 +19,7 @@ func hookPids(a *app, event, session, project string, pids []int, payload map[st
 	payload["session_id"] = session
 	payload["cwd"] = "/home/x/" + project
 	b, _ := json.Marshal(payload)
-	a.hook(inMsg{Type: "hook", Event: event, Pids: pids, Payload: b}, nil)
+	a.hook(ipc.Msg{Type: "hook", Event: event, Pids: pids, Payload: b}, nil)
 }
 
 // askAt is a hook that waits for an answer (a permission, a question).
@@ -26,7 +28,7 @@ func askAt(a *app, event, session, project string, payload map[string]any) (stri
 	payload["cwd"] = "/home/x/" + project
 	b, _ := json.Marshal(payload)
 	ch := make(chan json.RawMessage, 1)
-	return a.hook(inMsg{Type: "hook", Event: event, Wait: true, Payload: b}, ch), ch
+	return a.hook(ipc.Msg{Type: "hook", Event: event, Wait: true, Payload: b}, ch), ch
 }
 
 func read(t *testing.T, name string, ch chan json.RawMessage) string {

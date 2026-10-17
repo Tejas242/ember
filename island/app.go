@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Tejas242/ember/internal/ipc"
 	"github.com/Tejas242/ember/internal/xdg"
 )
 
@@ -45,28 +46,8 @@ type app struct {
 	detectedAt time.Time         // when dormant plugins last looked for their tools
 }
 
-// Status is what `ember doctor` reports about the running island.
-type Status struct {
-	Pid         int      `json:"pid"`
-	Uptime      string   `json:"uptime"`
-	BarHeight   float32  `json:"barHeight"`
-	Blur        bool     `json:"blur"`
-	CursorShape bool     `json:"cursorShape"`
-	Presence    bool     `json:"presence"`
-	Niri        bool     `json:"niri"`
-	Music       bool     `json:"music"`
-	Track       string   `json:"track,omitempty"`
-	Volume      bool     `json:"volume"`
-	Backlight   bool     `json:"backlight"`
-	Battery     bool     `json:"battery"`
-	Sessions    int      `json:"sessions"`
-	Pending     int      `json:"pending"`
-	Config      string   `json:"config"`
-	Plugins     []string `json:"plugins"` // running, with a word on each
-}
-
-func (a *app) status() Status {
-	st := Status{Pid: os.Getpid(), Uptime: time.Since(a.started).Round(time.Second).String(), BarHeight: a.ui.BarH,
+func (a *app) status() ipc.Status {
+	st := ipc.Status{Pid: os.Getpid(), Uptime: time.Since(a.started).Round(time.Second).String(), BarHeight: a.ui.BarH,
 		Blur: a.win.blurMgr != 0, CursorShape: a.win.cursorMgr != 0, Presence: a.win.idleMgr != 0, Niri: a.desk.live, Music: a.music != nil,
 		Volume: a.ui.vol.ok, Backlight: a.ui.light >= 0, Battery: a.ui.power != nil,
 		Sessions: len(a.ui.sessions), Pending: len(a.ui.cards), Config: "defaults"}
@@ -390,7 +371,7 @@ func (a *app) sweep() bool {
 	for id, s := range a.ui.sessions {
 		quiet := now.Sub(s.Seen)
 		switch {
-		case !slices.ContainsFunc(s.Pids, alive) || (s.State == "idle" && quiet > 3*time.Hour):
+		case !slices.ContainsFunc(s.Pids, ipc.Alive) || (s.State == "idle" && quiet > 3*time.Hour):
 			a.forget(id)
 			changed = true
 		case s.State != "idle" && quiet > a.cfg.Settle && !a.hasCard(id):
@@ -425,7 +406,7 @@ func (a *app) end(id string, now time.Time) {
 // from inside another adds more than a shell.
 func sameProcess(old, cur []int) bool {
 	i := 0
-	for i < len(old) && !alive(old[i]) {
+	for i < len(old) && !ipc.Alive(old[i]) {
 		i++
 	}
 	old = old[i:]
@@ -594,7 +575,7 @@ func (a *app) command(cmd, arg string) {
 
 // ---- Claude Code hooks ----
 
-func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
+func (a *app) hook(m ipc.Msg, answer chan<- json.RawMessage) string {
 	var in hookInput
 	json.Unmarshal(m.Payload, &in)
 	now := a.ui.now()
@@ -1086,7 +1067,7 @@ func (a *app) ask(s *Session, in hookInput, tin map[string]any, answer chan<- js
 
 // ---- sessions survive a restart of the island ----
 
-func sessionsPath() string { return filepath.Join(filepath.Dir(SockPath()), "ember-sessions.json") }
+func sessionsPath() string { return filepath.Join(filepath.Dir(ipc.SockPath()), "ember-sessions.json") }
 
 func (a *app) saveSessions() {
 	b, err := json.Marshal(a.ui.sessions)
@@ -1105,7 +1086,7 @@ func (a *app) loadSessions() {
 		return
 	}
 	for id, s := range ss {
-		if slices.ContainsFunc(s.Pids, alive) {
+		if slices.ContainsFunc(s.Pids, ipc.Alive) {
 			a.ui.sessions[id] = s
 		}
 	}

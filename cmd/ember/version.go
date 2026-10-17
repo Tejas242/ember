@@ -1,6 +1,8 @@
 package main
 
-import "runtime/debug"
+import (
+	"runtime/debug"
+)
 
 // version is stamped at build time (the Makefile and CI pass
 // -ldflags "-X main.version=$(git describe --tags --always --dirty)").

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Tejas242/ember/internal/ipc"
 	"github.com/Tejas242/ember/internal/xdg"
 )
 
@@ -50,7 +51,7 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{AwayAfter: 2 * time.Minute, Pill: "clock", HoverDelay: 150 * time.Millisecond,
 		CardSteps: keepShown, CardOthers: 3, DoneFor: 6 * time.Second, OSDFor: osdHold,
-		Answer: true, Wait: AskTimeout - 5*time.Second, Settle: 30 * time.Minute, AgentQuiet: agentQuiet, Opacity: 0.87,
+		Answer: true, Wait: ipc.AskTimeout - 5*time.Second, Settle: 30 * time.Minute, AgentQuiet: agentQuiet, Opacity: 0.87,
 		Claude: true, Music: true, Edge: true, Battery: true,
 		OSD: true, Devices: true, Screenshots: true, Privacy: true, Done: true}
 }
@@ -264,7 +265,7 @@ func parseConfig(text string) (c Config, warns, keys []string) {
 		case "claude.answer":
 			flag(&c.Answer)
 		case "claude.wait_s":
-			span(&c.Wait, time.Second, 5, (AskTimeout - 5*time.Second).Seconds()) // the hook gives up at AskTimeout
+			span(&c.Wait, time.Second, 5, (ipc.AskTimeout - 5*time.Second).Seconds()) // the hook gives up at ipc.AskTimeout
 		case "claude.settle_min":
 			span(&c.Settle, time.Minute, 1, 1440)
 		case "claude.agent_quiet_min":

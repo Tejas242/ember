@@ -9,34 +9,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
-	"github.com/Tejas242/ember/internal/xdg"
+	"github.com/Tejas242/ember/internal/ipc"
 )
-
-// AskTimeout is how long a permission or question waits on the island
-// before Claude falls back to its own terminal prompt.
-const AskTimeout = 90 * time.Second
-
-func SockPath() string {
-	return filepath.Join(xdg.RuntimeDir(), "ember.sock")
-}
-
-// wire messages, one JSON object per line
-type inMsg struct {
-	Type    string          `json:"type"`           // hook | plugin | edge | cmd
-	Name    string          `json:"name,omitempty"` // plugin: which one
-	Event   string          `json:"event,omitempty"`
-	Wait    bool            `json:"wait,omitempty"`
-	Pids    []int           `json:"pids,omitempty"`
-	Payload json.RawMessage `json:"payload,omitempty"`
-	ID      string          `json:"id,omitempty"`
-}
-
-type reply struct {
-	Output json.RawMessage `json:"output,omitempty"`
-}
 
 // hookInput is the subset of Claude Code's hook payload the island uses.
 type hookInput struct {
@@ -61,7 +37,7 @@ type server struct {
 }
 
 func listen(posts chan<- func(*app)) (*server, error) {
-	p := SockPath()
+	p := ipc.SockPath()
 	if c, err := net.DialTimeout("unix", p, 200*time.Millisecond); err == nil {
 		c.Close()
 		return nil, fmt.Errorf("another island is running on %s", p)
@@ -94,7 +70,7 @@ func (s *server) serve(c *net.UnixConn) {
 	if err != nil {
 		return
 	}
-	var m inMsg
+	var m ipc.Msg
 	if json.Unmarshal(line, &m) != nil {
 		return
 	}
@@ -118,9 +94,9 @@ func (s *server) serve(c *net.UnixConn) {
 		case <-gone:
 			s.posts <- func(a *app) { a.ui.RemoveCard(cardID); a.ui.Invalidate() }
 			return
-		case <-time.After(AskTimeout):
+		case <-time.After(ipc.AskTimeout):
 		}
-		b, _ := json.Marshal(reply{Output: out})
+		b, _ := json.Marshal(ipc.Reply{Output: out})
 		c.Write(append(b, '\n'))
 	case "edge": // edge's own address, from before plugins
 		s.posts <- func(a *app) { a.toPlugin("edge", m.Payload) }
@@ -129,7 +105,7 @@ func (s *server) serve(c *net.UnixConn) {
 	case "cmd": // keyboard: allow / deny / always / terminal / answer <key>
 		s.posts <- func(a *app) { a.command(m.Event, m.ID) }
 	case "status": // `ember doctor` asks what the island is connected to
-		st := make(chan Status, 1)
+		st := make(chan ipc.Status, 1)
 		s.posts <- func(a *app) { st <- a.status() }
 		select {
 		case v := <-st:
@@ -223,5 +199,3 @@ func activity(tool string, in map[string]any) (label string, plus, minus int) {
 	}
 	return tool, 0, 0
 }
-
-func alive(pid int) bool { return pid > 0 && syscall.Kill(pid, 0) == nil }

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Tejas242/ember/internal/ipc"
 	"github.com/Tejas242/ember/island"
 )
 
@@ -38,9 +39,9 @@ func doctor() {
 	enabled := exec.Command("systemctl", "--user", "is-enabled", "--quiet", "ember.service").Run() == nil
 	line(active && enabled, "service", fmt.Sprintf("ember.service active=%v enabled=%v", active, enabled), "ember install")
 
-	st, up := island.QueryStatus()
+	st, up := ipc.QueryStatus()
 	line(up, "island", map[bool]string{true: fmt.Sprintf("running (pid %d, up %s, bar %.0fpx)", st.Pid, st.Uptime, st.BarHeight),
-		false: "not answering on " + island.SockPath()}[up], "journalctl --user -u ember -n 30")
+		false: "not answering on " + ipc.SockPath()}[up], "journalctl --user -u ember -n 30")
 	if up {
 		line(st.Blur, "blur", map[bool]string{true: "ext-background-effect-v1", false: "compositor has no ext-background-effect-v1; the island is drawn without blur"}[st.Blur], "")
 		line(st.CursorShape, "cursor", map[bool]string{true: "wp-cursor-shape-v1", false: "no wp-cursor-shape-v1: no hand cursor over buttons"}[st.CursorShape], "")

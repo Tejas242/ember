@@ -3,7 +3,7 @@ package main
 import (
 	"time"
 
-	"github.com/Tejas242/ember/island"
+	"github.com/Tejas242/ember/internal/ipc"
 )
 
 // hookSpec is one of Ember's entries in Claude Code's settings.
@@ -18,7 +18,7 @@ type hookSpec struct {
 // askTimeout: a request waits AskTimeout on the island; Claude must wait
 // longer than that (the client gives up at AskTimeout+5s), or it kills the
 // hook while the island still shows the card.
-const askTimeout = island.AskTimeout + 10*time.Second
+const askTimeout = ipc.AskTimeout + 10*time.Second
 
 // emberHooks is every hook Ember installs, in the order it writes them.
 // install, uninstall and doctor all read this table.

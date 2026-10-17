@@ -1,39 +1,11 @@
-package island
+package ipc
 
 import (
 	"bufio"
 	"encoding/json"
 	"net"
-	"os"
-	"strconv"
-	"strings"
 	"time"
 )
-
-// Ancestors is the calling process's parent chain (shell, claude, terminal…),
-// so the island can find the session's terminal window.
-func Ancestors() []int {
-	var out []int
-	pid := os.Getppid()
-	for i := 0; i < 8 && pid > 1; i++ {
-		b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
-		if err != nil {
-			break
-		}
-		// pid (comm) state ppid ...; comm may contain spaces, so cut after ')'
-		s := string(b)
-		if comm := s[strings.IndexByte(s, '(')+1 : strings.LastIndexByte(s, ')')]; comm == "systemd" || comm == "init" {
-			break // the session manager outlives every session: it would keep this one forever
-		}
-		out = append(out, pid)
-		f := strings.Fields(s[strings.LastIndexByte(s, ')')+1:])
-		if len(f) < 2 {
-			break
-		}
-		pid, _ = strconv.Atoi(f[1])
-	}
-	return out
-}
 
 func dialIsland() (net.Conn, error) {
 	return net.DialTimeout("unix", SockPath(), 150*time.Millisecond)
@@ -48,7 +20,7 @@ func Send(event string, payload []byte) {
 	}
 	defer c.Close()
 	c.SetDeadline(time.Now().Add(300 * time.Millisecond))
-	b, _ := json.Marshal(inMsg{Type: "hook", Event: event, Pids: Ancestors(), Payload: payload})
+	b, _ := json.Marshal(Msg{Type: "hook", Event: event, Pids: Ancestors(), Payload: payload})
 	c.Write(append(b, '\n'))
 }
 
@@ -61,7 +33,7 @@ func Ask(event string, payload []byte) []byte {
 		return nil
 	}
 	defer c.Close()
-	b, _ := json.Marshal(inMsg{Type: "hook", Event: event, Wait: true, Pids: Ancestors(), Payload: payload})
+	b, _ := json.Marshal(Msg{Type: "hook", Event: event, Wait: true, Pids: Ancestors(), Payload: payload})
 	c.SetDeadline(time.Now().Add(AskTimeout + 5*time.Second))
 	if _, err := c.Write(append(b, '\n')); err != nil {
 		return nil
@@ -70,7 +42,7 @@ func Ask(event string, payload []byte) []byte {
 	if err != nil {
 		return nil
 	}
-	var r reply
+	var r Reply
 	if json.Unmarshal(line, &r) != nil || len(r.Output) == 0 || string(r.Output) == "null" {
 		return nil
 	}
@@ -78,12 +50,12 @@ func Ask(event string, payload []byte) []byte {
 }
 
 // Edge sends one message from edge (status, card, remove) to the island.
-func Edge(raw []byte) bool { return oneShot(inMsg{Type: "edge", Payload: raw}) }
+func Edge(raw []byte) bool { return oneShot(Msg{Type: "edge", Payload: raw}) }
 
 // Cmd sends a keyboard command (allow, deny, always, terminal, answer <key>).
-func Cmd(cmd, arg string) bool { return oneShot(inMsg{Type: "cmd", Event: cmd, ID: arg}) }
+func Cmd(cmd, arg string) bool { return oneShot(Msg{Type: "cmd", Event: cmd, ID: arg}) }
 
-func oneShot(m inMsg) bool {
+func oneShot(m Msg) bool {
 	c, err := dialIsland()
 	if err != nil {
 		return false
@@ -104,7 +76,7 @@ func QueryStatus() (st Status, ok bool) {
 	}
 	defer c.Close()
 	c.SetDeadline(time.Now().Add(3 * time.Second))
-	b, _ := json.Marshal(inMsg{Type: "status"})
+	b, _ := json.Marshal(Msg{Type: "status"})
 	if _, err := c.Write(append(b, '\n')); err != nil {
 		return st, false
 	}
