@@ -63,7 +63,7 @@ Radii: the card 22 (continuous superellipse), hovers 10, buttons fully round (26
 | Needs you | Ember, blue, hops and looks up at you | `kinvault needs you` | a blue light breathes around the pill, with a lit rim |
 | Done | Ember, gold, celebrates as big as the work was long | **Done** kinvault, the reply's best sentence | a check that strokes itself in |
 | Stopped on an error | Ember, red, flinches, a puff of smoke | **Stopped** kinvault, in words (`Rate limited`) | — |
-| Music | the cover | title, then the artist in secondary | the equaliser in the cover's colour; a hairline of the song along the rim |
+| Music | Ember in headphones, dancing, and the cover in a ring of the song | title, then the artist in secondary | — (Ember is the equaliser now; paused, it takes its headphones off) |
 | Volume, brightness | icon | — | a 4 px meter, the value rolling |
 | Charging, headphones, screenshot | icon / thumbnail | what happened (`Charging`, `full in 40m`) | battery glyph; a value only where the bar has none (headphones, battery low) |
 | A second activity | | | a satellite after a hairline: the spinning cover, a tiny flame. Click swaps it in |
@@ -152,7 +152,8 @@ Every motion is physical (a spring) or a short ease. Nothing is linear except a 
 | The pill's song | the cover is a disc in a ring that fills as the song plays |
 | System pop-ups | volume waves come and go with the level, the sun's rays lengthen with brightness, the meter stretches and springs back past 100, the battery fills to its level, a screenshot flashes like a shutter and its preview drops in |
 | Asleep | the pill dims 16 % and the clock turns grey |
-| The equaliser | the song's own low, mid and high (25 Hz, rising fast, falling slowly) |
+| The equaliser (the card's cover) | the song's own low, mid and high (25 Hz, rising fast, falling slowly) |
+| Ember dancing | it counts the beat: kicks teach it the tempo, a phase-locked count keeps it on the beat between them (and through a bar without a kick); it dips on the beat, sways over two, nods, or bounces on an energetic song, a new move each eight beats, as big as the song's energy |
 | Queued requests | their edges peek out under the card, a stack |
 | Request countdown | a 1 px hairline on the rim drains from both ends; in the last 15 s it eases to amber and thickens |
 
@@ -160,8 +161,9 @@ Every motion is physical (a spring) or a short ease. Nothing is linear except a 
 
 Ember is a character, the same one everywhere: a small flame with a face. It's in every pill, never tucked away.
 Beside it sits what it's showing you (the cover, a moment's icon, a screenshot). On a volume or brightness meter it
-jumps onto the rail and rides the level as its knob. When a song plays it wears headphones, and when it catches the
-beat (and nothing else matters) it dances.
+jumps onto the rail and rides the level as its knob. When a song plays it wears headphones and dances to it,
+wherever it is (the pill, the card), unless something needs you or went wrong. It counts the beat rather than
+jumping after each kick: kicks teach it the tempo and a phase-locked count keeps it on time (island/groove.go).
 
 **Its own fire.** Ember ignores the theme and the wallpaper. Its mood is the flame's temperature: a calm coral
 ember, a working orange, the gold of a job done, the blue of a flame running hot because something needs you, a deep

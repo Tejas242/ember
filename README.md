@@ -75,7 +75,8 @@ clock with a small flame that breathes, blinks, glances around and falls asleep 
 Any MPRIS player. In the pill, the cover is a disc with the song as a ring around it. In the card, the cover sits on
 a haze of its own colours, with controls, a scrubber you can drag, and the time at both ends. **The equaliser
 listens**: while a song plays, Ember reads the output's levels (`parec`, 8 kHz mono) and splits them into low, mid
-and high, 25 times a second. Nothing is kept, and it stops when the music does.
+and high, 25 times a second. Nothing is kept, and it stops when the music does. Ember puts on headphones and dances
+to it: it learns the song's tempo from the kick and keeps the beat.
 
 <br clear="right">
 
