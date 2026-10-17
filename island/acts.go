@@ -449,9 +449,7 @@ func (u *UI) posture(p *pose, now time.Time, t float64) {
 		p.scale *= float32(0.85 + 0.15*pw.pct/15)
 	}
 	b.phones.want = u.wantPhones()
-	if b.phones.want && b.phones.seated && u.dancing {
-		p.eyes, p.mouth = eyeHappy, mouthSmile
-	}
+	u.danceFace(p)
 	// petted: the pointer resting on it in the card
 	if u.hoverKey == "ember" && u.lastView != vCompact {
 		if u.petSince.IsZero() {
@@ -511,54 +509,6 @@ func (u *UI) wantPhones() bool {
 		return true
 	}
 	return u.track != nil && u.track.Playing && u.cfg.Music
-}
-
-// ---- the beat: Ember dances to the song's bass ----
-
-// listen reads the song's low band: a sudden jump from the last sample that
-// also stands well over its recent level is a beat (the kick). Each beat bobs
-// Ember down and puts its weight on the other side.
-func (u *UI) listen(now time.Time) {
-	b := u.body
-	if !b.phones.want || !b.phones.seated || u.lastView != vCompact || !u.danceable() {
-		u.dancing = false // something needs you, or went wrong: it stops
-		if u.act == nil {
-			b.hold = 0
-		}
-		return
-	}
-	lv, at, heard := u.audio.sample()
-	if !heard {
-		u.dancing = false
-		if u.act == nil {
-			b.hold = 0
-		}
-		return
-	}
-	if at != u.sampleAt { // each 40 ms of the song once, at any frame rate
-		u.sampleAt = at
-		low := lv[0]
-		kick := low-u.bassPrev > 0.12 && low > u.bassEnv*1.3 && now.Sub(u.beatAt) > 260*time.Millisecond
-		u.bassEnv += (low - u.bassEnv) * 0.08
-		u.bassPrev = low
-		if kick {
-			u.beatAt = now
-			u.beatN++
-			b.squash(0.6 + 1.4*low)
-			u.danceSide = float64(1-2*(u.beatN%2)) * (0.7 + 0.7*low) // its weight goes onto one side until the next beat
-			b.shove(3 * sign64(u.danceSide))
-			b.phones.tilt.v += sign64(u.danceSide) * 0.6
-		}
-	}
-	if u.act == nil && now.Sub(u.beatAt) < 900*time.Millisecond {
-		b.hold = u.danceSide
-	} else if u.act == nil {
-		b.hold = 0
-	}
-	u.dancing = u.beatN >= 4 && now.Sub(u.beatAt) < 2*time.Second
-	if now.Sub(u.beatAt) > 4*time.Second {
-		u.beatN = 0
-	}
 }
 
 // ---- drawing Ember ----

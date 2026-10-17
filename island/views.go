@@ -375,11 +375,6 @@ func (u *UI) pillLayout(l line, h float32) (left, right []seg, w float32) {
 	if u.casting { // someone can see your screen
 		right = append(right, seg{w: 7, gap: 8, draw: func(x float32) { u.dc.circle(x+3.5, cy, 3.2, mix(p.red, p.yellow, 0.35)) }})
 	}
-	if l.music && u.track != nil {
-		right = append(right, seg{w: 14, gap: 10, draw: func(x float32) {
-			u.eqLive(x, cy+5, 10, u.accent(p.green), u.track.Playing)
-		}})
-	}
 	if l.trail != "" {
 		right = append(right, seg{w: trailW - 8, gap: 8, draw: func(x float32) {
 			u.dc.roundRect(x, cy-6, 1, 12, 0.5, alpha(p.fg, 0.14))

@@ -233,16 +233,11 @@ type UI struct {
 	eqLevel     [3]float64  // its bars, smoothed
 	washImg     *image.RGBA // the cover's haze, scaled to the music section
 	washKey     string
-	body        *body // Ember's physical self
-	act         *act  // what it's acting out, if anything
-	dancing     bool  // it has caught the song's beat
-	bassEnv     float64
-	beatAt      time.Time
-	beatN       int
-	danceSide   float64   // where its weight is: one side, then the other, beat by beat
-	bassPrev    float64   // the song's last low-band level
-	sampleAt    time.Time // the song's last sample it listened to
-	travelTo    float32   // where its slot last was: a jump in it is a trip, taken with a hop
+	body        *body   // Ember's physical self
+	act         *act    // what it's acting out, if anything
+	dancing     bool    // it has caught the song's beat
+	groove      groove  // its sense of rhythm
+	travelTo    float32 // where its slot last was: a jump in it is a trip, taken with a hop
 	travelling  bool
 	tripFrom    float64   // where the trip left from
 	tripAt      time.Time // when it left the ground (after its crouch)

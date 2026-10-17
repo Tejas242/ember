@@ -59,6 +59,7 @@ type body struct {
 	coal     osc     // 0 a flame … 1 a coal
 	sqRest   float64 // a held squash (compacting): 1 normally
 	hold     float64 // a lean held by a muscle (a shake) or the dance's weight on one foot
+	danceSq  float64 // the dance's dip, 1 at rest
 	leanK    float64 // its stiffness while a muscle holds it, 0 otherwise
 	leanRest float64 // a held lean (resting its head on the wall asleep)
 	coalRest float64
@@ -74,7 +75,7 @@ type body struct {
 }
 
 func newBody() *body {
-	b := &body{sqRest: 1, seed: 1}
+	b := &body{sqRest: 1, danceSq: 1, seed: 1}
 	b.sq.x, b.core.x = 1, 1
 	return b
 }
@@ -182,7 +183,7 @@ func (b *body) tick(h, slotV float64) {
 			}
 		}
 	}
-	sqTarget := b.sqRest
+	sqTarget := b.sqRest * b.danceSq
 	if b.y > 0 { // in the air it stretches with its speed
 		sqTarget += math.Min(math.Abs(b.vy)*0.0024, 0.18)
 	}
