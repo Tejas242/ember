@@ -335,7 +335,7 @@ func (a *app) nextWake(animating bool) time.Duration {
 	next := u.nextBlink()
 	if u.continuous() {
 		next = now.Add(flickerEvery)
-		if u.lastView != vCompact || u.eqShown {
+		if u.lastView != vCompact || u.eqShown || u.dancing || (u.body.phones.seated && u.danceable()) { // a dance needs every beat
 			next = now.Add(time.Second / 24) // the card's pulses, a listening equaliser: only their squares repaint
 		}
 		if u.shimmering() { // a band of light crosses smoothly, then rests

@@ -95,6 +95,24 @@ func (u *UI) calm() bool {
 	return true
 }
 
+// danceable: Ember may dance to your music unless something needs you, went
+// wrong, or someone is watching your screen. Claude working doesn't stop it:
+// it works to music too.
+func (u *UI) danceable() bool {
+	if u.casting || len(u.cards) > 0 || u.mind.valence < -0.2 {
+		return false
+	}
+	if m := u.moment; m != nil && m.mood == moodError {
+		return false
+	}
+	for _, s := range u.sessions {
+		if s.State == "wait" || (s.Recap != nil && s.Recap.Failed && !s.Unseen.IsZero()) {
+			return false
+		}
+	}
+	return true
+}
+
 // may: the gate for a flourish. Calm, within the day's budget, not within
 // twenty minutes of the last flourish, and not within every of its own last.
 func (u *UI) may(name string, every time.Duration) bool {

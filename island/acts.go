@@ -515,12 +515,13 @@ func (u *UI) wantPhones() bool {
 
 // ---- the beat: Ember dances to the song's bass ----
 
-// listen reads the song's low band: a rise well over its recent level is a
-// beat. Each beat bobs Ember down and swings it to the other side.
+// listen reads the song's low band: a sudden jump from the last sample that
+// also stands well over its recent level is a beat (the kick). Each beat bobs
+// Ember down and puts its weight on the other side.
 func (u *UI) listen(now time.Time) {
 	b := u.body
-	if !b.phones.want || !b.phones.seated || u.lastView != vCompact || !u.calm() || u.senses().working {
-		u.dancing = false // it dances only when nothing else matters
+	if !b.phones.want || !b.phones.seated || u.lastView != vCompact || !u.danceable() {
+		u.dancing = false // something needs you, or went wrong: it stops
 		if u.act == nil {
 			b.hold = 0
 		}
@@ -537,8 +538,10 @@ func (u *UI) listen(now time.Time) {
 	if at != u.sampleAt { // each 40 ms of the song once, at any frame rate
 		u.sampleAt = at
 		low := lv[0]
-		u.bassEnv += (low - u.bassEnv) * 0.12
-		if low > u.bassEnv*1.25+0.12 && now.Sub(u.beatAt) > 260*time.Millisecond {
+		kick := low-u.bassPrev > 0.12 && low > u.bassEnv*1.3 && now.Sub(u.beatAt) > 260*time.Millisecond
+		u.bassEnv += (low - u.bassEnv) * 0.08
+		u.bassPrev = low
+		if kick {
 			u.beatAt = now
 			u.beatN++
 			b.squash(0.6 + 1.4*low)

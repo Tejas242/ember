@@ -240,6 +240,7 @@ type UI struct {
 	beatAt      time.Time
 	beatN       int
 	danceSide   float64   // where its weight is: one side, then the other, beat by beat
+	bassPrev    float64   // the song's last low-band level
 	sampleAt    time.Time // the song's last sample it listened to
 	travelTo    float32   // where its slot last was: a jump in it is a trip, taken with a hop
 	travelling  bool
