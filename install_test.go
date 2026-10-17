@@ -12,12 +12,54 @@ import (
 	"github.com/Tejas242/ember/island"
 )
 
-func TestPatchSettingsOnRealCopy(t *testing.T) {
-	h, _ := os.UserHomeDir()
-	raw, err := os.ReadFile(filepath.Join(h, ".claude", "settings.json"))
-	if err != nil {
-		t.Skip("no settings")
+// A settings.json with Ember's hooks under other names (a stale temp build,
+// the old Noctalia script) and other tools' hooks, some sharing an entry.
+const settingsFixture = `{
+  "model": "opus",
+  "permissions": {"allow": ["Bash(ls:*)"]},
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "*", "hooks": [{"type": "command", "command": "/tmp/claude-1000/x/ember-pd hook PreToolUse", "timeout": 5, "async": true}]},
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "/home/x/.local/bin/edge hook"}]},
+      {"matcher": "Edit", "hooks": [{"type": "command", "command": "/home/x/.local/bin/edge hook PreToolUse"}]},
+      {"matcher": "*", "hooks": [
+        {"type": "command", "command": "'/home/x/old ember/ember' hook PreToolUse"},
+        {"type": "command", "command": "notify-send hi"}
+      ]}
+    ],
+    "PermissionRequest": [
+      {"matcher": "*", "hooks": [{"type": "command", "command": "/tmp/go-build1/b001/exe/ember hook PermissionRequest", "timeout": 100}]}
+    ],
+    "Stop": [
+      {"hooks": [{"type": "command", "command": "sh '/home/x/.config/noctalia/plugins/ember/hook' Stop"}]},
+      {"hooks": [{"type": "command", "command": "echo ember hook Stop"}]},
+      {"hooks": [{"type": "command", "command": "/usr/bin/ember-notes hook sync"}]}
+    ]
+  }
+}`
+
+func TestEmberHook(t *testing.T) {
+	for cmd, want := range map[string]string{
+		"/home/x/.local/bin/ember hook Stop":                    "/home/x/.local/bin/ember",
+		"/tmp/claude-1000/x/ember-pd hook PreToolUse":           "/tmp/claude-1000/x/ember-pd",
+		"ember hook SessionStart":                               "ember",
+		`"/home/x/my bin/ember" hook PostToolUse`:               "/home/x/my bin/ember",
+		"sh '/home/x/.config/noctalia/plugins/ember/hook' Stop": "",
+	} {
+		if bin, ok := emberHook(cmd); !ok || bin != want {
+			t.Errorf("emberHook(%q) = %q %v, want %q", cmd, bin, ok, want)
+		}
 	}
+	for _, cmd := range []string{"/home/x/.local/bin/edge hook", "/home/x/.local/bin/edge hook PreToolUse",
+		"echo ember hook Stop", "/usr/bin/ember-notes hook sync", "ember", "hook Stop", "notify-send hi"} {
+		if _, ok := emberHook(cmd); ok {
+			t.Errorf("emberHook(%q) claims another tool's hook", cmd)
+		}
+	}
+}
+
+func TestPatchSettingsFixture(t *testing.T) {
+	raw := []byte(settingsFixture)
 	exe := "/home/x/.local/bin/ember"
 	out, err := patchSettings(raw, exe, true)
 	if err != nil {
@@ -28,15 +70,36 @@ func TestPatchSettingsOnRealCopy(t *testing.T) {
 		t.Fatal("not idempotent")
 	}
 	s := string(out)
-	if n := strings.Count(s, exe+" hook "); n != len(emberHooks) || strings.Contains(s, "ember/hook'") {
-		t.Fatalf("want exactly len(emberHooks) Ember entries and no old plugin ones, got %d", n)
+	if n, stale := hookCountIn(out, exe); n != len(emberHooks) || stale != 0 {
+		t.Fatalf("want exactly %d Ember hooks, all this binary's; got %d (%d stale)", len(emberHooks), n, stale)
 	}
-	if !strings.Contains(s, "edge hook") {
-		t.Fatal("must keep edge's gate hooks")
+	if n := strings.Count(s, exe+" hook "); n != len(emberHooks) {
+		t.Fatalf("%d hooks run %s", n, exe)
 	}
+	for _, gone := range []string{"ember-pd", "go-build", "old ember", "noctalia"} {
+		if strings.Contains(s, gone) {
+			t.Errorf("stale Ember hook %q kept", gone)
+		}
+	}
+	kept := []string{`"/home/x/.local/bin/edge hook"`, `"/home/x/.local/bin/edge hook PreToolUse"`, `"notify-send hi"`,
+		`"echo ember hook Stop"`, `"/usr/bin/ember-notes hook sync"`}
+	for _, k := range kept {
+		if !strings.Contains(s, k) {
+			t.Errorf("lost another tool's hook %s", k)
+		}
+	}
+	if n, stale := hookCountIn(raw, exe); n != 4 || stale != 4 {
+		t.Errorf("doctor on the fixture: %d hooks, %d stale; want 4, 4", n, stale)
+	}
+
 	gone, _ := patchSettings(out, exe, false)
-	if strings.Contains(string(gone), "ember hook") || !strings.Contains(string(gone), "edge hook") {
-		t.Fatal("uninstall must remove Ember's hooks and only those")
+	if n, _ := hookCountIn(gone, exe); n != 0 {
+		t.Fatalf("uninstall left %d Ember hooks", n)
+	}
+	for _, k := range kept {
+		if !strings.Contains(string(gone), k) {
+			t.Errorf("uninstall lost another tool's hook %s", k)
+		}
 	}
 	var before, after map[string]any
 	json.Unmarshal(raw, &before)

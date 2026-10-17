@@ -132,19 +132,70 @@ func uninstall() error {
 	return nil
 }
 
-// isEmber matches Ember's hook entries from any version (the Go binary, or
-// the older Noctalia plugin's sh script).
-func isEmber(entry any) bool {
-	m, _ := entry.(map[string]any)
-	hs, _ := m["hooks"].([]any)
-	for _, h := range hs {
-		hm, _ := h.(map[string]any)
-		c, _ := hm["command"].(string)
-		if strings.Contains(c, "ember hook ") || strings.Contains(c, "ember/hook'") {
+// emberHook says whether a hook command is one of Ember's, from any version
+// and whatever its binary is called (ember, ember-pd, a temp build), and which
+// binary it runs: "<bin> hook <Event>" with an event Ember installs and a
+// binary whose name starts with "ember", or the old Noctalia plugin's sh
+// script (bin ""). Other tools' hooks (`edge hook`) are never Ember's.
+func emberHook(cmd string) (bin string, ok bool) {
+	cmd = strings.TrimSpace(cmd)
+	if strings.Contains(cmd, "ember/hook'") {
+		return "", true
+	}
+	i := strings.LastIndex(cmd, " hook ")
+	if i < 0 || !knownEvent(cmd[i+len(" hook "):]) {
+		return "", false
+	}
+	bin = strings.TrimSpace(cmd[:i])
+	if len(bin) >= 2 && (bin[0] == '\'' || bin[0] == '"') && bin[len(bin)-1] == bin[0] {
+		bin = bin[1 : len(bin)-1]
+	}
+	if bin == "" || !strings.HasPrefix(filepath.Base(bin), "ember") {
+		return "", false
+	}
+	return bin, true
+}
+
+func knownEvent(ev string) bool {
+	for _, h := range emberHooks {
+		if ev == h.arg || ev == h.event {
 			return true
 		}
 	}
 	return false
+}
+
+// withoutEmber is a settings hook entry with Ember's hooks taken out, or nil
+// when nothing else was in it.
+func withoutEmber(entry any) any {
+	m, ok := entry.(map[string]any)
+	if !ok {
+		return entry
+	}
+	hs, ok := m["hooks"].([]any)
+	if !ok {
+		return entry
+	}
+	kept := []any{}
+	for _, h := range hs {
+		hm, _ := h.(map[string]any)
+		c, _ := hm["command"].(string)
+		if _, ok := emberHook(c); !ok {
+			kept = append(kept, h)
+		}
+	}
+	switch {
+	case len(kept) == len(hs):
+		return entry
+	case len(kept) == 0:
+		return nil
+	}
+	out := map[string]any{}
+	for k, v := range m {
+		out[k] = v
+	}
+	out["hooks"] = kept
+	return out
 }
 
 // patchSettings replaces Ember's hooks in Claude Code's settings and leaves
@@ -162,7 +213,7 @@ func patchSettings(raw []byte, exe string, add bool) ([]byte, error) {
 		list, _ := v.([]any)
 		kept := []any{}
 		for _, e := range list {
-			if !isEmber(e) {
+			if e = withoutEmber(e); e != nil {
 				kept = append(kept, e)
 			}
 		}

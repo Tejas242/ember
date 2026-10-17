@@ -168,7 +168,7 @@ func hookCountIn(raw []byte, exe string) (n, stale int) {
 	for _, es := range cfg.Hooks {
 		for _, e := range es {
 			for _, h := range e.Hooks {
-				if bin, _, ok := strings.Cut(h.Command, " hook "); ok && strings.HasSuffix(bin, "ember") {
+				if bin, ok := emberHook(h.Command); ok {
 					n++
 					if bin != exe {
 						stale++
