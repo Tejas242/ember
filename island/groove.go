@@ -25,6 +25,8 @@ type groove struct {
 	prev, env float64   // the low band, last sample and its recent level
 	energy    float64   // the low band, slowly: how hard the song is going
 	hi        float64   // the high band (hi-hats), smoothed
+	level     float64   // all three bands, slowly: is there music at all
+	heardAt   time.Time // the last time it heard the song
 	lastKick  time.Time
 	period    float64 // seconds per beat; 0 while it hasn't found one
 	phase     float64 // in beats: the whole part counts them, the fraction is where in the beat it is
@@ -48,6 +50,8 @@ func (g *groove) hear(v [3]float64, now time.Time) {
 	g.env += (low - g.env) * 0.08
 	g.energy += (low - g.energy) * 0.03
 	g.hi += (v[2] - g.hi) * 0.2
+	g.level += ((v[0]+v[1]+v[2])/3 - g.level) * 0.05
+	g.heardAt = now
 	g.prev = low
 	if kick {
 		g.kick(now)
@@ -149,9 +153,14 @@ func (u *UI) listen(now time.Time) {
 	}
 	beat := g.advance(now)
 	u.dancing = g.dancing()
-	if !u.dancing || u.act != nil { // an act has the body
-		if u.act == nil {
-			b.hold = 0
+	if u.act != nil { // an act has the body
+		return
+	}
+	if !u.dancing { // music without a beat to hold on to (soft, acoustic, ambient): a slow sway, as big as the song is loud
+		b.hold = 0
+		if now.Sub(g.heardAt) < time.Second {
+			t := float64(now.UnixMilli()%1_000_000) / 1000
+			b.hold = (0.4 + 1.2*math.Min(1, g.level*1.6)) * math.Sin(2*math.Pi*t/3.6)
 		}
 		return
 	}
@@ -183,7 +192,13 @@ func (u *UI) listen(now time.Time) {
 // danceFace: grooving, it closes its eyes and smiles; nodding, it looks down on the beat.
 func (u *UI) danceFace(p *pose) {
 	g := &u.groove
-	if !u.dancing || u.act != nil {
+	if u.act != nil || !u.body.phones.seated {
+		return
+	}
+	if !u.dancing { // swaying to something soft: eyes closed, listening
+		if u.now().Sub(g.heardAt) < time.Second && g.level > 0.15 {
+			p.eyes = eyeShut
+		}
 		return
 	}
 	p.eyes, p.mouth = eyeHappy, mouthSmile

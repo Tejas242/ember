@@ -153,7 +153,7 @@ Every motion is physical (a spring) or a short ease. Nothing is linear except a 
 | System pop-ups | volume waves come and go with the level, the sun's rays lengthen with brightness, the meter stretches and springs back past 100, the battery fills to its level, a screenshot flashes like a shutter and its preview drops in |
 | Asleep | the pill dims 16 % and the clock turns grey |
 | The equaliser (the card's cover) | the song's own low, mid and high (25 Hz, rising fast, falling slowly) |
-| Ember dancing | it counts the beat: kicks teach it the tempo, a phase-locked count keeps it on the beat between them (and through a bar without a kick); it dips on the beat, sways over two, nods, or bounces on an energetic song, a new move each eight beats, as big as the song's energy |
+| Ember dancing | it counts the beat: kicks teach it the tempo, a phase-locked count keeps it on the beat between them (and through a bar without a kick); it dips on the beat, sways over two, nods, or bounces on an energetic song, a new move each eight beats, as big as the song's energy. A song with no kick to lock onto gets a slow sway, eyes closed |
 | Queued requests | their edges peek out under the card, a stack |
 | Request countdown | a 1 px hairline on the rim drains from both ends; in the last 15 s it eases to amber and thickens |
 

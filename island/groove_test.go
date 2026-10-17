@@ -90,3 +90,29 @@ func TestGrooveOnARealSong(t *testing.T) {
 		t.Errorf("danced in %d of %d samples", danced, len(lv))
 	}
 }
+
+// Soft music with no kick: no beat to lock onto, so it sways slowly instead of standing still.
+func TestGrooveSwaysWithoutABeat(t *testing.T) {
+	g := newScene()
+	g.music(true)
+	g.a.ui.audio = &audio{}
+	g.run(1500 * time.Millisecond)
+	lo, hi := 0.0, 0.0
+	for i := 0; i < 200; i++ { // 8 s of an even, quiet wash
+		a := g.a.ui.audio
+		a.mu.Lock()
+		a.v, a.at = [3]float64{0.4, 0.45, 0.35}, time.Now()
+		a.mu.Unlock()
+		for f := 0; f < 2; f++ {
+			g.clock = g.clock.Add(20 * time.Millisecond)
+			g.a.ui.renderDamage()
+		}
+		lo, hi = math.Min(lo, g.a.ui.body.hold), math.Max(hi, g.a.ui.body.hold)
+	}
+	if g.a.ui.dancing {
+		t.Error("found a beat in a song without one")
+	}
+	if lo > -0.5 || hi < 0.5 {
+		t.Errorf("swayed only %.2f..%.2f", lo, hi)
+	}
+}
