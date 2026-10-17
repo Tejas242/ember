@@ -271,7 +271,7 @@ a short choreography: the ring sweeps, the bars grow in turn, the rating line dr
 the numbers count up. After that only the flame and the pulses move.
 
 A tool reaches its plugin over the same socket with `{"type":"plugin","name":"<name>","payload":…}`. A new plugin
-implements `Plugin` in `island/plugin.go` (detect, start, stop, messages, an optional `Dashboard`) and is listed in
+implements `Plugin` in `internal/island/plugin.go` (detect, start, stop, messages, an optional `Dashboard`) and is listed in
 `plugins()`.
 
 ## Config
@@ -349,6 +349,10 @@ testing.
 - **Everything else is event-driven.** MPRIS and UPower signals over D-Bus, BlueZ for devices, `pactl subscribe` for
   volume, inotify for the backlight and the screenshots folder, and niri's IPC socket for windows and casts. Nothing
   polls.
+
+The code: `cmd/ember` is the command (install, doctor, the hook); `internal/island` is the island itself (state,
+drawing, Ember); `internal/wayland` is its Wayland client; `internal/ipc`, `internal/config` and `internal/xdg` are
+the socket protocol, the config file and the directories. `make check` runs everything CI does.
 
 ## Making the pictures
 

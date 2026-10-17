@@ -163,7 +163,7 @@ Ember is a character, the same one everywhere: a small flame with a face. It's i
 Beside it sits what it's showing you (the cover, a moment's icon, a screenshot). On a volume or brightness meter it
 jumps onto the rail and rides the level as its knob. When a song plays it wears headphones and dances to it,
 wherever it is (the pill, the card), unless something needs you or went wrong. It counts the beat rather than
-jumping after each kick: kicks teach it the tempo and a phase-locked count keeps it on time (island/groove.go).
+jumping after each kick: kicks teach it the tempo and a phase-locked count keeps it on time (internal/island/groove.go).
 
 **Its own fire.** Ember ignores the theme and the wallpaper. Its mood is the flame's temperature: a calm coral
 ember, a working orange, the gold of a job done, the blue of a flame running hot because something needs you, a deep
@@ -176,7 +176,7 @@ pixel and a half wide on a fractional position is a grey smudge. Eye height is a
 calm, 4 attentive, 5 startled. Lids and slants cut whole pixels. Faces an arc can't draw at that size are pixel
 glyphs: `^ ^` happy, `> <` a flinch, a sleeping curve, a 2×2 "o", a yawn. A glance moves the eyes one pixel at most.
 
-**A body with real physics** (island/body.go). It's a small mass that jumps and lands under gravity (700 px/s²: a
+**A body with real physics** (internal/island/body.go). It's a small mass that jumps and lands under gravity (700 px/s²: a
 2.6 px hop is 170 ms in the air). Landing squashes it by how hard it hit; leaving the ground stretches it. Its slot's
 acceleration is felt as inertia: the body shears back when it's carried off and forward when it stops; the tip lags
 the body. A trip across the pill (onto a meter, home again) is a ballistic hop that lands exactly on its slot. Sparks
@@ -184,7 +184,7 @@ and smoke are particles, launched, buoyant, dragged by the air; a spark is one b
 head, bounce and ride it. It all integrates in fixed 1/240 s steps, so it's the same at 6 frames a second or 60,
 and it rests (no frames) when nothing moves.
 
-**Acts** (island/acts.go) answer what just happened: impulses to the body, a face over a timeline.
+**Acts** (internal/island/acts.go) answer what just happened: impulses to the body, a face over a timeline.
 
 | Act | When |
 | --- | --- |
@@ -198,7 +198,7 @@ and it rests (no frames) when nothing moves.
 | Sleep, wake | a yawn, then it banks low against the pill's wall, its light breathing; waking, it shoots up and looks around |
 | Moments | charging is a gulp of power with sparks, a screenshot's flash makes it blink hard, headphones put on |
 
-**Its character** (island/bond.go). Four traits decide what it does on its own. *Watchful:* every look has a cause.
+**Its character** (internal/island/bond.go). Four traits decide what it does on its own. *Watchful:* every look has a cause.
 *Invested:* it feels how the work goes, honestly (smaller and worried while steps keep failing, squashed while Claude
 compacts, awake keeping watch while Claude works and you're away, smaller on a low battery, a game face during a
 contest round), and celebrates only what was earned (a turn three times your usual or ten minutes, or hard-won and
