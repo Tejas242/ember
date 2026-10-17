@@ -43,6 +43,9 @@ func doctor() {
 	line(up, "island", map[bool]string{true: fmt.Sprintf("running (pid %d, up %s, bar %.0fpx)", st.Pid, st.Uptime, st.BarHeight),
 		false: "not answering on " + ipc.SockPath()}[up], "journalctl --user -u ember -n 30")
 	if up {
+		if ok, detail := sameVersion(st.Version, versionString()); !ok {
+			line(false, "version", detail, "systemctl --user restart ember")
+		}
 		// why a watcher isn't running, in its own words ("pactl missing"); told once each
 		told := map[string]bool{}
 		why := func(name, fallback string) string {
@@ -170,4 +173,16 @@ func hookCountIn(raw []byte, exe string) (n, stale int) {
 		}
 	}
 	return n, stale
+}
+
+// sameVersion: the running island and this binary are one build. An island
+// from before versions were reported says "".
+func sameVersion(running, mine string) (bool, string) {
+	switch running {
+	case mine:
+		return true, ""
+	case "":
+		return false, "the island is older than this binary (" + mine + "): restart it"
+	}
+	return false, "the island runs " + running + ", this binary is " + mine + ": restart it"
 }

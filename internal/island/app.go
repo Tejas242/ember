@@ -39,6 +39,7 @@ type app struct {
 	win       *wayland.Window
 	music     *source.MPRIS
 	sup       *source.Supervisor // runs the sources; knows how each is doing
+	version   string
 	track     *Track
 	posts     chan func(*app)
 	cfg       config.Config
@@ -54,7 +55,7 @@ type app struct {
 }
 
 func (a *app) status() ipc.Status {
-	st := ipc.Status{Pid: os.Getpid(), Uptime: time.Since(a.started).Round(time.Second).String(), BarHeight: a.ui.BarH,
+	st := ipc.Status{Version: a.version, Pid: os.Getpid(), Uptime: time.Since(a.started).Round(time.Second).String(), BarHeight: a.ui.BarH,
 		Blur: a.win.Caps().Blur, CursorShape: a.win.Caps().CursorShape, Presence: a.win.Caps().Idle, Niri: a.desk.live, Music: a.music.Connected(),
 		Volume: a.ui.vol.ok, Backlight: a.ui.light >= 0, Battery: a.ui.power != nil,
 		Sessions: len(a.ui.sessions), Pending: len(a.ui.cards), Config: "defaults"}
@@ -171,8 +172,9 @@ func parseBar(cfg string, b barLook) barLook {
 }
 
 // Run opens the island and serves until the compositor goes away, or until
-// SIGTERM or SIGINT, when it saves its state and stops cleanly.
-func Run() error {
+// SIGTERM or SIGINT, when it saves its state and stops cleanly. version is
+// what it tells `ember doctor` it is.
+func Run(version string) error {
 	if err := wayland.WaitSocket(5 * time.Second); err != nil { // a session still starting gets a moment
 		return err
 	}
@@ -189,7 +191,7 @@ func Run() error {
 		return err
 	}
 	bar := readBar()
-	a := &app{ui: NewUI(surfW, surfH, bar.h), win: win, posts: posts, started: time.Now()}
+	a := &app{ui: NewUI(surfW, surfH, bar.h), win: win, posts: posts, started: time.Now(), version: version}
 	a.ui.onKey = a.key
 	a.ui.audio = &source.Audio{}
 	a.ui.habits = loadHabits()

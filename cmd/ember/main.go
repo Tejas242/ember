@@ -182,7 +182,7 @@ func main() {
 }
 
 func runIsland([]string) int {
-	err := island.Run()
+	err := island.Run(versionString())
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "ember:", err)
 	}

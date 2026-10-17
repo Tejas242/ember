@@ -38,6 +38,7 @@ type Reply struct {
 
 // Status is what `ember doctor` reports about the running island.
 type Status struct {
+	Version     string   `json:"version"` // the running island's own version
 	Pid         int      `json:"pid"`
 	Uptime      string   `json:"uptime"`
 	BarHeight   float32  `json:"barHeight"`

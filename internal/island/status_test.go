@@ -9,10 +9,15 @@ import (
 	"github.com/Tejas242/ember/internal/source"
 )
 
-// `ember doctor` hears how each source is doing, and why one isn't.
+// `ember doctor` hears the island's version, how each source is doing, and
+// why one isn't.
 func TestStatusHasSources(t *testing.T) {
 	clock := time.Now()
 	a := newTestApp(&clock)
+	a.version = "v1.2.0-3-gabc"
+	if a.status().Version != a.version {
+		t.Fatal("status doesn't say the island's version")
+	}
 	a.sup = source.NewSupervisor()
 	a.sup.Min, a.sup.Logf = time.Hour, func(string, ...any) {}
 	ctx, cancel := context.WithCancel(context.Background())

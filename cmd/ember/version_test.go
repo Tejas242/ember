@@ -33,3 +33,15 @@ func TestResolveVersion(t *testing.T) {
 		}
 	}
 }
+
+func TestSameVersion(t *testing.T) {
+	if ok, _ := sameVersion("v1.2.0", "v1.2.0"); !ok {
+		t.Fatal("same build flagged")
+	}
+	if ok, d := sameVersion("v1.1.0", "v1.2.0"); ok || d != "the island runs v1.1.0, this binary is v1.2.0: restart it" {
+		t.Fatal(d)
+	}
+	if ok, d := sameVersion("", "v1.2.0"); ok || d == "" {
+		t.Fatal("an island without a version must be flagged")
+	}
+}
