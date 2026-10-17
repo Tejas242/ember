@@ -7,6 +7,8 @@
 // island's state. The island turns events into moments on its own loop.
 package source
 
+import "time"
+
 // Event is something a source noticed.
 type Event interface{ event() }
 
@@ -101,3 +103,19 @@ func (Volume) event()       {}
 func (Mic) event()          {}
 func (Brightness) event()   {}
 func (ShellChanged) event() {}
+
+// ---- music ----
+
+// TrackChanged is the track worth showing: one playing, else the one that
+// played last; nil when no player has one.
+type TrackChanged struct{ Track *Track }
+
+// Playhead is a fresh reading of a player's position, at At.
+type Playhead struct {
+	Player string
+	Pos    time.Duration
+	At     time.Time
+}
+
+func (TrackChanged) event() {}
+func (Playhead) event()     {}

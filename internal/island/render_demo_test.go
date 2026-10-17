@@ -348,7 +348,7 @@ func TestDemo(t *testing.T) {
 		d.run(300 * time.Millisecond)
 		d.click()
 		d.event(func(g *galleryScene) {
-			g.a.ui.track.Playing, g.a.ui.track.Position, g.a.ui.track.PosAt = false, g.a.ui.track.pos(g.clock), g.clock
+			g.a.ui.track.Playing, g.a.ui.track.Position, g.a.ui.track.PosAt = false, g.a.ui.track.Pos(g.clock), g.clock
 		})
 		d.run(900 * time.Millisecond)
 		d.click()

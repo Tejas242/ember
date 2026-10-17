@@ -107,7 +107,7 @@ func (u *UI) musicRow(x, w, y float32) {
 		u.hits = append(u.hits, hit{u.seekRect, "music:seek"})
 		r := image.Rect(int(tx)-1, int(ly-10), int(right)+2, int(ly+5))
 		u.lives = append(u.lives, live{r: r, draw: func(c *canvas, _ float64) {
-			pos := min(t.pos(u.now()), t.Length)
+			pos := min(t.Pos(u.now()), t.Length)
 			if u.drag == "music:seek" { // dragging: the times follow the knob
 				pos = time.Duration(u.seekPreview * float64(t.Length))
 			}

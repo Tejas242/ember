@@ -26,7 +26,7 @@ func TestDragSeekOnlyOnRelease(t *testing.T) {
 	if len(keys) != 1 || !strings.HasPrefix(keys[0], "music:seek:") {
 		t.Fatalf("one seek on release: %v", keys)
 	}
-	if d := u.track.pos(clock) - 2*time.Minute; d < -2*time.Second || d > 2*time.Second {
-		t.Fatalf("playhead should be at the middle, at %v", u.track.pos(clock))
+	if d := u.track.Pos(clock) - 2*time.Minute; d < -2*time.Second || d > 2*time.Second {
+		t.Fatalf("playhead should be at the middle, at %v", u.track.Pos(clock))
 	}
 }

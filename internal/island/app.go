@@ -34,7 +34,7 @@ type app struct {
 	lastHouse time.Time // the last housekeeping tick: a long gap means the machine slept
 	ui        *UI
 	win       *wayland.Window
-	music     *music
+	music     *source.MPRIS
 	track     *Track
 	posts     chan func(*app)
 	cfg       config.Config
@@ -187,7 +187,7 @@ func Run() error {
 	win.OnIdle = func(idle bool) { a.presence(idle); a.ui.Invalidate() }
 	a.reloadConfig()
 	a.loadSessions()
-	a.music = startMusic(posts)
+	a.music = source.StartMPRIS(emitter(posts))
 	startSystem(emitter(posts))
 	go source.Niri(emitter(posts))
 	frameDue := false
@@ -286,7 +286,7 @@ func Run() error {
 		// the open card shows a progress bar: re-read the playhead now and then
 		if a.ui.lastView == vExpanded && a.track != nil && a.track.Playing && time.Since(lastPos) > 5*time.Second {
 			lastPos = time.Now()
-			a.music.position(a.track.Player)
+			a.music.ReadPosition(a.track.Player)
 		}
 		if waitingFrame && time.Since(waitingSince) > frameGrace {
 			waitingFrame = false // niri skipped the callback (nothing on screen changed)
@@ -488,13 +488,13 @@ func (a *app) key(k string) {
 		go exec.Command("xdg-open", strings.TrimPrefix(k, "open:")).Run()
 	case strings.HasPrefix(k, "music:seek:") && a.track != nil:
 		d, _ := strconv.ParseInt(strings.TrimPrefix(k, "music:seek:"), 10, 64)
-		a.music.seek(a.track.Player, time.Duration(d))
+		a.music.Seek(a.track.Player, time.Duration(d))
 	case strings.HasPrefix(k, "music:volume:") && a.track != nil:
 		d, _ := strconv.Atoi(strings.TrimPrefix(k, "music:volume:"))
-		a.music.nudgeVolume(a.track.Player, float64(d)*0.05)
+		a.music.NudgeVolume(a.track.Player, float64(d)*0.05)
 	case strings.HasPrefix(k, "music:") && a.track != nil:
 		if method := map[string]string{"music:prev": "Previous", "music:toggle": "PlayPause", "music:next": "Next"}[k]; method != "" {
-			a.music.control(a.track.Player, method)
+			a.music.Control(a.track.Player, method)
 			if method == "PlayPause" { // feel instant; the player confirms a moment later
 				a.track.Playing = !a.track.Playing
 				a.track.PosAt = a.ui.now()

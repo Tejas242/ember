@@ -2,6 +2,9 @@ package island
 
 import "github.com/Tejas242/ember/internal/source"
 
+// Track is what the active media player plays.
+type Track = source.Track
+
 // emitter turns the sources' events into posts on the island's loop.
 func emitter(posts chan<- func(*app)) source.Emit {
 	return func(e source.Event) { posts <- func(a *app) { a.handle(e) } }
@@ -64,6 +67,12 @@ func (a *app) handle(e source.Event) {
 		}
 	case source.ShellChanged:
 		a.raise(e.Why)
+	case source.TrackChanged:
+		a.setTrack(e.Track)
+	case source.Playhead:
+		if a.track != nil && a.track.Player == e.Player {
+			a.track.Position, a.track.PosAt = e.Pos, e.At
+		}
 	case source.Screenshot:
 		if e.Path == "" {
 			a.screenshot("", nil)

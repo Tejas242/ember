@@ -274,7 +274,7 @@ func (u *UI) dragTo(final bool) {
 		u.seekPreview = frac
 		if final && u.track != nil && u.track.Length > 0 {
 			target := time.Duration(frac * float64(u.track.Length))
-			delta := target - u.track.pos(now)
+			delta := target - u.track.Pos(now)
 			u.track.Position, u.track.PosAt = target, now // move now; the player catches up
 			u.key(fmt.Sprintf("music:seek:%d", delta))
 		}

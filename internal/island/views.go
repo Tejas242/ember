@@ -287,7 +287,7 @@ func (u *UI) pillLayout(l line, h float32) (left, right []seg, w float32) {
 			if t := u.track; t != nil && t.Length > 0 {
 				acc, track := u.accent(p.fg), alpha(p.fg, 0.14)
 				u.lives = append(u.lives, live{r: image.Rect(int(ccx-12), int(cy-11), int(ccx+13), int(cy+12)), draw: func(c *canvas, _ float64) {
-					k := math.Min(1, float64(t.pos(u.now()))/float64(t.Length))
+					k := math.Min(1, float64(t.Pos(u.now()))/float64(t.Length))
 					c.arc(ccx, cy, 9.3, 1.3, 0, 2*math.Pi, track)
 					if k > 0.005 {
 						ringArc(c, ccx, cy, 9.3, 1.3, -math.Pi/2, -math.Pi/2+2*math.Pi*k, acc)
@@ -716,7 +716,7 @@ func (u *UI) progressLive(x, y, w, th float32, col color.NRGBA, knob float32) {
 	}
 	r := image.Rect(int(x)-8, int(y-th)-8, int(x+w)+9, int(y+th)+9)
 	u.lives = append(u.lives, live{r: r, draw: func(c *canvas, _ float64) {
-		k := float32(math.Min(1, float64(t.pos(u.now()))/float64(t.Length)))
+		k := float32(math.Min(1, float64(t.Pos(u.now()))/float64(t.Length)))
 		if u.drag == "music:seek" {
 			k = float32(u.seekPreview)
 		}
