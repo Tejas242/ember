@@ -2,20 +2,24 @@ package source
 
 import (
 	"bytes"
-	"log"
+	"errors"
+	"fmt"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
 
+// errNothing: a watcher with nothing to watch (no backlight, no folder).
+var errNothing = errors.New("nothing to watch")
+
 // inotify watches each path for its mask and calls got with the path and
 // the changed file's name ("" for the path itself) until reading fails. It
-// returns false at once if it could watch nothing. ready runs once the
+// returns errNothing at once if it could watch nothing. ready runs once the
 // watches are up, before the first event.
-func inotify(paths map[string]uint32, ready func(), got func(path, name string)) bool {
+func inotify(paths map[string]uint32, ready func(), got func(path, name string)) error {
 	fd, err := unix.InotifyInit1(unix.IN_CLOEXEC)
 	if err != nil {
-		return false
+		return fmt.Errorf("inotify: %w", err)
 	}
 	defer unix.Close(fd)
 	wds := map[int32]string{}
@@ -25,7 +29,7 @@ func inotify(paths map[string]uint32, ready func(), got func(path, name string))
 		}
 	}
 	if len(wds) == 0 {
-		return false
+		return errNothing
 	}
 	if ready != nil {
 		ready()
@@ -37,8 +41,7 @@ func inotify(paths map[string]uint32, ready func(), got func(path, name string))
 			if err == unix.EINTR {
 				continue
 			}
-			log.Println("inotify:", err)
-			return true
+			return fmt.Errorf("inotify: %w", err)
 		}
 		for off := 0; off+unix.SizeofInotifyEvent <= n; {
 			ev := (*unix.InotifyEvent)(unsafe.Pointer(&buf[off]))

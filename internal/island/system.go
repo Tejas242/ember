@@ -1,6 +1,7 @@
 package island
 
 import (
+	"context"
 	"image"
 	"os"
 	"runtime/debug"
@@ -16,14 +17,24 @@ import (
 // screenshots. The watchers are in package source; these turn what they
 // say into moments.
 
-func startSystem(emit source.Emit) {
-	go source.Battery(emit)
-	go source.Bluetooth(emit)
-	go source.Levels(emit)
-	go source.Backlight(emit)
-	go source.Screenshots(emit)
-	go source.Shell(emit)
-	go source.ShellSettings(emit)
+// startSources runs every watcher under the supervisor until ctx ends.
+func (a *app) startSources(ctx context.Context, emit source.Emit) {
+	for _, s := range []struct {
+		name string
+		fn   func(source.Emit) error
+	}{
+		{"music", a.music.Run},
+		{"battery", source.Battery},
+		{"bluetooth", source.Bluetooth},
+		{"volume", source.Levels},
+		{"brightness", source.Backlight},
+		{"screenshots", source.Screenshots},
+		{"shell", source.Shell},
+		{"shell settings", source.ShellSettings},
+		{"niri", source.Niri},
+	} {
+		go a.sup.Run(ctx, s.name, s.fn, emit)
+	}
 }
 
 // ---- battery (UPower) ----

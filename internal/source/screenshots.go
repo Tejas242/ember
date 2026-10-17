@@ -1,6 +1,7 @@
 package source
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -41,16 +42,20 @@ func noctaliaShotDirs(config, home string) []string {
 }
 
 // Screenshots says when an image lands in the screenshots folder. Without
-// one it returns.
-func Screenshots(emit Emit) {
+// one it returns at once.
+func Screenshots(emit Emit) error {
 	paths := map[string]uint32{}
 	for _, d := range screenshotDirs() {
 		paths[d] = unix.IN_CLOSE_WRITE | unix.IN_MOVED_TO
 	}
-	inotify(paths, nil, func(dir, name string) {
+	err := inotify(paths, nil, func(dir, name string) {
 		switch strings.ToLower(filepath.Ext(name)) {
 		case ".png", ".jpg", ".jpeg":
 			emit(Screenshot{Path: filepath.Join(dir, name)})
 		}
 	})
+	if err == errNothing {
+		return errors.New("no screenshots folder")
+	}
+	return err
 }

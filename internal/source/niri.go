@@ -3,10 +3,10 @@ package source
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/Tejas242/ember/internal/xdg"
 )
@@ -27,27 +27,22 @@ func NiriSocket() string {
 	return ""
 }
 
-// Niri follows niri's event stream for good, reconnecting when niri restarts.
-func Niri(emit Emit) {
-	for {
-		if sock := NiriSocket(); sock != "" {
-			streamNiri(emit, sock)
-			emit(NiriDown{})
-		}
-		time.Sleep(5 * time.Second) // niri restarted, or isn't the compositor
+// Niri follows niri's event stream until it ends (niri restarted). It
+// speaks niri's IPC directly (no `niri msg` process): ask for the event
+// stream, then read one JSON event per line.
+func Niri(emit Emit) error {
+	sock := NiriSocket()
+	if sock == "" {
+		return errors.New("no niri socket (not niri?)")
 	}
-}
-
-// streamNiri speaks niri's IPC directly (no `niri msg` process): ask for
-// the event stream, then read one JSON event per line.
-func streamNiri(emit Emit, sock string) {
 	c, err := net.Dial("unix", sock)
 	if err != nil {
-		return
+		return err
 	}
 	defer c.Close()
+	defer emit(NiriDown{})
 	if _, err := c.Write([]byte("\"EventStream\"\n")); err != nil {
-		return
+		return err
 	}
 	sc := bufio.NewScanner(c)
 	sc.Buffer(make([]byte, 64<<10), 8<<20)
@@ -56,6 +51,10 @@ func streamNiri(emit Emit, sock string) {
 			emit(e)
 		}
 	}
+	if err := sc.Err(); err != nil {
+		return err
+	}
+	return errors.New("niri's event stream ended")
 }
 
 // parseNiri reads one line of the event stream: the event it means, or nil.

@@ -1,6 +1,11 @@
 package source
 
-import "github.com/godbus/dbus/v5"
+import (
+	"errors"
+	"fmt"
+
+	"github.com/godbus/dbus/v5"
+)
 
 func readPower(bus *dbus.Conn) (Power, bool) {
 	obj := bus.Object("org.freedesktop.UPower", "/org/freedesktop/UPower/devices/DisplayDevice")
@@ -23,16 +28,17 @@ func powerOf(props map[string]dbus.Variant) Power {
 	return p
 }
 
-// Battery follows UPower's display device. A desktop has none: it returns.
-func Battery(emit Emit) {
+// Battery follows UPower's display device. A desktop has none: it returns
+// at once.
+func Battery(emit Emit) error {
 	bus, err := dbus.ConnectSystemBus()
 	if err != nil {
-		return
+		return fmt.Errorf("no system bus: %w", err)
 	}
+	defer bus.Close()
 	first, ok := readPower(bus)
 	if !ok {
-		bus.Close()
-		return // a desktop: nothing to say
+		return errors.New("no battery") // a desktop: nothing to say
 	}
 	first.First = true
 	emit(first)
@@ -45,4 +51,5 @@ func Battery(emit Emit) {
 			emit(p)
 		}
 	}
+	return errors.New("the system bus went away")
 }

@@ -2,6 +2,8 @@ package source
 
 import (
 	"bufio"
+	"errors"
+	"fmt"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -37,56 +39,57 @@ func levelEvent(ln string) bool {
 	return strings.Contains(ln, "'change' on sink #") || strings.Contains(ln, "'change' on source #") || strings.Contains(ln, "on server")
 }
 
-// Levels follows the default output's volume and the default input's mute.
-// Without pactl and wpctl it returns.
-func Levels(emit Emit) {
-	if _, err := exec.LookPath("pactl"); err != nil {
-		return
-	}
-	if _, err := exec.LookPath("wpctl"); err != nil {
-		return
-	}
-	for {
-		cmd := exec.Command("pactl", "subscribe")
-		out, err := cmd.StdoutPipe()
-		if err != nil || cmd.Start() != nil {
-			return
+// Levels follows the default output's volume and the default input's mute
+// until `pactl subscribe` ends (the sound server restarted). Without pactl
+// and wpctl it returns at once.
+func Levels(emit Emit) error {
+	for _, tool := range []string{"pactl", "wpctl"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			return errors.New(tool + " missing")
 		}
-		sink, src := readLevel("@DEFAULT_AUDIO_SINK@"), readLevel("@DEFAULT_AUDIO_SOURCE@")
-		first := sink
-		first.First = true
-		emit(first)
-		events := make(chan struct{}, 1)
-		go func() {
-			sc := bufio.NewScanner(out)
-			for sc.Scan() {
-				if levelEvent(sc.Text()) {
-					select {
-					case events <- struct{}{}:
-					default:
-					}
+	}
+	cmd := exec.Command("pactl", "subscribe")
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("pactl subscribe: %w", err)
+	}
+	sink, src := readLevel("@DEFAULT_AUDIO_SINK@"), readLevel("@DEFAULT_AUDIO_SOURCE@")
+	first := sink
+	first.First = true
+	emit(first)
+	events := make(chan struct{}, 1)
+	go func() {
+		sc := bufio.NewScanner(out)
+		for sc.Scan() {
+			if levelEvent(sc.Text()) {
+				select {
+				case events <- struct{}{}:
+				default:
 				}
 			}
-			close(events)
-		}()
-		for range events {
-			time.Sleep(25 * time.Millisecond) // a key press sends a burst
-			select {
-			case <-events:
-			default:
-			}
-			ns, nm := readLevel("@DEFAULT_AUDIO_SINK@"), readLevel("@DEFAULT_AUDIO_SOURCE@")
-			if ns.OK && (ns.V != sink.V || ns.Muted != sink.Muted) {
-				emit(ns)
-			}
-			if nm.OK && src.OK && nm.Muted != src.Muted {
-				emit(Mic{Muted: nm.Muted})
-			}
-			sink, src = ns, nm
 		}
-		cmd.Wait()
-		time.Sleep(3 * time.Second) // the sound server restarted
+		close(events)
+	}()
+	for range events {
+		time.Sleep(25 * time.Millisecond) // a key press sends a burst
+		select {
+		case <-events:
+		default:
+		}
+		ns, nm := readLevel("@DEFAULT_AUDIO_SINK@"), readLevel("@DEFAULT_AUDIO_SOURCE@")
+		if ns.OK && (ns.V != sink.V || ns.Muted != sink.Muted) {
+			emit(ns)
+		}
+		if nm.OK && src.OK && nm.Muted != src.Muted {
+			emit(Mic{Muted: nm.Muted})
+		}
+		sink, src = ns, nm
 	}
+	cmd.Wait()
+	return errors.New("pactl subscribe ended (the sound server restarted?)")
 }
 
 // SetVolume sets the default output's volume, 0..1.

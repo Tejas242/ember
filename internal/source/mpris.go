@@ -1,10 +1,12 @@
 package source
 
 import (
-	"log"
+	"errors"
+	"fmt"
 	"math"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/godbus/dbus/v5"
@@ -38,21 +40,46 @@ func (t Track) Pos(now time.Time) time.Duration {
 const mprisPrefix = "org.mpris.MediaPlayer2."
 
 // MPRIS watches the media players on the session bus, waking only on their
-// signals, and controls them. A nil *MPRIS (no session bus) does nothing.
+// signals, and controls them. Until Run is connected (and on a nil *MPRIS)
+// the controls do nothing.
 type MPRIS struct {
-	conn   *dbus.Conn
+	mu     sync.Mutex
+	conn   *dbus.Conn // written only by Run, under mu
 	emit   Emit
-	recent map[string]time.Time // player -> last time it was playing
+	recent map[string]time.Time // player -> last time it was playing (Run's own)
 }
 
-// StartMPRIS starts watching; nil without a session bus.
-func StartMPRIS(emit Emit) *MPRIS {
+// NewMPRIS is a player watcher waiting for Run.
+func NewMPRIS() *MPRIS { return &MPRIS{recent: map[string]time.Time{}} }
+
+// bus is the connection and the emit, for the controls.
+func (m *MPRIS) bus() (*dbus.Conn, Emit) {
+	if m == nil {
+		return nil, nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.conn, m.emit
+}
+
+// Connected says Run is watching the session bus.
+func (m *MPRIS) Connected() bool { c, _ := m.bus(); return c != nil }
+
+// Run watches the players until the session bus goes away.
+func (m *MPRIS) Run(emit Emit) error {
 	conn, err := dbus.ConnectSessionBus()
 	if err != nil {
-		log.Println("music: no session bus:", err)
-		return nil
+		return fmt.Errorf("no session bus: %w", err)
 	}
-	m := &MPRIS{conn: conn, emit: emit, recent: map[string]time.Time{}}
+	m.mu.Lock()
+	m.conn, m.emit = conn, emit
+	m.mu.Unlock()
+	defer func() {
+		m.mu.Lock()
+		m.conn = nil
+		m.mu.Unlock()
+		conn.Close()
+	}()
 	conn.AddMatchSignal(dbus.WithMatchInterface("org.freedesktop.DBus.Properties"),
 		dbus.WithMatchMember("PropertiesChanged"), dbus.WithMatchObjectPath("/org/mpris/MediaPlayer2"))
 	conn.AddMatchSignal(dbus.WithMatchInterface("org.freedesktop.DBus"), dbus.WithMatchMember("NameOwnerChanged"),
@@ -60,25 +87,22 @@ func StartMPRIS(emit Emit) *MPRIS {
 	conn.AddMatchSignal(dbus.WithMatchInterface("org.mpris.MediaPlayer2.Player"), dbus.WithMatchMember("Seeked"))
 	sig := make(chan *dbus.Signal, 16)
 	conn.Signal(sig)
-	go func() {
-		m.refresh()
-		var pending <-chan time.Time
-		for {
-			select {
-			case _, ok := <-sig:
-				if !ok {
-					return
-				}
-				if pending == nil { // coalesce bursts (players send several at once)
-					pending = time.After(80 * time.Millisecond)
-				}
-			case <-pending:
-				pending = nil
-				m.refresh()
+	m.refresh()
+	var pending <-chan time.Time
+	for {
+		select {
+		case _, ok := <-sig:
+			if !ok {
+				return errors.New("the session bus went away")
 			}
+			if pending == nil { // coalesce bursts (players send several at once)
+				pending = time.After(80 * time.Millisecond)
+			}
+		case <-pending:
+			pending = nil
+			m.refresh()
 		}
-	}()
-	return m
+	}
 }
 
 func (m *MPRIS) players() []string {
@@ -164,43 +188,47 @@ func (m *MPRIS) refresh() {
 
 // Control calls a Player method (PlayPause, Next, Previous) on player.
 func (m *MPRIS) Control(player, method string) {
-	if m == nil || player == "" {
+	conn, _ := m.bus()
+	if conn == nil || player == "" {
 		return
 	}
-	go m.conn.Object(player, "/org/mpris/MediaPlayer2").Call("org.mpris.MediaPlayer2.Player."+method, 0)
+	go conn.Object(player, "/org/mpris/MediaPlayer2").Call("org.mpris.MediaPlayer2.Player."+method, 0)
 }
 
 // ReadPosition re-reads player's playhead and says it as a Playhead (only
 // while the card shows a progress bar).
 func (m *MPRIS) ReadPosition(player string) {
-	if m == nil || player == "" {
+	conn, emit := m.bus()
+	if conn == nil || player == "" {
 		return
 	}
 	go func() {
-		v, err := m.conn.Object(player, "/org/mpris/MediaPlayer2").GetProperty("org.mpris.MediaPlayer2.Player.Position")
+		v, err := conn.Object(player, "/org/mpris/MediaPlayer2").GetProperty("org.mpris.MediaPlayer2.Player.Position")
 		if err != nil {
 			return
 		}
 		us, _ := v.Value().(int64)
-		m.emit(Playhead{Player: player, Pos: time.Duration(us) * time.Microsecond, At: time.Now()})
+		emit(Playhead{Player: player, Pos: time.Duration(us) * time.Microsecond, At: time.Now()})
 	}()
 }
 
 // Seek moves the playhead by delta (MPRIS Seek takes microseconds).
 func (m *MPRIS) Seek(player string, delta time.Duration) {
-	if m == nil || player == "" {
+	conn, _ := m.bus()
+	if conn == nil || player == "" {
 		return
 	}
-	go m.conn.Object(player, "/org/mpris/MediaPlayer2").Call("org.mpris.MediaPlayer2.Player.Seek", 0, int64(delta/time.Microsecond))
+	go conn.Object(player, "/org/mpris/MediaPlayer2").Call("org.mpris.MediaPlayer2.Player.Seek", 0, int64(delta/time.Microsecond))
 }
 
 // NudgeVolume changes the player's volume by d (0..1 scale), if it has one.
 func (m *MPRIS) NudgeVolume(player string, d float64) {
-	if m == nil || player == "" {
+	conn, _ := m.bus()
+	if conn == nil || player == "" {
 		return
 	}
 	go func() {
-		obj := m.conn.Object(player, "/org/mpris/MediaPlayer2")
+		obj := conn.Object(player, "/org/mpris/MediaPlayer2")
 		v, err := obj.GetProperty("org.mpris.MediaPlayer2.Player.Volume")
 		if err != nil {
 			return

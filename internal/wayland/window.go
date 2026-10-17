@@ -370,8 +370,12 @@ func (win *Window) SetBlur(rects []image.Rectangle) {
 	win.lastBlur = rects
 }
 
-// Caps says which optional protocols the compositor has.
+// Caps says which optional protocols the compositor has (none on a nil
+// Window).
 func (win *Window) Caps() Caps {
+	if win == nil {
+		return Caps{}
+	}
 	return Caps{Blur: win.blurMgr != 0, CursorShape: win.cursorMgr != 0, Idle: win.idleMgr != 0}
 }
 

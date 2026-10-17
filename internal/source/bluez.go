@@ -1,17 +1,20 @@
 package source
 
 import (
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/godbus/dbus/v5"
 )
 
 // Bluetooth follows BlueZ's devices connecting and disconnecting.
-func Bluetooth(emit Emit) {
+func Bluetooth(emit Emit) error {
 	bus, err := dbus.ConnectSystemBus()
 	if err != nil {
-		return
+		return fmt.Errorf("no system bus: %w", err)
 	}
+	defer bus.Close()
 	bus.AddMatchSignal(dbus.WithMatchInterface("org.freedesktop.DBus.Properties"), dbus.WithMatchMember("PropertiesChanged"),
 		dbus.WithMatchSender("org.bluez"), dbus.WithMatchPathNamespace("/org/bluez"), dbus.WithMatchArg(0, "org.bluez.Device1"))
 	sig := make(chan *dbus.Signal, 8)
@@ -47,4 +50,5 @@ func Bluetooth(emit Emit) {
 		}
 		emit(Device{Name: name, Kind: kind, On: on, Pct: pct})
 	}
+	return errors.New("the system bus went away")
 }

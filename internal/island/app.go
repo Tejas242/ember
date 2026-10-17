@@ -1,6 +1,7 @@
 package island
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -35,6 +36,7 @@ type app struct {
 	ui        *UI
 	win       *wayland.Window
 	music     *source.MPRIS
+	sup       *source.Supervisor // runs the sources; knows how each is doing
 	track     *Track
 	posts     chan func(*app)
 	cfg       config.Config
@@ -51,7 +53,7 @@ type app struct {
 
 func (a *app) status() ipc.Status {
 	st := ipc.Status{Pid: os.Getpid(), Uptime: time.Since(a.started).Round(time.Second).String(), BarHeight: a.ui.BarH,
-		Blur: a.win.Caps().Blur, CursorShape: a.win.Caps().CursorShape, Presence: a.win.Caps().Idle, Niri: a.desk.live, Music: a.music != nil,
+		Blur: a.win.Caps().Blur, CursorShape: a.win.Caps().CursorShape, Presence: a.win.Caps().Idle, Niri: a.desk.live, Music: a.music.Connected(),
 		Volume: a.ui.vol.ok, Backlight: a.ui.light >= 0, Battery: a.ui.power != nil,
 		Sessions: len(a.ui.sessions), Pending: len(a.ui.cards), Config: "defaults"}
 	if a.track != nil {
@@ -68,6 +70,11 @@ func (a *app) status() ipc.Status {
 			st.Plugins = append(st.Plugins, "edge: on, waiting for edge's stats (is its daemon running?)")
 		default:
 			st.Plugins = append(st.Plugins, p.Name()+": on")
+		}
+	}
+	if a.sup != nil {
+		for _, h := range a.sup.Health() {
+			st.Sources = append(st.Sources, ipc.Source{Name: h.Name, OK: h.OK, Detail: h.Detail})
 		}
 	}
 	return st
@@ -187,9 +194,8 @@ func Run() error {
 	win.OnIdle = func(idle bool) { a.presence(idle); a.ui.Invalidate() }
 	a.reloadConfig()
 	a.loadSessions()
-	a.music = source.StartMPRIS(emitter(posts))
-	startSystem(emitter(posts))
-	go source.Niri(emitter(posts))
+	a.music, a.sup = source.NewMPRIS(), source.NewSupervisor()
+	a.startSources(context.Background(), emitter(posts))
 	frameDue := false
 	win.OnPointer = func(e wayland.PointerEvent) {
 		redraw, hand := a.ui.pointer(fromWayland(e))

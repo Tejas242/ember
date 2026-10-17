@@ -1,6 +1,7 @@
 package source
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -36,8 +37,8 @@ func level(dir string) (float64, bool) {
 }
 
 // Backlight follows the screen's brightness. Without a backlight (an
-// external monitor) it returns.
-func Backlight(emit Emit) {
+// external monitor) it returns at once.
+func Backlight(emit Emit) error {
 	paths := map[string]uint32{}
 	for _, d := range backlights() {
 		paths[filepath.Join(d, "brightness")] = unix.IN_MODIFY
@@ -52,7 +53,7 @@ func Backlight(emit Emit) {
 	}
 	var mu sync.Mutex
 	due := false
-	inotify(paths, ready, func(path, _ string) {
+	err := inotify(paths, ready, func(path, _ string) {
 		mu.Lock()
 		defer mu.Unlock()
 		if due { // several writes per key press: show the last
@@ -69,6 +70,10 @@ func Backlight(emit Emit) {
 			}
 		}(filepath.Dir(path))
 	})
+	if err == errNothing {
+		return errors.New("no backlight (an external monitor?)")
+	}
+	return err
 }
 
 // SetBrightness goes through logind, which lets the seat's user set it

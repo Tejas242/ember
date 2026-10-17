@@ -54,4 +54,12 @@ type Status struct {
 	Pending     int      `json:"pending"`
 	Config      string   `json:"config"`
 	Plugins     []string `json:"plugins"` // running, with a word on each
+	Sources     []Source `json:"sources"` // each watcher: running, or why not
+}
+
+// Source is one of the island's watchers (volume, battery, niri, …).
+type Source struct {
+	Name   string `json:"name"`
+	OK     bool   `json:"ok"`
+	Detail string `json:"detail,omitempty"`
 }

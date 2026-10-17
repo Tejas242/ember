@@ -1,6 +1,8 @@
 package source
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,10 +28,10 @@ func raiseSoon(emit Emit, why string, delays ...time.Duration) {
 }
 
 // Shell notices the shell restarting: its D-Bus names change owner.
-func Shell(emit Emit) {
+func Shell(emit Emit) error {
 	bus, err := dbus.ConnectSessionBus()
 	if err != nil {
-		return
+		return fmt.Errorf("no session bus: %w", err)
 	}
 	bus.AddMatchSignal(dbus.WithMatchInterface("org.freedesktop.DBus"), dbus.WithMatchMember("NameOwnerChanged"),
 		dbus.WithMatchArg0Namespace("dev.noctalia"))
@@ -46,21 +48,26 @@ func Shell(emit Emit) {
 		last = time.Now()
 		raiseSoon(emit, "the shell restarted", 1500*time.Millisecond, 3*time.Second)
 	}
+	return errors.New("the session bus went away")
 }
 
 // ShellSettings notices the shell's settings window or a config edit, which
-// can rebuild the bar. Without Noctalia's directories it returns.
-func ShellSettings(emit Emit) {
+// can rebuild the bar. Without Noctalia's directories it returns at once.
+func ShellSettings(emit Emit) error {
 	h, _ := os.UserHomeDir()
 	paths := map[string]uint32{}
 	for _, d := range []string{filepath.Join(h, ".config", "noctalia"), filepath.Join(h, ".local", "state", "noctalia")} {
 		paths[d] = unix.IN_CLOSE_WRITE | unix.IN_MOVED_TO
 	}
 	var raiseAt time.Time
-	inotify(paths, nil, func(dir, name string) {
+	err := inotify(paths, nil, func(dir, name string) {
 		if (name == "settings.toml" || strings.HasSuffix(name, ".toml") && strings.Contains(dir, ".config")) && time.Since(raiseAt) > 2*time.Second {
 			raiseAt = time.Now()
 			raiseSoon(emit, "the shell's settings changed", 700*time.Millisecond, 2*time.Second)
 		}
 	})
+	if err == errNothing {
+		return errors.New("no Noctalia settings to watch")
+	}
+	return err
 }

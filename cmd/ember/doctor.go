@@ -43,24 +43,42 @@ func doctor() {
 	line(up, "island", map[bool]string{true: fmt.Sprintf("running (pid %d, up %s, bar %.0fpx)", st.Pid, st.Uptime, st.BarHeight),
 		false: "not answering on " + ipc.SockPath()}[up], "journalctl --user -u ember -n 30")
 	if up {
+		// why a watcher isn't running, in its own words ("pactl missing"); told once each
+		told := map[string]bool{}
+		why := func(name, fallback string) string {
+			for _, s := range st.Sources {
+				if s.Name == name && !s.OK && s.Detail != "" {
+					told[name] = true
+					return fallback + " (" + s.Detail + ")"
+				}
+			}
+			return fallback
+		}
 		line(st.Blur, "blur", map[bool]string{true: "ext-background-effect-v1", false: "compositor has no ext-background-effect-v1; the island is drawn without blur"}[st.Blur], "")
 		line(st.CursorShape, "cursor", map[bool]string{true: "wp-cursor-shape-v1", false: "no wp-cursor-shape-v1: no hand cursor over buttons"}[st.CursorShape], "")
 		line(st.Presence, "presence", map[bool]string{true: "ext-idle-notify-v1: knows when you're away",
 			false: "no ext-idle-notify-v1: no \"while you were away\""}[st.Presence], "")
 		line(st.Niri, "niri", map[bool]string{true: "event stream: focus, terminal titles, screen sharing",
-			false: "no niri event stream: Done notes can't tell where you're looking"}[st.Niri], "")
+			false: why("niri", "no niri event stream: Done notes can't tell where you're looking")}[st.Niri], "")
 		line(st.Music, "music", map[bool]string{true: "MPRIS on the session bus" + map[bool]string{true: " · " + st.Track, false: ""}[st.Track != ""],
-			false: "no session bus"}[st.Music], "")
-		line(st.Volume, "volume", map[bool]string{true: "wpctl / pactl", false: "no PipeWire volume: no volume OSD"}[st.Volume], "install wireplumber and libpulse (pactl)")
+			false: why("music", "no session bus")}[st.Music], "")
+		line(st.Volume, "volume", map[bool]string{true: "wpctl / pactl", false: why("volume", "no PipeWire volume: no volume OSD")}[st.Volume], "install wireplumber and libpulse (pactl)")
 		if st.Backlight {
 			line(true, "brightness", "backlight via inotify, set via logind", "")
 		} else {
+			told["brightness"] = true
 			note("brightness", "no backlight (an external monitor?): no brightness OSD")
 		}
 		if st.Battery {
 			line(true, "battery", "UPower", "")
 		} else {
+			told["battery"] = true
 			note("battery", "no battery reported by UPower")
+		}
+		for _, s := range st.Sources {
+			if !s.OK && !told[s.Name] && s.Detail != "" {
+				note(s.Name, s.Detail)
+			}
 		}
 		for _, p := range st.Plugins {
 			note("plugin", p)
