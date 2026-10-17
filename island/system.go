@@ -305,7 +305,7 @@ func (a *app) volumeChanged(l level) {
 		l.v = a.ui.vol.v // your hand wins over the echo of an older position
 	}
 	a.ui.vol = l
-	if !a.cfg.OSD || a.ui.onSystemPage() {
+	if !a.cfg.OSD {
 		return
 	}
 	icon, tint := "volume", a.ui.pal.fg
@@ -484,7 +484,7 @@ func (a *app) brightnessChanged(v float64) {
 		return
 	}
 	a.ui.light = v
-	if !a.cfg.OSD || a.ui.onSystemPage() {
+	if !a.cfg.OSD {
 		return
 	}
 	a.ui.Moment(moment{key: "osd:brightness", icon: "sun", tint: a.ui.pal.yellow, meter: true, level: v,
@@ -542,9 +542,6 @@ func scaleThumb(src image.Image, w, h int) *image.RGBA {
 	}
 	return dst
 }
-
-// onSystemPage: nothing in the card shows levels any more; the pill says it.
-func (u *UI) onSystemPage() bool { return false }
 
 // ---- controls (the System page) ----
 

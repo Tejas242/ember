@@ -145,7 +145,6 @@ func (a *app) agentHook(s *Session, event string, in hookInput, tin map[string]a
 			ag.Steps++
 			ag.note(now, in.Tool, tin)
 		}
-		s.bump(now)
 		a.ui.day.call(now)
 	case "PostToolUse", "PostToolUseFailure":
 		if ag := s.agent(in.AgentID, in.AgentType, now); ag != nil {

@@ -381,3 +381,12 @@ func TestShowAllSessions(t *testing.T) {
 		t.Fatal("show all should end when the card closes")
 	}
 }
+
+// A sessions file from before the activity bins went still loads.
+func TestOldSessionsFileLoads(t *testing.T) {
+	var ss map[string]*Session
+	old := `{"a":{"ID":"a","Project":"kinvault","State":"work","Bins":[1,2,3],"Counts":[4,5,6]}}`
+	if err := json.Unmarshal([]byte(old), &ss); err != nil || ss["a"] == nil || ss["a"].Project != "kinvault" {
+		t.Fatalf("old file: %v %+v", err, ss)
+	}
+}

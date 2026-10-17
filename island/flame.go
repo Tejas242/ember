@@ -408,12 +408,6 @@ func (c *canvas) drawFace(p palette, g flameGeo, f fire, a float64) {
 	}
 }
 
-// tipAt is where the tongue's tip is, for sparks and smoke.
-func (g flameGeo) tipAt() pt {
-	o := g.outline(1, 0, g.ps.tipH, g.ps.sideH)
-	return o[0]
-}
-
 // headAt is the centre of the round body and its radius, for the headphones.
 func (g flameGeo) headAt() (pt, float32) {
 	S := g.s / 1.1

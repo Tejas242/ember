@@ -29,7 +29,6 @@ var (
 	fBodyReg = func() fontFace { return face(fRegular, 12.5) }
 	fSecond  = func() fontFace { return face(fRegular, 12) }
 	fCaption = func() fontFace { return face(fRegular, 11) }
-	fNum     = func() fontFace { return face(fSemiBold, 12) }
 	fMonoS   = func() fontFace { return face(fMono, 11.5) }
 	fEyebrow = func() fontFace { return face(fSemiBold, 9.5) }
 )

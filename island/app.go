@@ -592,10 +592,6 @@ func (a *app) command(cmd, arg string) {
 	}
 }
 
-// ---- edge ----
-
-var _ = url.Parse // used by the hook handlers below
-
 // ---- Claude Code hooks ----
 
 func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
@@ -702,7 +698,6 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		if s.Label != label || s.StepAt.IsZero() {
 			s.StepAt = now
 		}
-		s.bump(now)
 		s.Turn.step(now, in.Tool, tin)
 		a.ui.day.call(now)
 		a.ui.mind.toolCall(now)

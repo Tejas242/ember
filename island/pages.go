@@ -314,35 +314,6 @@ func ago(d time.Duration) string {
 	return fmt.Sprintf("%dh ago", int(d.Hours()))
 }
 
-func hasActivity(v []float64) bool {
-	for _, x := range v {
-		if x > 0 {
-			return true
-		}
-	}
-	return false
-}
-
-// spark draws a filled sparkline of v (oldest first) in w×h, bottom at y+h.
-func (c *canvas) spark(x, y, w, h float32, v []float64, col color.NRGBA) {
-	top := 1.0
-	for _, a := range v {
-		top = math.Max(top, a)
-	}
-	n := len(v)
-	ps := []pt{{x, y + h}}
-	for i, a := range v {
-		// a square-root scale: one call still shows, a burst doesn't flatten the rest
-		k := float32(math.Sqrt(a / top))
-		ps = append(ps, pt{x + w*float32(i)/float32(n-1), y + h - h*k})
-	}
-	ps = append(ps, pt{x + w, y + h})
-	c.poly(alpha(col, 0.25), ps...)
-	for i := 1; i < n; i++ { // the top edge, over the fill
-		c.line(ps[i], ps[i+1], 1.1, col)
-	}
-}
-
 // ---- buttons ----
 
 // buttonRow draws right-aligned round buttons, and an optional quiet link on

@@ -30,10 +30,6 @@ func (o *osc) step(rest, k, zeta, force, h float64) {
 	o.x += o.v * h
 }
 
-func (o osc) still(rest, eps float64) bool {
-	return math.Abs(o.x-rest) < eps && math.Abs(o.v) < eps*20
-}
-
 type particle struct {
 	x, y, vx, vy float64 // from Ember's base centre, y up
 	age, life    float64 // a negative age waits to be born
@@ -266,16 +262,6 @@ func (b *body) tick(h, slotV float64) {
 		ph.y += ph.vy * h
 		ph.shown = math.Max(0, ph.shown-h/0.3)
 	}
-}
-
-func sign64(x float64) float64 {
-	switch {
-	case x < 0:
-		return -1
-	case x > 0:
-		return 1
-	}
-	return 0
 }
 
 // busy: something moves enough to want full-rate frames (a hop, a lean

@@ -84,9 +84,6 @@ func TestPreview(t *testing.T) {
 	u.sessions["b"] = &Session{ID: "b", Project: "kinvault", State: "wait", Since: clock.Add(-31 * time.Minute)}
 	music(u, true)
 	u.sessions["a"].Since, u.sessions["a"].Title = clock.Add(-9*time.Minute), "Quota enforcement"
-	for i := 0; i < 40; i++ {
-		u.sessions["a"].bump(clock.Add(-time.Duration(i*13) * time.Second))
-	}
 	u.vol, u.light = level{v: 0.38, ok: true}, 0.7
 	u.power = &power{pct: 66, state: 2, present: true, tte: 2*3600 + 41*60}
 	u.lastDone.project, u.lastDone.at = "airspace", clock.Add(-12*time.Minute)

@@ -30,12 +30,6 @@ func over(src, dst uint32) uint32 {
 	return src + scale(dst, 256-(a+a>>7))
 }
 
-// premul packs a straight colour as a premultiplied pixel at coverage k (0..256).
-func premul(r, g, b, a uint8, k uint32) uint32 {
-	aa := uint32(a) * k >> 8
-	return uint32(r)*aa/255 | (uint32(g)*aa/255)<<8 | (uint32(b)*aa/255)<<16 | aa<<24
-}
-
 // fillSpan blends one premultiplied pixel over px[x0:x1].
 func fillSpan(px []uint32, x0, x1 int, src uint32) {
 	a := src >> 24

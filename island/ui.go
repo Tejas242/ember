@@ -58,38 +58,10 @@ type Session struct {
 	Since, Seen               time.Time
 	StepAt                    time.Time // when the current step (Label) began
 	Pids                      []int
-	Turn                      Turn       // what this prompt has led to so far
-	Recap                     *Recap     // the last finished turn
-	Unseen                    time.Time  // it finished or stopped while you weren't looking at it
-	Asking                    string     // what it waits on you for, when it asks in the terminal
-	Bins                      [30]int64  // activity: 30 bins of 20 s (bin numbers)
-	Counts                    [30]uint16 // tool calls in each bin
-}
-
-const binSecs = 20
-
-// bump counts a tool call in the session's activity history.
-func (s *Session) bump(now time.Time) {
-	b := now.Unix() / binSecs
-	i := b % int64(len(s.Bins))
-	if s.Bins[i] != b {
-		s.Bins[i], s.Counts[i] = b, 0
-	}
-	s.Counts[i]++
-}
-
-// activity is the last ten minutes of tool calls, oldest first.
-func (s *Session) activity(now time.Time) []float64 {
-	n := int64(len(s.Bins))
-	cur := now.Unix() / binSecs
-	out := make([]float64, n)
-	for k := int64(0); k < n; k++ {
-		b := cur - n + 1 + k
-		if i := b % n; s.Bins[i] == b {
-			out[k] = float64(s.Counts[i])
-		}
-	}
-	return out
+	Turn                      Turn      // what this prompt has led to so far
+	Recap                     *Recap    // the last finished turn
+	Unseen                    time.Time // it finished or stopped while you weren't looking at it
+	Asking                    string    // what it waits on you for, when it asks in the terminal
 }
 
 // moment is a short-lived compact line: Claude finished, a new track, the
@@ -264,7 +236,6 @@ type UI struct {
 	fadeK       float64 // how far the content has faded in (panels fade with it)
 	rowK        float64 // how far the element being drawn has arrived
 	lastFull    bool    // the last frame was a full repaint (for EMBER_DEBUG)
-	slideDir    float64 // pages slide sideways: -1 back, 1 forward
 	lastPage    string
 	mind        *mind
 	day         *Day
@@ -840,16 +811,6 @@ func (u *UI) used(kind string) {
 	}
 }
 
-func sign(x int) int {
-	switch {
-	case x < 0:
-		return -1
-	case x > 0:
-		return 1
-	}
-	return 0
-}
-
 func (u *UI) liveRects() []image.Rectangle {
 	rs := make([]image.Rectangle, len(u.lives))
 	for i, l := range u.lives {
@@ -857,9 +818,6 @@ func (u *UI) liveRects() []image.Rectangle {
 	}
 	return rs
 }
-
-// div255 is x/255 for x ≤ 255·255, without a divide.
-func div255(x uint32) uint32 { return (x + 1 + x>>8) >> 8 }
 
 // composite draws src (premultiplied) over dst at strength k, only inside n,
 // shifted dx pixels sideways and dy down. Integer arithmetic throughout; transparent

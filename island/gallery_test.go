@@ -369,9 +369,7 @@ func TestGallery(t *testing.T) {
 			g.edge()
 		}),
 		card("a quiet day", func(g *galleryScene) {
-			for h, c := range []int{0, 0, 0, 0, 0, 0, 0, 0, 0, 14, 31, 22, 4, 0, 18, 40, 52, 26, 0} {
-				g.a.ui.day.Hours[h] = c
-			}
+			copy(g.a.ui.day.Hours[:], []int{0, 0, 0, 0, 0, 0, 0, 0, 0, 14, 31, 22, 4, 0, 18, 40, 52, 26, 0})
 			g.a.ui.day.Tasks, g.a.ui.day.Busy = 7, 2*time.Hour+14*time.Minute
 			g.a.ui.day.Projects = map[string]int{"ember": 5, "kinvault": 2}
 			g.music(true)

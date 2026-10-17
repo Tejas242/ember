@@ -1,5 +1,6 @@
-// Package island is edge's desktop companion: a small layer-shell surface
-// under the bar that shows Claude Code sessions and edge's nudges.
+// Package island is Ember itself: a layer-shell surface under the bar that
+// shows Claude Code sessions, permission requests and questions, music,
+// system moments, the clock and its plugins (edge), with Ember the flame.
 //
 // It talks the Wayland wire protocol directly (no toolkit): one socket, a
 // shared-memory buffer drawn in software, frames only while something moves.
@@ -38,7 +39,6 @@ type msg struct {
 	obj  uint32
 	op   uint16
 	data []byte
-	fds  []int
 }
 
 // ErrNoWayland: no compositor to draw on. The service doesn't restart on it

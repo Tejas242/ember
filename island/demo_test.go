@@ -336,9 +336,7 @@ func TestDemo(t *testing.T) {
 		d.g.a.ui.track = &Track{Player: "p", Title: "Instant Crush", Artist: "Daft Punk, Julian Casablancas", Playing: true,
 			Length: 5*time.Minute + 37*time.Second, Position: 98 * time.Second, PosAt: d.g.clock}
 		d.g.a.ui.art = galleryArt()
-		for h, c := range []int{0, 0, 0, 0, 0, 0, 0, 0, 0, 14, 31, 22, 4, 0, 18, 40, 52, 26} {
-			d.g.a.ui.day.Hours[h] = c
-		}
+		copy(d.g.a.ui.day.Hours[:], []int{0, 0, 0, 0, 0, 0, 0, 0, 0, 14, 31, 22, 4, 0, 18, 40, 52, 26})
 		d.g.a.ui.day.Tasks, d.g.a.ui.day.Busy = 7, 2*time.Hour+14*time.Minute
 		d.g.a.ui.day.Projects = map[string]int{"kinvault": 5, "notes": 2}
 		d.run(1500 * time.Millisecond)

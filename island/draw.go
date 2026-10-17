@@ -332,22 +332,6 @@ func (c *canvas) roundRectHole(x, y, w, h, rad float32, col color.NRGBA, hole im
 	}
 }
 
-// ring draws a 1px-ish outline by filling the outer shape and punching the inner
-// with the background: callers draw the fill afterwards.
-func (c *canvas) shadow(x, y, w, h, rad float32, strength float64) {
-	hole := insetRect(x, y, w, h, rad)
-	for i := 4; i >= 1; i-- {
-		g := float32(i) * 2.2
-		c.roundRectHole(x-g, y-g+3, w+2*g, h+2*g, rad+g, color.NRGBA{0, 0, 0, uint8(strength * float64(5-i) * 13)}, hole)
-	}
-}
-
-// insetRect is a rectangle safely inside the rounded shape.
-func insetRect(x, y, w, h, rad float32) image.Rectangle {
-	k := rad * 0.3
-	return image.Rect(int(math.Ceil(float64(x+k)))+1, int(math.Ceil(float64(y+k)))+1, int(x+w-k)-1, int(y+h-k)-1)
-}
-
 func (c *canvas) circle(cx, cy, rad float32, col color.NRGBA) {
 	c.roundRect(cx-rad, cy-rad, 2*rad, 2*rad, rad, col)
 }
