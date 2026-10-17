@@ -21,7 +21,7 @@ const (
 	gravity  = 320.0 // px/s²: a 2.6 px hop is in the air for a quarter of a second
 )
 
-// osc is a damped spring around a rest value: x'' = −k(x − rest) − c·x' + force.
+// osc is a damped spring around a rest value: x” = −k(x − rest) − c·x' + force.
 type osc struct{ x, v float64 }
 
 func (o *osc) step(rest, k, zeta, force, h float64) {
@@ -110,9 +110,9 @@ func (b *body) takeOff() {
 	b.jumpH = 0
 }
 
-func (b *body) squash(v float64)  { b.sq.v -= v }
-func (b *body) shove(v float64)   { b.lean.v += v }
-func (b *body) gulp(k float64)    { b.tipH.v += 2.6 * k; b.core.v += 2.2 * k; b.sq.v += 0.9 * k }
+func (b *body) squash(v float64)   { b.sq.v -= v }
+func (b *body) shove(v float64)    { b.lean.v += v }
+func (b *body) gulp(k float64)     { b.tipH.v += 2.6 * k; b.core.v += 2.2 * k; b.sq.v += 0.9 * k }
 func (b *body) brighten(v float64) { b.core.v += v }
 
 // sparks: n embers off the tip, fanned from up-left to up-right. The pill's

@@ -971,7 +971,6 @@ func (u *UI) stepEmber(dt float64, now time.Time) {
 	u.blendFire(dt)
 }
 
-
 // continuous: something animates at full rate (Ember flickering, music, a card).
 func (u *UI) continuous() bool {
 	if u.lastView != vCompact {

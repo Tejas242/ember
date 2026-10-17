@@ -158,7 +158,9 @@ type mascotFilm struct {
 }
 
 func mascotFilms() []mascotFilm {
-	play := func(kind string, a float64) func(g *galleryScene) { return func(g *galleryScene) { g.a.ui.play(kind, a) } }
+	play := func(kind string, a float64) func(g *galleryScene) {
+		return func(g *galleryScene) { g.a.ui.play(kind, a) }
+	}
 	none := func(g *galleryScene) {}
 	working := func(g *galleryScene) { g.work("k", "kinvault", "fix the race", 3) }
 	return []mascotFilm{

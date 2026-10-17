@@ -229,10 +229,10 @@ const (
 	emberCard = 24 // atop the card's rail
 	emberGap  = 6  // between Ember and what it shows beside it
 	pillEnd   = 10 // the pill's ends
-	leadW    = 16 // the leading glyph's slot
-	leadGap  = 8
-	maxSub   = 160 // secondary words, at most
-	minLabel = 40  // the label shrinks to this before the pill stops growing
+	leadW     = 16 // the leading glyph's slot
+	leadGap   = 8
+	maxSub    = 160 // secondary words, at most
+	minLabel  = 40  // the label shrinks to this before the pill stops growing
 )
 
 // pillLayout lays out the pill for line l: the left group (lead, verb,
@@ -261,7 +261,7 @@ func (u *UI) pillLayout(l line, h float32) (left, right []seg, w float32) {
 		home := emberSpot{x: x + 8, y: cy + 1, s: emberPill, mood: l.mood, show: true}
 		u.spot = home
 		u.hits = append(u.hits, hit{image.Rect(int(x-2), 0, int(x+leadW+2), int(h)), "ember"}) // poke it
-		ix := x + leadW + emberGap // what Ember shows sits beside it
+		ix := x + leadW + emberGap                                                             // what Ember shows sits beside it
 		switch {
 		case knob && m.key == "osd:volume" && m.icon != "mute": // its waves follow the level
 			volumeGlyph(u.dc, x+8, cy, 15, float32(u.meter.x), m.tint)

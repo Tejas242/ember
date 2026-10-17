@@ -573,7 +573,7 @@ func (u *UI) drawEmber(t float64, now time.Time) {
 	u.actFace(&ps, now)
 	u.body.pose(&ps)
 	ps.lookX += float32(u.body.lean.x*0.45 + u.body.lean.v*0.02) // the eyes lead the head
-	ps.scale *= 1 + 0.05*float32(m.arousal-0.5) // a touch bigger when lively
+	ps.scale *= 1 + 0.05*float32(m.arousal-0.5)                  // a touch bigger when lively
 	f := u.emberFire()
 	base := y + 0.45*s
 	if !m.asleep { // the light it casts on the island, brighter with its energy
