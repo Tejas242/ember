@@ -25,8 +25,6 @@ import (
 // screenshots. Each watcher sleeps until the system tells it something
 // changed, then posts to the main loop. Nothing polls.
 
-const osdHold = 1600 * time.Millisecond // [moments] osd_ms
-
 func startSystem(posts chan<- func(*app)) {
 	go watchBattery(posts)
 	go watchBluetooth(posts)

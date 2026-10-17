@@ -42,11 +42,6 @@ func (ag *Agent) note(now time.Time, tool string, tin map[string]any) {
 
 type agentAsk struct{ typ, desc string }
 
-const (
-	agentQuiet = 20 * time.Minute // an agent that says nothing this long was killed ([claude] agent_quiet_min)
-	agentRows  = 3                // rows the card gives agents
-)
-
 // running is how many subagents this session has going.
 func (s *Session) running() int { return len(s.Agents) }
 

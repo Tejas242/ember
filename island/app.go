@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Tejas242/ember/internal/config"
 	"github.com/Tejas242/ember/internal/ipc"
 	"github.com/Tejas242/ember/internal/xdg"
 )
@@ -34,7 +35,7 @@ type app struct {
 	music     *music
 	track     *Track
 	posts     chan func(*app)
-	cfg       Config
+	cfg       config.Config
 	cfgAt     time.Time // the config file's mtime when read
 	desk      desktop
 	started   time.Time
@@ -54,8 +55,8 @@ func (a *app) status() ipc.Status {
 	if a.track != nil {
 		st.Track = a.track.Title
 	}
-	if !mtime(ConfigPath()).IsZero() {
-		st.Config = ConfigPath()
+	if !mtime(config.Path()).IsZero() {
+		st.Config = config.Path()
 	}
 	for _, p := range a.allPlugins {
 		switch q := a.plugins[p.Name()]; {
@@ -88,7 +89,7 @@ func (a *app) raise(why string) {
 
 // reloadConfig applies ~/.config/ember/config.toml if it changed.
 func (a *app) reloadConfig() bool {
-	at := mtime(ConfigPath())
+	at := mtime(config.Path())
 	if !a.cfgAt.IsZero() && at.Equal(a.cfgAt) {
 		return false
 	}
@@ -97,18 +98,18 @@ func (a *app) reloadConfig() bool {
 		a.cfgAt = time.Unix(1, 0) // no file: defaults, and don't look again until one appears
 	}
 	var warns []string
-	a.cfg, warns = loadConfig(ConfigPath())
+	a.cfg, warns = config.Load(config.Path())
 	for _, w := range warns {
 		log.Println(w)
 	}
 	a.ui.cfg = a.cfg
-	a.ui.TimeFmt = a.cfg.timeFormat()
+	a.ui.TimeFmt = a.cfg.TimeFormat()
 	if h := float32(a.cfg.BarHeight); h > 0 && h != a.ui.BarH { // a bar that isn't Noctalia's says its height here
 		a.ui.BarH = h
 	}
-	a.ui.pal = a.cfg.look(loadPalette())
+	a.ui.pal = applyLook(a.cfg, loadPalette())
 	if a.win != nil {
-		a.win.watchIdle(a.cfg.awayAfter())
+		a.win.watchIdle(a.cfg.Away())
 	}
 	a.ui.casting = a.desk.casts > 0 && a.cfg.Privacy
 	a.reconcile()
@@ -263,7 +264,7 @@ func Run() error {
 			a.ui.habits.save()
 			a.ui.bond.save()
 			a.ui.day.save()
-			if p := a.cfg.look(loadPalette()); p != a.ui.pal { // the wallpaper palette changed
+			if p := applyLook(a.cfg, loadPalette()); p != a.ui.pal { // the wallpaper palette changed
 				a.ui.pal = p
 				a.ui.Invalidate()
 			}

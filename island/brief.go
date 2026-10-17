@@ -21,7 +21,6 @@ import (
 const (
 	heroHeadH  = 52 // Ember, the headline, its facts
 	stepH      = 22 // a step on the rail
-	keepShown  = 4  // steps shown, at most ([card] steps)
 	recapFresh = 45 * time.Minute
 )
 

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Tejas242/ember/internal/config"
 	"github.com/Tejas242/ember/internal/xdg"
-	"github.com/Tejas242/ember/island"
 )
 
 // unitText is the systemd user unit that runs exe. A crash restarts it, but
@@ -97,11 +97,11 @@ func install(exe string) error {
 		return err
 	}
 
-	if cfg := island.ConfigPath(); !fileExists(cfg) {
+	if cfg := config.Path(); !fileExists(cfg) {
 		if err := os.MkdirAll(filepath.Dir(cfg), 0o755); err != nil {
 			return err
 		}
-		if err := xdg.AtomicWrite(cfg, []byte(island.DefaultConfigText), 0o644); err != nil {
+		if err := xdg.AtomicWrite(cfg, []byte(config.DefaultText), 0o644); err != nil {
 			return err
 		}
 		fmt.Println("config →", cfg)
@@ -174,7 +174,7 @@ func uninstall() error {
 	systemctl("disable", "--now", "ember.service")
 	os.Remove(unitPath())
 	systemctl("daemon-reload")
-	fmt.Println("service stopped and removed. Your config stays at", island.ConfigPath())
+	fmt.Println("service stopped and removed. Your config stays at", config.Path())
 	return nil
 }
 

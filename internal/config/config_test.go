@@ -1,7 +1,8 @@
-package island
+package config
 
 import (
 	"image/color"
+	"os"
 	"reflect"
 	"slices"
 	"strings"
@@ -11,25 +12,25 @@ import (
 
 // The file `ember install` writes is the defaults, word for word.
 func TestDefaultConfigText(t *testing.T) {
-	c, warns, keys := parseConfig(DefaultConfigText)
+	c, warns, keys := parse(DefaultText)
 	if len(warns) > 0 {
 		t.Fatalf("the shipped config warns: %v", warns)
 	}
-	if !reflect.DeepEqual(c, DefaultConfig()) {
-		t.Fatalf("the shipped config isn't the defaults:\n got %+v\nwant %+v", c, DefaultConfig())
+	if !reflect.DeepEqual(c, Default()) {
+		t.Fatalf("the shipped config isn't the defaults:\n got %+v\nwant %+v", c, Default())
 	}
 	if len(keys) < 20 {
 		t.Fatalf("only %d keys shipped: %v", len(keys), keys)
 	}
 	// the commented plugin example parses too, once uncommented
-	on := strings.ReplaceAll(DefaultConfigText, "# [plugins.edge]\n# enabled", "[plugins.edge]\nenabled")
-	if c, warns, _ := parseConfig(on); len(warns) > 0 || c.Plugins["edge"]["enabled"] != "auto" {
+	on := strings.ReplaceAll(DefaultText, "# [plugins.edge]\n# enabled", "[plugins.edge]\nenabled")
+	if c, warns, _ := parse(on); len(warns) > 0 || c.Plugins["edge"]["enabled"] != "auto" {
 		t.Fatalf("plugin example: %v %v", warns, c.Plugins)
 	}
 }
 
 func TestConfigKeys(t *testing.T) {
-	c, warns, _ := parseConfig(`
+	c, warns, _ := parse(`
 clock = "24"
 away_after_s = 300
 [pill]
@@ -54,7 +55,7 @@ amber = '0x112233'
 	if len(warns) > 0 {
 		t.Fatal(warns)
 	}
-	want := DefaultConfig()
+	want := Default()
 	want.Clock24, want.AwayAfter, want.Pill = true, 5*time.Minute, "both"
 	want.HoverDelay, want.CardSteps, want.CardOthers = 0, 2, 0
 	want.DoneFor, want.OSDFor = 2500*time.Millisecond, 900*time.Millisecond
@@ -63,21 +64,14 @@ amber = '0x112233'
 	if !reflect.DeepEqual(c, want) {
 		t.Fatalf("\n got %+v\nwant %+v", c, want)
 	}
-	if c.pillFormat() != "Mon 2 Jan · 15:04" {
-		t.Fatal(c.pillFormat())
-	}
-	p := c.look(loadPalette())
-	if p.green != want.Green || p.yellow != want.Amber || p.island.A != 255 || p.blue == (color.NRGBA{}) {
-		t.Fatalf("look: %+v", p)
-	}
-	if p := DefaultConfig().look(loadPalette()); p != loadPalette() {
-		t.Fatal("the default look changes the theme's palette")
+	if c.PillFormat() != "Mon 2 Jan · 15:04" {
+		t.Fatal(c.PillFormat())
 	}
 }
 
 // Bad lines never break loading: each keeps its default and says why.
 func TestConfigWarnings(t *testing.T) {
-	c, warns, _ := parseConfig(`clock = "25h"
+	c, warns, _ := parse(`clock = "25h"
 hover_delay_ms = soon
 [card]
 steps = 9
@@ -108,7 +102,7 @@ enabled = "sometimes"
 	if !reflect.DeepEqual(warns, want) {
 		t.Fatalf("warnings:\n%s", strings.Join(warns, "\n"))
 	}
-	d := DefaultConfig()
+	d := Default()
 	if c.Clock24 || c.HoverDelay != d.HoverDelay || c.CardSteps != d.CardSteps || c.Opacity != d.Opacity || !c.Music || c.Red != d.Red {
 		t.Fatalf("bad values didn't keep their defaults: %+v", c)
 	}
@@ -131,12 +125,12 @@ func TestPluginOn(t *testing.T) {
 		{"[show]\nedge = false\n[plugins.edge]\nenabled = true", true, false}, // and wins
 		{"[plugins.other]\nenabled = false", true, true},                      // someone else's table
 	} {
-		c, _, _ := parseConfig(tc.text)
+		c, _, _ := parse(tc.text)
 		if got := c.PluginOn("edge", tc.detected); got != tc.want {
 			t.Errorf("%q detected=%v: PluginOn = %v, want %v", tc.text, tc.detected, got, tc.want)
 		}
 	}
-	c, _, _ := parseConfig("[plugins.\"notes\"]\nenabled = false # off\ndir = '~/notes'")
+	c, _, _ := parse("[plugins.\"notes\"]\nenabled = false # off\ndir = '~/notes'")
 	if c.PluginOn("notes", true) || c.Plugins["notes"]["dir"] != "~/notes" {
 		t.Fatalf("%v", c.Plugins)
 	}
@@ -147,7 +141,7 @@ func TestPluginOn(t *testing.T) {
 func TestCheckConfig(t *testing.T) {
 	p := t.TempDir() + "/config.toml"
 	writeFile(t, p, "clock = \"24h\"\nhover_delay_ms = 100\n[show]\nmusic = maybe\n")
-	warns, missing := CheckConfig(p)
+	warns, missing := Check(p)
 	if len(warns) != 1 || !strings.Contains(warns[0], "line 4: show.music") {
 		t.Fatal(warns)
 	}
@@ -155,8 +149,27 @@ func TestCheckConfig(t *testing.T) {
 		!slices.Contains(missing, "card.steps") || !slices.Contains(missing, "look.opacity") {
 		t.Fatal(missing)
 	}
-	writeFile(t, p, DefaultConfigText)
-	if warns, missing := CheckConfig(p); warns != nil || missing != nil {
+	writeFile(t, p, DefaultText)
+	if warns, missing := Check(p); warns != nil || missing != nil {
 		t.Fatal(warns, missing)
+	}
+}
+
+func TestConfigParse(t *testing.T) {
+	p := t.TempDir() + "/config.toml"
+	writeFile(t, p, "clock = \"24h\" # comment\nhover_delay_ms = 100\n[show]\nosd = false\nmusic=false\n")
+	c, warns := Load(p)
+	if len(warns) > 0 || !c.Clock24 || c.HoverDelay.Milliseconds() != 100 || c.OSD || c.Music || !c.Claude {
+		t.Fatalf("%+v", c)
+	}
+	if c, warns := Load(p + ".missing"); !reflect.DeepEqual(c, Default()) || warns != nil {
+		t.Fatal("a missing file means defaults")
+	}
+}
+
+func writeFile(t *testing.T, p, s string) {
+	t.Helper()
+	if err := os.WriteFile(p, []byte(s), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Tejas242/ember/internal/config"
 	"github.com/Tejas242/ember/internal/ipc"
 )
 
@@ -23,7 +24,7 @@ func newTestApp(clock *time.Time) *app {
 	u.mind = newMind(*clock)
 	u.day = &Day{}
 	u.day.roll(*clock)
-	return &app{ui: u, cfg: DefaultConfig()}
+	return &app{ui: u, cfg: config.Default()}
 }
 
 // A working session's card: a sentence in words, the facts, a live timeline

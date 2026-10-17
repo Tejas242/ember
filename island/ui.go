@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Tejas242/ember/internal/config"
 )
 
 type Button struct {
@@ -151,7 +153,7 @@ type UI struct {
 	content    *canvas
 	prev       *image.RGBA // content of the view we're leaving
 	pal        palette
-	cfg        Config
+	cfg        config.Config
 	sessions   map[string]*Session
 	cards      []*Card
 	edge       *EdgeStatus // set by the edge plugin while it runs
@@ -276,7 +278,7 @@ type UI struct {
 
 func NewUI(w, h int, barH float32) *UI {
 	u := &UI{W: w, H: h, BarH: barH, TimeFmt: "3:04 PM", cv: newCanvas(w, h), content: newCanvas(w, h),
-		prev: image.NewRGBA(image.Rect(0, 0, w, h)), pal: loadPalette(), cfg: DefaultConfig(), sessions: map[string]*Session{}, dashboards: map[string]Dashboard{}, opened: map[string]bool{},
+		prev: image.NewRGBA(image.Rect(0, 0, w, h)), pal: loadPalette(), cfg: config.Default(), sessions: map[string]*Session{}, dashboards: map[string]Dashboard{}, opened: map[string]bool{},
 		now: time.Now, dirty: true, base: image.NewRGBA(image.Rect(0, 0, w, h))}
 	u.dc = u.content
 	u.light, u.rowK = -1, 1

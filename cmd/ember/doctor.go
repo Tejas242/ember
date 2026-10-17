@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Tejas242/ember/internal/config"
 	"github.com/Tejas242/ember/internal/ipc"
-	"github.com/Tejas242/ember/island"
 )
 
 // doctor checks every piece Ember depends on and says what to do about
@@ -82,9 +82,9 @@ func doctor() {
 		line(true, "claude hooks", fmt.Sprintf("%d hooks in %s", n, settings), "")
 	}
 
-	if cfg := island.ConfigPath(); fileExists(cfg) {
+	if cfg := config.Path(); fileExists(cfg) {
 		line(true, "config", cfg, "")
-		warns, missing := island.CheckConfig(cfg)
+		warns, missing := config.Check(cfg)
 		for _, w := range warns { // a bad value keeps its default: worth a look, not a failure
 			note("config", strings.TrimPrefix(w, "config: "))
 		}

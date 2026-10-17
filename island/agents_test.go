@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Tejas242/ember/internal/config"
 )
 
 // fakeAgents gives a session n running subagents.
@@ -91,8 +93,8 @@ func TestAgentRaces(t *testing.T) {
 		t.Fatalf("%d ghost agents", s.running())
 	}
 	agentHookAt(a, "SubagentStart", "x2", map[string]any{})
-	clock = clock.Add(agentQuiet + time.Minute)
-	s.sweepAgents(clock, agentQuiet)
+	clock = clock.Add(config.DefaultAgentQuiet + time.Minute)
+	s.sweepAgents(clock, config.DefaultAgentQuiet)
 	if s.running() != 0 {
 		t.Fatal("a silent agent was never swept")
 	}

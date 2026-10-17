@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Tejas242/ember/internal/config"
 	"github.com/Tejas242/ember/internal/ipc"
 	"github.com/Tejas242/ember/internal/testenv"
 )
@@ -19,7 +20,7 @@ func TestHermetic(t *testing.T) {
 	if !strings.HasPrefix(h, os.TempDir()) {
 		t.Fatalf("HOME is %s", h)
 	}
-	for _, p := range []string{themePath(), ConfigPath(), habitsPath(), ipc.SockPath(), sessionsPath()} {
+	for _, p := range []string{themePath(), config.Path(), habitsPath(), ipc.SockPath(), sessionsPath()} {
 		if rel, err := filepath.Rel(h, p); err != nil || strings.HasPrefix(rel, "..") {
 			t.Errorf("%s is outside the sandbox", p)
 		}

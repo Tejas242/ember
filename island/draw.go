@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Tejas242/ember/internal/config"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
@@ -29,33 +30,6 @@ type palette struct {
 type fontFace = font.Face
 
 var colorWhite = color.NRGBA{255, 255, 255, 255}
-
-func hexColor(s string) (color.NRGBA, bool) {
-	s = strings.Trim(strings.TrimSpace(s), `'"`)
-	s = strings.TrimPrefix(strings.TrimPrefix(s, "#"), "0x")
-	if len(s) != 6 {
-		return color.NRGBA{}, false
-	}
-	var v [3]uint8
-	for i := range v {
-		var n uint8
-		for _, ch := range s[i*2 : i*2+2] {
-			n <<= 4
-			switch {
-			case ch >= '0' && ch <= '9':
-				n |= uint8(ch - '0')
-			case ch >= 'a' && ch <= 'f':
-				n |= uint8(ch-'a') + 10
-			case ch >= 'A' && ch <= 'F':
-				n |= uint8(ch-'A') + 10
-			default:
-				return color.NRGBA{}, false
-			}
-		}
-		v[i] = n
-	}
-	return color.NRGBA{v[0], v[1], v[2], 255}, true
-}
 
 func mix(a, b color.NRGBA, t float64) color.NRGBA {
 	l := func(x, y uint8) uint8 { return uint8(math.Round(float64(x)*(1-t) + float64(y)*t)) }
@@ -92,7 +66,7 @@ func loadPalette() palette {
 			if !ok {
 				continue
 			}
-			if c, ok := hexColor(v); ok {
+			if c, ok := config.HexColor(v); ok {
 				col[section+"."+strings.TrimSpace(k)] = c
 			}
 		}

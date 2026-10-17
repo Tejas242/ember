@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Tejas242/ember/internal/config"
 	"github.com/Tejas242/ember/internal/ipc"
 	"github.com/Tejas242/ember/island"
 )
@@ -119,8 +120,8 @@ func TestReadmeConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(b), "```toml\n"+island.DefaultConfigText+"```") {
-		t.Fatal("README's Config section differs from island.DefaultConfigText")
+	if !strings.Contains(string(b), "```toml\n"+config.DefaultText+"```") {
+		t.Fatal("README's Config section differs from config.DefaultText")
 	}
 }
 
@@ -216,7 +217,7 @@ func TestInstallNoClaude(t *testing.T) {
 	if err != nil || !strings.Contains(string(u), "ExecStart="+exe+"\n") {
 		t.Fatalf("service: %v %q", err, u)
 	}
-	if c, err := os.ReadFile(filepath.Join(h, ".config", "ember", "config.toml")); err != nil || string(c) != island.DefaultConfigText {
+	if c, err := os.ReadFile(filepath.Join(h, ".config", "ember", "config.toml")); err != nil || string(c) != config.DefaultText {
 		t.Fatalf("config: %v", err)
 	}
 	if strings.Join(*calls, ";") != "daemon-reload;enable ember.service;restart ember.service" {

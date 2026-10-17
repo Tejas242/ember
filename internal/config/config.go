@@ -1,4 +1,5 @@
-package island
+// Package config reads ~/.config/ember/config.toml.
+package config
 
 import (
 	"fmt"
@@ -48,21 +49,30 @@ type Config struct {
 	Plugins map[string]map[string]string // [plugins.<name>] tables: raw key → value (quotes stripped)
 }
 
-func DefaultConfig() Config {
+// The defaults the island's own code also uses.
+const (
+	DefaultCardSteps  = 4                       // [card] steps: timeline steps shown, at most
+	DefaultOSDFor     = 1600 * time.Millisecond // [moments] osd_ms
+	DefaultAgentQuiet = 20 * time.Minute        // [claude] agent_quiet_min: a silent agent was killed
+)
+
+// Default is the config with no file.
+func Default() Config {
 	return Config{AwayAfter: 2 * time.Minute, Pill: "clock", HoverDelay: 150 * time.Millisecond,
-		CardSteps: keepShown, CardOthers: 3, DoneFor: 6 * time.Second, OSDFor: osdHold,
-		Answer: true, Wait: ipc.AskTimeout - 5*time.Second, Settle: 30 * time.Minute, AgentQuiet: agentQuiet, Opacity: 0.87,
+		CardSteps: DefaultCardSteps, CardOthers: 3, DoneFor: 6 * time.Second, OSDFor: DefaultOSDFor,
+		Answer: true, Wait: ipc.AskTimeout - 5*time.Second, Settle: 30 * time.Minute, AgentQuiet: DefaultAgentQuiet, Opacity: 0.87,
 		Claude: true, Music: true, Edge: true, Battery: true,
 		OSD: true, Devices: true, Screenshots: true, Privacy: true, Done: true}
 }
 
-func ConfigPath() string {
+// Path is the config file.
+func Path() string {
 	return filepath.Join(xdg.ConfigHome(), "ember", "config.toml")
 }
 
-// DefaultConfigText is what `ember install` writes when there's no config
-// yet. It must parse to exactly DefaultConfig().
-const DefaultConfigText = `# Ember: changes apply within ten seconds, no restart needed.
+// DefaultText is what `ember install` writes when there's no config
+// yet. It must parse to exactly Default().
+const DefaultText = `# Ember: changes apply within ten seconds, no restart needed.
 # A value Ember can't use keeps its default; ` + "`ember doctor`" + ` says which.
 
 clock        = "12h"  # 12h | 24h
@@ -111,27 +121,27 @@ privacy     = true  # a dot while your screen is being shared or recorded
 # enabled = "auto"  # auto | true | false — edge's practice status, cards and dashboard
 `
 
-// loadConfig reads path over the defaults; a missing file means defaults.
+// Load reads path over the defaults; a missing file means defaults.
 // The warnings say which lines it couldn't use.
-func loadConfig(path string) (Config, []string) {
+func Load(path string) (Config, []string) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return DefaultConfig(), nil
+		return Default(), nil
 	}
-	c, warns, _ := parseConfig(string(b))
+	c, warns, _ := parse(string(b))
 	return c, warns
 }
 
-// CheckConfig is for `ember doctor`: what's wrong in the config file, and
+// Check is for `ember doctor`: what's wrong in the config file, and
 // which of the shipped keys it doesn't have yet (Ember grew new ones since
 // it was written; install never overwrites it).
-func CheckConfig(path string) (warns, missing []string) {
+func Check(path string) (warns, missing []string) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, nil
 	}
-	_, warns, have := parseConfig(string(b))
-	_, _, all := parseConfig(DefaultConfigText)
+	_, warns, have := parse(string(b))
+	_, _, all := parse(DefaultText)
 	for _, k := range all {
 		if !slices.Contains(have, k) {
 			missing = append(missing, k)
@@ -142,12 +152,12 @@ func CheckConfig(path string) (warns, missing []string) {
 
 var configSections = []string{"", "pill", "card", "moments", "claude", "look", "show"}
 
-// parseConfig reads the small part of TOML Ember needs: sections and
+// parse reads the small part of TOML Ember needs: sections and
 // key = value lines. It never fails: an unknown key is skipped and a value
 // it can't use keeps its default, each with a warning. keys are the known
 // keys set, as section.key.
-func parseConfig(text string) (c Config, warns, keys []string) {
-	c = DefaultConfig()
+func parse(text string) (c Config, warns, keys []string) {
+	c = Default()
 	section, known := "", true
 	for i, raw := range strings.Split(text, "\n") {
 		ln := strings.TrimSpace(stripComment(raw))
@@ -223,7 +233,7 @@ func parseConfig(text string) (c Config, warns, keys []string) {
 		hex := func(dst *color.NRGBA) {
 			if v == "" {
 				*dst = color.NRGBA{}
-			} else if col, ok := hexColor(v); ok {
+			} else if col, ok := HexColor(v); ok {
 				*dst = col
 			} else {
 				warn(`%s must be a colour like "#72dd71", or "" to follow the theme`, key)
@@ -255,7 +265,7 @@ func parseConfig(text string) (c Config, warns, keys []string) {
 		case "card.hover_delay_ms":
 			span(&c.HoverDelay, time.Millisecond, 0, 5000)
 		case "card.steps":
-			count(&c.CardSteps, 1, keepShown)
+			count(&c.CardSteps, 1, DefaultCardSteps)
 		case "card.others":
 			count(&c.CardOthers, 0, 3)
 		case "moments.done_s":
@@ -342,7 +352,7 @@ func (c Config) PluginOn(name string, detected bool) bool {
 	return detected
 }
 
-func (c Config) enabled(act string) bool {
+func (c Config) Enabled(act string) bool {
 	switch act {
 	case "claude":
 		return c.Claude
@@ -354,7 +364,7 @@ func (c Config) enabled(act string) bool {
 	return true
 }
 
-func (c Config) timeFormat() string {
+func (c Config) TimeFormat() string {
 	if c.Clock24 {
 		return "15:04"
 	}
@@ -362,42 +372,49 @@ func (c Config) timeFormat() string {
 }
 
 // pillFormat is what the resting pill shows: the time, the date, or both.
-func (c Config) pillFormat() string {
+func (c Config) PillFormat() string {
 	switch c.Pill {
 	case "date":
 		return "Mon 2 Jan"
 	case "both":
-		return "Mon 2 Jan · " + c.timeFormat()
+		return "Mon 2 Jan · " + c.TimeFormat()
 	}
-	return c.timeFormat()
+	return c.TimeFormat()
 }
 
-// awayAfter is away_after_s, unless EMBER_AWAY_AFTER (a Go duration, for
+// Away is away_after_s, unless EMBER_AWAY_AFTER (a Go duration, for
 // testing) says otherwise.
-func (c Config) awayAfter() time.Duration {
+func (c Config) Away() time.Duration {
 	if v, err := time.ParseDuration(os.Getenv("EMBER_AWAY_AFTER")); err == nil && v > 0 {
 		return v
 	}
 	return c.AwayAfter
 }
 
-// look puts the [look] overrides over the theme's palette.
-func (c Config) look(p palette) palette {
-	for _, o := range []struct {
-		dst *color.NRGBA
-		v   color.NRGBA
-	}{{&p.green, c.Green}, {&p.blue, c.Blue}, {&p.red, c.Red}, {&p.yellow, c.Amber}} {
-		if o.v.A != 0 {
-			*o.dst = o.v
+// HexColor reads "#rrggbb", "0xrrggbb" or "rrggbb", quoted or not.
+func HexColor(s string) (color.NRGBA, bool) {
+	s = strings.Trim(strings.TrimSpace(s), `'"`)
+	s = strings.TrimPrefix(strings.TrimPrefix(s, "#"), "0x")
+	if len(s) != 6 {
+		return color.NRGBA{}, false
+	}
+	var v [3]uint8
+	for i := range v {
+		var n uint8
+		for _, ch := range s[i*2 : i*2+2] {
+			n <<= 4
+			switch {
+			case ch >= '0' && ch <= '9':
+				n |= uint8(ch - '0')
+			case ch >= 'a' && ch <= 'f':
+				n |= uint8(ch-'a') + 10
+			case ch >= 'A' && ch <= 'F':
+				n |= uint8(ch-'A') + 10
+			default:
+				return color.NRGBA{}, false
+			}
 		}
+		v[i] = n
 	}
-	p.island.A = uint8(math.Round(c.Opacity * 255))
-	return p
-}
-
-func mtime(path string) time.Time {
-	if st, err := os.Stat(path); err == nil {
-		return st.ModTime()
-	}
-	return time.Time{}
+	return color.NRGBA{v[0], v[1], v[2], 255}, true
 }

@@ -283,7 +283,7 @@ func (u *UI) salience(act string, now time.Time) float64 {
 func (u *UI) attend(now time.Time) string {
 	best, bestS := "clock", u.salience("clock", now)
 	for _, a := range []string{"claude", "music", "edge"} {
-		if !u.cfg.enabled(a) {
+		if !u.cfg.Enabled(a) {
 			continue
 		}
 		if s := u.salience(a, now); s > bestS {

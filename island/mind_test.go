@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Tejas242/ember/internal/config"
 )
 
 func TestAffectSettlesAndSleeps(t *testing.T) {
@@ -142,7 +144,7 @@ func TestDoneNotesMerge(t *testing.T) {
 	clock := time.Now()
 	u := NewUI(440, 280, 22)
 	u.now = func() time.Time { return clock }
-	a := &app{ui: u, cfg: DefaultConfig()}
+	a := &app{ui: u, cfg: config.Default()}
 	a.done(&Session{ID: "1", Project: "edge"}, "ok", clock)
 	a.done(&Session{ID: "2", Project: "ember"}, "ok", clock.Add(time.Second))
 	if u.moment.verb+" "+u.moment.text != "Done edge, ember" || u.moment.sub != "2 sessions finished" {
@@ -154,7 +156,7 @@ func TestWelcomeBack(t *testing.T) {
 	clock := time.Now()
 	u := NewUI(440, 280, 22)
 	u.now = func() time.Time { return clock }
-	a := &app{ui: u, cfg: DefaultConfig()}
+	a := &app{ui: u, cfg: config.Default()}
 	a.presence(true)
 	u.mind.missed = append(u.mind.missed, missedNote{"done", "edge", "1"}, missedNote{"wait", "ember", "2"})
 	clock = clock.Add(10 * time.Minute)
