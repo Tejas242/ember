@@ -1,10 +1,11 @@
-// Package island is Ember itself: a layer-shell surface under the bar that
-// shows Claude Code sessions, permission requests and questions, music,
-// system moments, the clock and its plugins (edge), with Ember the flame.
+// Package wayland is the island's Wayland client: the wire protocol spoken
+// directly (no toolkit, no libwayland), one layer-shell surface, shared-memory
+// buffers, pointer input, blur, cursor shape and idle notifications.
 //
-// It talks the Wayland wire protocol directly (no toolkit): one socket, a
-// shared-memory buffer drawn in software, frames only while something moves.
-package island
+// The Window is driven from one goroutine, the caller's loop: it selects on
+// Messages and Errors, passes each message to Dispatch, and calls Flush once
+// it has drawn.
+package wayland
 
 import (
 	"encoding/binary"
@@ -31,11 +32,12 @@ type conn struct {
 	next     uint32
 	out      []byte
 	fds      []int
-	msgs     chan msg
+	msgs     chan Message
 	readErr  chan error
 }
 
-type msg struct {
+// Message is one event from the compositor, for Window.Dispatch.
+type Message struct {
 	obj  uint32
 	op   uint16
 	data []byte
@@ -45,10 +47,6 @@ type msg struct {
 // (the island exits 78, the unit's RestartPreventExitStatus): without a
 // graphical session there's nothing to retry.
 var ErrNoWayland = errors.New("no Wayland socket")
-
-// waylandWait is how long the island waits for the compositor's socket to
-// appear, for a session that is still starting.
-var waylandWait = 5 * time.Second
 
 func waylandSocket() string {
 	name := os.Getenv("WAYLAND_DISPLAY")
@@ -61,10 +59,11 @@ func waylandSocket() string {
 	return name
 }
 
-// waitWayland returns once the compositor's socket exists, or ErrNoWayland.
-func waitWayland() error {
+// WaitSocket returns once the compositor's socket exists, or ErrNoWayland
+// after wait (a session still starting gets that long).
+func WaitSocket(wait time.Duration) error {
 	name := waylandSocket()
-	for deadline := time.Now().Add(waylandWait); ; time.Sleep(100 * time.Millisecond) {
+	for deadline := time.Now().Add(wait); ; time.Sleep(100 * time.Millisecond) {
 		if _, err := os.Stat(name); err == nil {
 			return nil
 		}
@@ -80,7 +79,7 @@ func dial() (*conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &conn{sock: s, handlers: map[uint32]handler{}, next: 2, msgs: make(chan msg, 256), readErr: make(chan error, 1)}
+	c := &conn{sock: s, handlers: map[uint32]handler{}, next: 2, msgs: make(chan Message, 256), readErr: make(chan error, 1)}
 	c.handlers[1] = c.onDisplay
 	go c.read()
 	return c, nil
@@ -182,7 +181,7 @@ func (c *conn) read() {
 			if size < 8 || len(buf) < size {
 				break
 			}
-			m := msg{obj: binary.LittleEndian.Uint32(buf), op: uint16(binary.LittleEndian.Uint32(buf[4:])), data: append([]byte(nil), buf[8:size]...)}
+			m := Message{obj: binary.LittleEndian.Uint32(buf), op: uint16(binary.LittleEndian.Uint32(buf[4:])), data: append([]byte(nil), buf[8:size]...)}
 			// The only fd-carrying events we bind (keymap) are not used; close any we get.
 			for _, f := range fds {
 				unix.Close(f)
@@ -195,7 +194,7 @@ func (c *conn) read() {
 	}
 }
 
-func (c *conn) dispatch(m msg) {
+func (c *conn) dispatch(m Message) {
 	if h := c.handlers[m.obj]; h != nil {
 		h(m.op, &dec{b: m.data})
 	}
@@ -260,7 +259,7 @@ type shmBuffer struct {
 
 func newShmBuffer(c *conn, shm uint32, w, h int) (*shmBuffer, error) {
 	size := w * h * 4
-	f, err := unix.MemfdCreate("edge-island", unix.MFD_CLOEXEC)
+	f, err := unix.MemfdCreate("ember", unix.MFD_CLOEXEC)
 	if err != nil {
 		return nil, err
 	}

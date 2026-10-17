@@ -17,6 +17,7 @@ import (
 
 	"github.com/Tejas242/ember/internal/config"
 	"github.com/Tejas242/ember/internal/ipc"
+	"github.com/Tejas242/ember/internal/wayland"
 	"github.com/Tejas242/ember/internal/xdg"
 )
 
@@ -31,7 +32,7 @@ const (
 type app struct {
 	lastHouse time.Time // the last housekeeping tick: a long gap means the machine slept
 	ui        *UI
-	win       *window
+	win       *wayland.Window
 	music     *music
 	track     *Track
 	posts     chan func(*app)
@@ -49,7 +50,7 @@ type app struct {
 
 func (a *app) status() ipc.Status {
 	st := ipc.Status{Pid: os.Getpid(), Uptime: time.Since(a.started).Round(time.Second).String(), BarHeight: a.ui.BarH,
-		Blur: a.win.blurMgr != 0, CursorShape: a.win.cursorMgr != 0, Presence: a.win.idleMgr != 0, Niri: a.desk.live, Music: a.music != nil,
+		Blur: a.win.Caps().Blur, CursorShape: a.win.Caps().CursorShape, Presence: a.win.Caps().Idle, Niri: a.desk.live, Music: a.music != nil,
 		Volume: a.ui.vol.ok, Backlight: a.ui.light >= 0, Battery: a.ui.power != nil,
 		Sessions: len(a.ui.sessions), Pending: len(a.ui.cards), Config: "defaults"}
 	if a.track != nil {
@@ -74,7 +75,7 @@ func (a *app) status() ipc.Status {
 // raise puts the island back above a bar that was just re-created.
 func (a *app) raise(why string) {
 	log.Println(why + ": raising the island above the bar")
-	a.win.raise()
+	a.win.Raise()
 	a.ui.Invalidate()
 	go func() { // the bar may have changed too: take its new look
 		b := readBar()
@@ -109,7 +110,7 @@ func (a *app) reloadConfig() bool {
 	}
 	a.ui.pal = applyLook(a.cfg, loadPalette())
 	if a.win != nil {
-		a.win.watchIdle(a.cfg.Away())
+		a.win.WatchIdle(a.cfg.Away())
 	}
 	a.ui.casting = a.desk.casts > 0 && a.cfg.Privacy
 	a.reconcile()
@@ -161,14 +162,14 @@ func parseBar(cfg string, b barLook) barLook {
 
 // Run opens the island and serves until the compositor goes away.
 func Run() error {
-	if err := waitWayland(); err != nil {
+	if err := wayland.WaitSocket(5 * time.Second); err != nil { // a session still starting gets a moment
 		return err
 	}
 	posts := make(chan func(*app), 64)
 	if _, err := listen(posts); err != nil {
 		return err
 	}
-	win, err := openWindow(surfW, surfH, 0, layerTop)
+	win, err := wayland.Open(surfW, surfH, 0, wayland.LayerTop)
 	if err != nil {
 		return err
 	}
@@ -182,21 +183,21 @@ func Run() error {
 		a.ui.returned(t, a.ui.now())
 	}
 	a.ui.day = loadDay(time.Now())
-	win.onIdle = func(idle bool) { a.presence(idle); a.ui.Invalidate() }
+	win.OnIdle = func(idle bool) { a.presence(idle); a.ui.Invalidate() }
 	a.reloadConfig()
 	a.loadSessions()
 	a.music = startMusic(posts)
 	startSystem(posts)
 	go watchNiri(posts)
 	frameDue := false
-	win.onPointer = func(e pointerEvent) {
-		redraw, hand := a.ui.pointer(e)
-		win.setCursor(hand)
+	win.OnPointer = func(e wayland.PointerEvent) {
+		redraw, hand := a.ui.pointer(fromWayland(e))
+		win.SetCursor(hand)
 		if redraw {
 			a.ui.Invalidate()
 		}
 	}
-	win.onFrame = func() { frameDue = true }
+	win.OnFrame = func() { frameDue = true }
 	log.Printf("ember up (bar %.0fpx)", a.ui.BarH)
 
 	animating, waitingFrame, tick := false, false, false
@@ -214,7 +215,7 @@ func Run() error {
 			nFast++
 		}
 		damage = damage.Union(lost)
-		if win.present(a.ui.cv.img, a.ui.shape.bounds().Union(a.ui.bubble), damage, animating) {
+		if win.Present(a.ui.cv.img, a.ui.shape.bounds().Union(a.ui.bubble), damage, animating) {
 			waitingFrame, waitingSince = animating, time.Now()
 			lost = image.Rectangle{}
 		} else {
@@ -222,9 +223,7 @@ func Run() error {
 			lost = damage     // what changed never reached the screen: keep it for the next frame
 			a.ui.dirty = true // no free buffer: try again on the next wake
 		}
-		if b := a.ui.shape.blurRects(); !slices.Equal(b, win.lastBlur) {
-			win.setBlur(b)
-		}
+		win.SetBlur(a.ui.shape.blurRects())
 	}
 	draw()
 	housekeep := time.NewTicker(10 * time.Second)
@@ -234,9 +233,9 @@ func Run() error {
 	saveDue := false
 	for {
 		select {
-		case m := <-win.c.msgs:
-			win.c.dispatch(m)
-		case err := <-win.c.readErr:
+		case m := <-win.Messages():
+			win.Dispatch(m)
+		case err := <-win.Errors():
 			return err
 		case f := <-posts:
 			a.quiet = false
@@ -280,7 +279,7 @@ func Run() error {
 				a.ui.Invalidate()
 			}
 		}
-		if win.closed {
+		if win.Closed() {
 			return fmt.Errorf("layer surface closed")
 		}
 		// the open card shows a progress bar: re-read the playhead now and then
@@ -307,7 +306,7 @@ func Run() error {
 			nFull, nFast, nFail, nPost, nWake, statAt = 0, 0, 0, 0, 0, time.Now()
 		}
 		timer.Reset(a.nextWake(animating))
-		win.c.flush()
+		win.Flush()
 	}
 }
 

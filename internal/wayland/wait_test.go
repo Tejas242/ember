@@ -1,4 +1,4 @@
-package island
+package wayland
 
 import (
 	"errors"
@@ -12,20 +12,15 @@ func TestWaitWayland(t *testing.T) {
 	d := t.TempDir()
 	t.Setenv("XDG_RUNTIME_DIR", d)
 	t.Setenv("WAYLAND_DISPLAY", "wayland-test")
-	old := waylandWait
-	t.Cleanup(func() { waylandWait = old })
-
-	waylandWait = 0
-	if err := waitWayland(); !errors.Is(err, ErrNoWayland) {
+	if err := WaitSocket(0); !errors.Is(err, ErrNoWayland) {
 		t.Fatalf("no socket: %v", err)
 	}
 
-	waylandWait = 3 * time.Second // a compositor still starting
-	go func() {
+	go func() { // a compositor still starting
 		time.Sleep(150 * time.Millisecond)
 		os.WriteFile(filepath.Join(d, "wayland-test"), nil, 0o600)
 	}()
-	if err := waitWayland(); err != nil {
+	if err := WaitSocket(3 * time.Second); err != nil {
 		t.Fatalf("socket appeared: %v", err)
 	}
 }

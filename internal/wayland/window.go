@@ -1,31 +1,48 @@
-package island
+package wayland
 
 import (
 	"image"
 	"log"
 	"math"
+	"slices"
 	"time"
 	"unsafe"
 )
 
-// layer-shell constants (wlr-layer-shell-unstable-v1)
+// Layer is a layer-shell layer (wlr-layer-shell-unstable-v1).
+type Layer uint32
+
+// LayerTop is above windows, with the bars.
+const LayerTop Layer = 2
+
 const (
-	layerTop     = 2
 	anchorTop    = 1
-	btnLeft      = 0x110
 	shapeDefault = 1
 	shapePointer = 4
 )
 
-type pointerEvent struct {
-	kind   string // enter | motion | leave | press | release | scroll
-	x, y   float64
-	button int     // press: 1 left, 2 middle, 3 right
-	steps  float64 // scroll: wheel notches, positive = down
+// PointerEvent is the pointer over the surface.
+type PointerEvent struct {
+	Kind   string // enter | motion | leave | press | release | scroll
+	X, Y   float64
+	Button int     // press: 1 left, 2 middle, 3 right
+	Steps  float64 // scroll: wheel notches, positive = down
 }
 
-// window is the island's one layer surface.
-type window struct {
+// Caps are the optional protocols the compositor has.
+type Caps struct {
+	Blur        bool // ext-background-effect-v1
+	CursorShape bool // wp-cursor-shape-v1
+	Idle        bool // ext-idle-notify-v1
+}
+
+// Window is the island's one layer surface. Its callbacks run inside
+// Dispatch, on the caller's goroutine.
+type Window struct {
+	OnPointer func(PointerEvent)
+	OnFrame   func()          // the compositor wants the next frame
+	OnIdle    func(idle bool) // you went away (true) or came back
+
 	c                                  *conn
 	compositor, shm, layerShell, seat  uint32
 	cursorMgr                          uint32
@@ -38,9 +55,6 @@ type window struct {
 	enterSerial                        uint32
 	px, py                             float64
 	scroll                             float64
-	onPointer                          func(pointerEvent)
-	onFrame                            func()
-	onIdle                             func(idle bool)
 	layerKind                          uint32
 	retire                             func() // the surface a raise replaced, to destroy once the new one shows
 	marginTop                          int
@@ -51,12 +65,13 @@ type window struct {
 	lastShape                          uint32
 }
 
-func openWindow(w, h, marginTop int, layer uint32) (*window, error) {
+// Open makes a w×h surface on layer, anchored to the top edge marginTop px down.
+func Open(w, h, marginTop int, layer Layer) (*Window, error) {
 	c, err := dial()
 	if err != nil {
 		return nil, err
 	}
-	win := &window{c: c, w: w, h: h}
+	win := &Window{c: c, w: w, h: h}
 	reg := c.newID(nil)
 	c.handlers[reg] = func(op uint16, d *dec) {
 		if op != 0 { // global_remove
@@ -98,7 +113,7 @@ func openWindow(w, h, marginTop int, layer uint32) (*window, error) {
 	if err := c.roundtrip(); err != nil { // seat capabilities
 		return nil, err
 	}
-	win.layerKind, win.marginTop = layer, marginTop
+	win.layerKind, win.marginTop = uint32(layer), marginTop
 	win.createSurface()
 	if err := c.roundtrip(); err != nil {
 		return nil, err
@@ -111,10 +126,10 @@ func openWindow(w, h, marginTop int, layer uint32) (*window, error) {
 	return win, nil
 }
 
-// watchIdle asks to hear when you've been away from the keyboard and mouse
+// WatchIdle asks to hear when you've been away from the keyboard and mouse
 // for d, and when you come back (ext-idle-notify-v1). Version 2's input
 // idle ignores inhibitors, so a playing video doesn't count as you.
-func (win *window) watchIdle(d time.Duration) {
+func (win *Window) WatchIdle(d time.Duration) {
 	if win.idleMgr == 0 || win.seat == 0 || d == win.idleFor {
 		return
 	}
@@ -122,8 +137,8 @@ func (win *window) watchIdle(d time.Duration) {
 		win.c.send(win.idleNote, 0) // ext_idle_notification_v1.destroy
 	}
 	id := win.c.newID(func(op uint16, _ *dec) {
-		if win.onIdle != nil {
-			win.onIdle(op == 0) // 0 idled, 1 resumed
+		if win.OnIdle != nil {
+			win.OnIdle(op == 0) // 0 idled, 1 resumed
 		}
 	})
 	op := uint16(1) // get_idle_notification
@@ -136,7 +151,7 @@ func (win *window) watchIdle(d time.Duration) {
 
 // createSurface makes the island's surface and its layer role; the
 // compositor answers with a configure before the first buffer may go up.
-func (win *window) createSurface() {
+func (win *Window) createSurface() {
 	c := win.c
 	win.surface = c.newID(nil)
 	c.send(win.compositor, 0, win.surface)
@@ -151,12 +166,12 @@ func (win *window) createSurface() {
 	c.send(win.surface, 6) // commit
 }
 
-// raise puts the island back on top of its layer. Layer-shell has no
+// Raise puts the island back on top of its layer. Layer-shell has no
 // "raise": the newest surface of a layer is drawn above the older ones, so
 // when the bar is re-created (the shell restarted, or a bar setting
 // changed) it covers us. Making our surface again puts it above. The old
 // one stays up until the new one has shown its first frame: no blink.
-func (win *window) raise() {
+func (win *Window) Raise() {
 	c := win.c
 	oldLayer, oldSurf, oldBlur := win.layer, win.surface, win.blurSurf
 	win.retire = func() {
@@ -176,7 +191,7 @@ func (win *window) raise() {
 	c.flush()
 }
 
-func (win *window) onSeat(op uint16, d *dec) {
+func (win *Window) onSeat(op uint16, d *dec) {
 	if op != 0 { // capabilities
 		return
 	}
@@ -191,7 +206,7 @@ func (win *window) onSeat(op uint16, d *dec) {
 	}
 }
 
-func (win *window) onLayer(op uint16, d *dec) {
+func (win *Window) onLayer(op uint16, d *dec) {
 	switch op {
 	case 0: // configure
 		serial := d.u32()
@@ -202,20 +217,20 @@ func (win *window) onLayer(op uint16, d *dec) {
 	}
 }
 
-func (win *window) onPointerEv(op uint16, d *dec) {
+func (win *Window) onPointerEv(op uint16, d *dec) {
 	switch op {
 	case 0: // enter
 		win.enterSerial = d.u32()
 		d.u32()
 		win.px, win.py = d.fixed(), d.fixed()
 		win.lastShape = 0
-		win.emit(pointerEvent{kind: "enter", x: win.px, y: win.py})
+		win.emit(PointerEvent{Kind: "enter", X: win.px, Y: win.py})
 	case 1: // leave
-		win.emit(pointerEvent{kind: "leave"})
+		win.emit(PointerEvent{Kind: "leave"})
 	case 2: // motion
 		d.u32()
 		win.px, win.py = d.fixed(), d.fixed()
-		win.emit(pointerEvent{kind: "motion", x: win.px, y: win.py})
+		win.emit(PointerEvent{Kind: "motion", X: win.px, Y: win.py})
 	case 3: // button
 		d.u32()
 		d.u32()
@@ -224,9 +239,9 @@ func (win *window) onPointerEv(op uint16, d *dec) {
 		switch {
 		case b == 0:
 		case state == 1:
-			win.emit(pointerEvent{kind: "press", x: win.px, y: win.py, button: b})
+			win.emit(PointerEvent{Kind: "press", X: win.px, Y: win.py, Button: b})
 		default: // the compositor grabs the pointer for us between press and release
-			win.emit(pointerEvent{kind: "release", x: win.px, y: win.py, button: b})
+			win.emit(PointerEvent{Kind: "release", X: win.px, Y: win.py, Button: b})
 		}
 	case 4: // axis: vertical wheel / touchpad, ~15 units per notch
 		d.u32()
@@ -236,19 +251,19 @@ func (win *window) onPointerEv(op uint16, d *dec) {
 	case 5: // frame: deliver the accumulated scroll as whole notches
 		if steps := math.Trunc(win.scroll / 15); steps != 0 {
 			win.scroll -= steps * 15
-			win.emit(pointerEvent{kind: "scroll", x: win.px, y: win.py, steps: steps})
+			win.emit(PointerEvent{Kind: "scroll", X: win.px, Y: win.py, Steps: steps})
 		}
 	}
 }
 
-func (win *window) emit(e pointerEvent) {
-	if win.onPointer != nil {
-		win.onPointer(e)
+func (win *Window) emit(e PointerEvent) {
+	if win.OnPointer != nil {
+		win.OnPointer(e)
 	}
 }
 
-// setCursor shows a hand over buttons, the arrow elsewhere.
-func (win *window) setCursor(hand bool) {
+// SetCursor shows a hand over buttons, the arrow elsewhere.
+func (win *Window) SetCursor(hand bool) {
 	if win.cursorDev == 0 {
 		return
 	}
@@ -264,7 +279,7 @@ func (win *window) setCursor(hand bool) {
 }
 
 // setInput limits clicks to the visible shape; everything else passes through.
-func (win *window) setInput(r image.Rectangle) {
+func (win *Window) setInput(r image.Rectangle) {
 	reg := win.c.newID(nil)
 	win.c.send(win.compositor, 1, reg)
 	if !r.Empty() {
@@ -275,10 +290,10 @@ func (win *window) setInput(r image.Rectangle) {
 	win.lastInput = r
 }
 
-// present copies what changed (damage, plus whatever this buffer missed
+// Present copies img: what changed (damage, plus whatever this buffer missed
 // while the other one was on screen) into a free buffer as ARGB8888, tells
 // the compositor only about that, and commits.
-func (win *window) present(img *image.RGBA, input, damage image.Rectangle, wantFrame bool) bool {
+func (win *Window) Present(img *image.RGBA, input, damage image.Rectangle, wantFrame bool) bool {
 	if !win.configured {
 		return false
 	}
@@ -315,8 +330,8 @@ func (win *window) present(img *image.RGBA, input, damage image.Rectangle, wantF
 		win.framePending = true
 		cb := win.c.newID(func(op uint16, d *dec) {
 			win.framePending = false
-			if win.onFrame != nil {
-				win.onFrame()
+			if win.OnFrame != nil {
+				win.OnFrame()
 			}
 		})
 		win.c.send(win.surface, 3, cb)
@@ -328,16 +343,17 @@ func (win *window) present(img *image.RGBA, input, damage image.Rectangle, wantF
 		win.retire = nil
 	}
 	if err := win.c.flush(); err != nil {
-		log.Println("island: flush:", err)
+		log.Println("wayland: flush:", err)
 	}
 	return true
 }
 
-// setBlur asks the compositor to blur what's behind these rectangles
-// (ext-background-effect-v1). The pill's rounded corners are approximated
-// by a few strips; the shape drawn on top hides the steps.
-func (win *window) setBlur(rects []image.Rectangle) {
-	if win.blurMgr == 0 {
+// SetBlur asks the compositor to blur what's behind these rectangles
+// (ext-background-effect-v1); the same rectangles again cost nothing. The
+// pill's rounded corners are approximated by a few strips; the shape drawn
+// on top hides the steps.
+func (win *Window) SetBlur(rects []image.Rectangle) {
+	if win.blurMgr == 0 || slices.Equal(rects, win.lastBlur) {
 		return
 	}
 	if win.blurSurf == 0 {
@@ -353,6 +369,26 @@ func (win *window) setBlur(rects []image.Rectangle) {
 	win.c.send(reg, 0)
 	win.lastBlur = rects
 }
+
+// Caps says which optional protocols the compositor has.
+func (win *Window) Caps() Caps {
+	return Caps{Blur: win.blurMgr != 0, CursorShape: win.cursorMgr != 0, Idle: win.idleMgr != 0}
+}
+
+// Closed: the compositor took the surface away.
+func (win *Window) Closed() bool { return win.closed }
+
+// Messages are the compositor's events, for Dispatch.
+func (win *Window) Messages() <-chan Message { return win.c.msgs }
+
+// Errors says the connection broke.
+func (win *Window) Errors() <-chan error { return win.c.readErr }
+
+// Dispatch handles one message (and runs the callbacks it causes).
+func (win *Window) Dispatch(m Message) { win.c.dispatch(m) }
+
+// Flush sends what the window has queued.
+func (win *Window) Flush() error { return win.c.flush() }
 
 // swizzle copies RGBA pixels to ARGB8888 (B, G, R, A in memory), a whole
 // pixel at a time: swap the first and third byte of each 32-bit word.

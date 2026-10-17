@@ -12,7 +12,7 @@ import (
 
 	"github.com/Tejas242/ember/internal/config"
 	"github.com/Tejas242/ember/internal/ipc"
-	"github.com/Tejas242/ember/internal/island"
+	"github.com/Tejas242/ember/internal/wayland"
 )
 
 // A settings.json with Ember's hooks under other names (a stale temp build,
@@ -323,7 +323,7 @@ func TestUnitText(t *testing.T) {
 // No Wayland is exit 78, the code the unit won't restart on.
 func TestRunExit(t *testing.T) {
 	if runExit(nil) != 0 || runExit(errors.New("boom")) != 1 ||
-		runExit(fmt.Errorf("%w at /run/x", island.ErrNoWayland)) != 78 || exNoWayland != 78 {
+		runExit(fmt.Errorf("%w at /run/x", wayland.ErrNoWayland)) != 78 || exNoWayland != 78 {
 		t.Fatal("wrong exit codes")
 	}
 }

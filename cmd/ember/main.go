@@ -13,6 +13,7 @@ import (
 
 	"github.com/Tejas242/ember/internal/ipc"
 	"github.com/Tejas242/ember/internal/island"
+	"github.com/Tejas242/ember/internal/wayland"
 )
 
 // command is one subcommand: its usage, how many arguments it takes, and
@@ -196,7 +197,7 @@ func runExit(err error) int {
 	switch {
 	case err == nil:
 		return 0
-	case errors.Is(err, island.ErrNoWayland):
+	case errors.Is(err, wayland.ErrNoWayland):
 		return exNoWayland
 	}
 	return 1
