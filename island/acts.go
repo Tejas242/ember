@@ -390,7 +390,7 @@ func (u *UI) posture(p *pose, now time.Time, t float64) {
 		p.eyes = eyeHappy
 		p.tipH += 0.15
 	case moodError:
-		p.slant, p.lookY, p.mouth, p.dim = -0.6, 1, mouthFlat, 0.28
+		p.slant, p.lookY, p.mouth = -0.6, 1, mouthFlat // slumped: the posture carries it, not darkness
 		p.tipH -= 0.18
 		p.sideH -= 0.4 // a guttering flame, not two horns
 		p.scale *= 0.94
@@ -424,7 +424,7 @@ func (u *UI) posture(p *pose, now time.Time, t float64) {
 	}
 	yawning := u.act != nil && u.act.kind == "sleep" && now.Sub(u.act.at) < 1100*time.Millisecond
 	if m.asleep && u.lastView == vCompact && !yawning { // asleep: a coal, resting its head on the pill's wall
-		b.coalRest, b.leanRest = 1, -1.4
+		b.coalRest, b.leanRest = 0.55, -1.4 // banked low, a little tongue left: a flame asleep, not a cookie
 		p.eyes = eyeShut
 		p.core *= float32(1 + 0.3*(0.5-0.5*math.Cos(2*math.Pi*t/4.2))) // its light breathes
 	}
@@ -439,10 +439,6 @@ func (u *UI) posture(p *pose, now time.Time, t float64) {
 		p.scale *= float32(0.85 + 0.15*pw.pct/15)
 	}
 	b.phones.want = u.wantPhones()
-	if b.phones.want && u.art != nil && u.art.accent.A > 0 {
-		a := u.art.accent
-		b.phones.accent = [3]uint8{a.R, a.G, a.B}
-	}
 	if b.phones.want && b.phones.seated && u.dancing {
 		p.eyes, p.mouth = eyeHappy, mouthSmile
 	}
@@ -633,9 +629,17 @@ func (u *UI) drawParts(g flameGeo, f fire) {
 			u.cv.circle(px, py, (1+2.2*float32(q))*k, alpha(u.pal.muted, a))
 			continue
 		}
-		col := mix(mix(f.hot, colorWhite, 0.4), f.mid, math.Min(1, q*1.6)) // cools as it flies
-		a := math.Pow(1-q, 1.2)
-		u.cv.circle(px, py, max(0.75*k*float32(1-0.4*q), 0.55), alpha(col, a))
+		// a spark is one bright pixel, hot whatever the mood, cooling as it flies
+		col := mix(rgb(0xffe7a0), rgb(0xff9a3c), math.Min(1, q*1.4))
+		if u.spot.mood == moodWait {
+			col = mix(rgb(0xe6f3ff), rgb(0x6cb0ff), math.Min(1, q*1.4))
+		}
+		a := math.Min(1, 1.25*math.Pow(1-q, 1.2))
+		if k < 1.3 {
+			u.cv.roundRect(float32(math.Round(float64(px))), float32(math.Round(float64(py))), 1, 1, 0, alpha(col, a))
+		} else {
+			u.cv.circle(px, py, 0.6*k, alpha(col, a))
+		}
 	}
 }
 
@@ -651,17 +655,15 @@ func (u *UI) drawPhones(g flameGeo) {
 	c.y -= float32(ph.y) * k
 	tilt := float32(ph.tilt.x)
 	a := ph.shown
-	band := alpha(u.pal.ink, a*0.95)
-	cup := alpha(color.NRGBA{ph.accent[0], ph.accent[1], ph.accent[2], 255}, a)
-	if ph.accent == [3]uint8{} {
-		cup = alpha(mix(u.pal.fg, u.pal.muted, 0.1), a)
-	}
-	rr := r * 1.12
-	u.cv.arc(c.x, c.y+0.4*k, rr, max(1.1*k, 1), math.Pi+0.05+tilt*0.3, 2*math.Pi-0.05+tilt*0.3, band)
+	// one cool colour against the warm fire: a warm headset melts into the face (monkey ears)
+	col := alpha(phonesCol, a)
+	rr := r + 0.4*k
+	u.cv.arc(c.x, c.y+0.4*k, rr, max(k, 1), math.Pi+0.05+tilt*0.3, 2*math.Pi-0.05+tilt*0.3, col)
+	snap := func(v float32) float32 { return float32(math.Round(float64(v))) }
+	w, h := max(snap(2*k), 2), max(snap(4*k), 4)
 	for _, side := range []float32{-1, 1} {
-		cx := c.x + side*rr - side*0.2*k
+		cx := c.x + side*rr
 		cy := c.y + 0.6*k + side*tilt*1.5*k
-		w, h := max(2.6*k, 2.5), max(5*k, 4)
-		u.cv.roundRect(cx-w/2, cy-h/2, w, h, w*0.45, cup)
+		u.cv.roundRect(snap(cx-w/2), snap(cy-h/2), w, h, w*0.3, col)
 	}
 }

@@ -47,7 +47,6 @@ type phones struct {
 	y, vy  float64 // height above where they sit on its head
 	seated bool
 	tilt   osc
-	accent [3]uint8 // the cups' colour (the cover's, when there is one)
 }
 
 type body struct {

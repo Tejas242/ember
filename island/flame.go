@@ -21,13 +21,16 @@ type fire struct{ hot, mid, tip color.NRGBA }
 func rgb(v uint32) color.NRGBA { return color.NRGBA{uint8(v >> 16), uint8(v >> 8), uint8(v), 255} }
 
 var fires = [...]fire{
-	moodIdle:  {rgb(0xffdcb8), rgb(0xf08a5e), rgb(0xc4503e)},
+	moodIdle:  {rgb(0xffd9c0), rgb(0xe47d5e), rgb(0xa9463a)},
 	moodWork:  {rgb(0xfff0c4), rgb(0xffa23c), rgb(0xe0592a)},
 	moodWait:  {rgb(0xe6f3ff), rgb(0x6cb0ff), rgb(0x4166e6)},
-	moodHappy: {rgb(0xfffbe8), rgb(0xffcf48), rgb(0xf08c2c)},
-	moodError: {rgb(0xffc8b6), rgb(0xee4f3e), rgb(0xa2262c)},
-	moodNudge: {rgb(0xffe6bc), rgb(0xe6a24c), rgb(0xb4652e)},
+	moodHappy: {rgb(0xfff0b4), rgb(0xffc63a), rgb(0xe8841c)},
+	moodError: {rgb(0xffd2c4), rgb(0xff5c48), rgb(0xd8443a)},
+	moodNudge: {rgb(0xffe2b8), rgb(0xc98a52), rgb(0x8a5230)}, // a fire running low: things went quiet
 }
+
+// phonesCol is Ember's headphones: cool against its warm fire.
+var phonesCol = rgb(0x5b7ce0)
 
 func fireOf(m mood) fire {
 	if int(m) < len(fires) {
@@ -283,6 +286,9 @@ func (c *canvas) drawFace(p palette, g flameGeo, f fire, a float64) {
 	}
 	sc := g.s / 16 / k // the pose's own scale
 	kk := k * sc
+	if small { // a glance of more than a pixel puts an eye on the flame's edge
+		ps.lookX = max(min(ps.lookX, 1), -1)
+	}
 	ctr := g.at(g.cx+ps.lookX*kk, g.base-4.9*kk+ps.lookY*kk)
 	fx, fy := snap(ctr.x), ctr.y
 	ew := max(snap(2*kk), 1)
@@ -319,9 +325,9 @@ func (c *canvas) drawFace(p palette, g flameGeo, f fire, a float64) {
 			for i := range 2 {
 				rows := gl[i]
 				gw := float32(len(rows[0])) * px
-				gx := fx - px/2 - gw
+				gx := fx - px - gw // two pixels apart: closer, ^ ^ runs together into ^^^
 				if i == 1 {
-					gx = fx + px/2
+					gx = fx + px
 				}
 				gx = snap(gx)
 				gy := snap(fy - float32(len(rows))*px/2)

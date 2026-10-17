@@ -339,8 +339,8 @@ func (u *UI) pillLayout(l line, h float32) (left, right []seg, w float32) {
 				u.dc.roundRect(x, cy-2-stretch*0.08, max((meterW+stretch)*k, 4), 4+stretch*0.16, 2, m.tint)
 			}
 			// Ember rides the level as its knob, a little bigger the higher it is
-			ks := emberKnob + 3*k
-			u.spot = emberSpot{x: x + (meterW+stretch)*k, y: cy - 0.12*ks, s: ks, mood: l.mood, show: true, travel: true}
+			ks := emberKnob + 2*k // standing on the rail (the line passes under its eyes), a little bigger the higher
+			u.spot = emberSpot{x: x + (meterW+stretch)*k, y: cy + 2 - 0.45*ks, s: ks, mood: l.mood, show: true, travel: true}
 		}})
 	}
 	if m != nil && m.right != "" { // the value rolls as it changes
