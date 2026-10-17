@@ -50,6 +50,7 @@ type Session struct {
 	Title                     string // the topic Claude put in its terminal's title
 	Prompt                    string // what you asked this turn, first line
 	Plus, Minus               int
+	cheer                     cheer                // how Ember will celebrate this turn's Done
 	Agents                    map[string]*Agent    // subagents running, by agent_id
 	Finished                  []*Agent             // subagents that finished this turn, oldest first
 	asks                      []agentAsk           // Agent calls waiting for their SubagentStart
@@ -115,6 +116,7 @@ type moment struct {
 	thumb *image.RGBA // a screenshot preview instead of the icon
 	osd   bool        // you just pressed a key: shows over everything but a card
 	at    time.Time   // when it appeared
+	cheer cheer       // a Done's celebration: how big, earned, an eye-roll first
 }
 
 type view int
@@ -239,10 +241,11 @@ type UI struct {
 	beatN       int
 	travelTo    float32 // where its slot last was: a jump in it is a trip, taken with a hop
 	travelling  bool
-	doneA       float64 // how big the next Done's celebration is (how long the work took)
-	flare       bool    // and whether it was earned: a long or hard-won turn
-	rollNext    bool    // the next Done starts with an eye-roll ("You're absolutely right")
-	bond        *bond   // what Ember remembers about you
+	flare       bool  // the Done playing now was earned: a long or hard-won turn
+	afterRoll   cheer // the Done that follows the eye-roll
+	gulpAt      time.Time
+	greetAt     time.Time // a return found at startup or after a sleep: greet once it's calm
+	bond        *bond     // what Ember remembers about you
 	pokes       int
 	pokeAt      time.Time
 	petSince    time.Time // the pointer has rested on Ember (in the card) since
@@ -413,16 +416,17 @@ func (u *UI) Moment(m moment) {
 // momentAct: Ember answers the news with its body.
 func (u *UI) momentAct(m moment) {
 	switch {
-	case m.mood == moodHappy && u.rollNext:
-		u.rollNext = false
+	case m.key == "away": // you're back: a stretch may be playing; otherwise a small hello
+		if u.act == nil || u.act.kind != "stretch" {
+			u.play("hello", 0)
+		}
+	case m.mood == moodHappy && m.cheer.roll && !u.casting && u.bond != nil && u.bond.cooled("eyeroll", 20*time.Hour, u.now()):
+		u.afterRoll = m.cheer
 		u.play("eyeroll", 0) // then the Done, when it's done rolling
 	case m.mood == moodHappy:
-		u.play("done", u.doneA)
-		u.doneA = 0.3
+		u.cheer(m.cheer)
 	case m.mood == moodError:
 		u.play("stopped", 0)
-	case m.key == "away":
-		u.play("hello", 0)
 	case m.icon == "bolt":
 		u.play("charge", 0)
 	case m.icon == "check":
@@ -929,6 +933,7 @@ func (u *UI) stepEmber(dt float64, now time.Time) {
 	u.mind.step(now, u.senses())
 	u.actStep(now)
 	u.listen(now)
+	u.greet(now)
 	if now.Sub(u.yawnCheck) > time.Minute { // around your bedtime, on the quiet clock, a yawn (twice a night at most)
 		u.yawnCheck = now
 		if u.bond.nearBedtime(now) && !u.mind.away && !u.mind.asleep && (u.primary() == "" || u.primary() == "clock") && !u.senses().working {

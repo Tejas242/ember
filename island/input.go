@@ -163,11 +163,7 @@ func (u *UI) press(k string, button int) {
 		}
 		u.pinned, u.suppress = true, false
 	case k == "ember": // Ember itself
-		if u.currentView() == vCompact {
-			u.poke()
-		} else {
-			u.play("poke", 0)
-		}
+		u.poke()
 	case k == "panel": // the card's background closes it
 		u.pinned, u.suppress = false, true
 	case k == "rows:all": // "Show all" / "Show less"

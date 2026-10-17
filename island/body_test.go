@@ -103,6 +103,7 @@ func TestFlourishGate(t *testing.T) {
 	u := NewUI(surfW, surfH, 22)
 	u.now = func() time.Time { return clock }
 	u.bond = &bond{Last: map[string]time.Time{}}
+	u.spot = emberSpot{s: emberPill, show: true} // Ember is in sight
 	if !u.may("yawn", time.Hour) {
 		t.Fatal("a calm island refused the first flourish")
 	}

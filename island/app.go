@@ -25,17 +25,18 @@ const (
 )
 
 type app struct {
-	ui      *UI
-	win     *window
-	music   *music
-	track   *Track
-	posts   chan func(*app)
-	cfg     Config
-	cfgAt   time.Time // the config file's mtime when read
-	desk    desktop
-	started time.Time
-	quiet   bool                 // the current post changed nothing on screen
-	ended   map[string]time.Time // sessions that ended: a late async hook mustn't bring one back
+	lastHouse time.Time // the last housekeeping tick: a long gap means the machine slept
+	ui        *UI
+	win       *window
+	music     *music
+	track     *Track
+	posts     chan func(*app)
+	cfg       Config
+	cfgAt     time.Time // the config file's mtime when read
+	desk      desktop
+	started   time.Time
+	quiet     bool                 // the current post changed nothing on screen
+	ended     map[string]time.Time // sessions that ended: a late async hook mustn't bring one back
 
 	allPlugins []Plugin
 	plugins    map[string]Plugin // the running ones, by name
@@ -190,6 +191,9 @@ func Run() error {
 	a.ui.audio = &audio{}
 	a.ui.habits = loadHabits()
 	a.ui.bond = loadBond(a.ui.now())
+	if t := a.ui.bond.Active; !t.IsZero() && a.ui.now().Sub(t) > 4*time.Hour { // the machine was off: this is a return
+		a.ui.returned(t, a.ui.now())
+	}
 	a.ui.day = loadDay(time.Now())
 	win.onIdle = func(idle bool) { a.presence(idle); a.ui.Invalidate() }
 	a.reloadConfig()
@@ -262,6 +266,13 @@ func Run() error {
 			if saveDue {
 				a.saveSessions()
 				saveDue = false
+			}
+			if gap := a.ui.now().Sub(a.lastHouse); !a.lastHouse.IsZero() && gap > 4*time.Hour { // it slept (a lid closed): you're back
+				a.ui.returned(a.lastHouse, a.ui.now())
+			}
+			a.lastHouse = a.ui.now()
+			if !a.ui.mind.away {
+				a.ui.bond.present(a.ui.now())
 			}
 			a.ui.habits.save()
 			a.ui.bond.save()
@@ -690,7 +701,10 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		s.Turn.step(now, in.Tool, tin)
 		a.ui.day.call(now)
 		a.ui.mind.toolCall(now)
-		a.ui.body.gulp(0.5) // a bite of fuel
+		if ss := a.ui.sessionList(); len(ss) > 0 && ss[0] == s && now.Sub(a.ui.gulpAt) > 1200*time.Millisecond {
+			a.ui.gulpAt = now
+			a.ui.body.gulp(0.5) // a bite of fuel, for the session it's watching
+		}
 	case "PostToolUse":
 		if s.State == "wait" {
 			s.State = "work"
@@ -734,16 +748,11 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 		}
 		s.Recap = &Recap{Summary: summarize(in.LastMessage), At: now, Took: took, Steps: s.Turn.Count,
 			Files: len(s.Turn.Files), Plus: s.Turn.Plus, Minus: s.Turn.Minus, Failures: s.Turn.Failures}
-		a.ui.doneA = doneSize(took)
+		s.cheer = cheer{size: doneSize(took), roll: absolutelyRight.MatchString(in.LastMessage)}
 		if b := a.ui.bond; b != nil {
 			long := b.turn(took)
 			hard := s.Turn.Failures >= 2 || s.Turn.Count >= 40 // failures overcome, or a lot of work
-			if (long || hard) && b.cooled("flare", 20*time.Minute, now) {
-				a.ui.flare, a.ui.doneA = true, math.Max(a.ui.doneA, 0.85)
-			}
-			if absolutelyRight.MatchString(in.LastMessage) && !a.ui.casting && b.cooled("eyeroll", 20*time.Hour, now) {
-				a.ui.rollNext = true
-			}
+			s.cheer.flare = (long || hard) && s.Turn.streak == 0 && !s.Recap.troubled()
 		}
 		a.ui.day.done(now, s.Project, took)
 		s.Asking = ""
@@ -768,7 +777,8 @@ func (a *app) hook(m inMsg, answer chan<- json.RawMessage) string {
 func (a *app) done(s *Session, summary string, now time.Time) {
 	name := a.ui.short(s)
 	m := moment{key: "done:" + s.ID, act: "claude", mood: moodHappy, verb: "Done", text: name,
-		sub: summary, until: now.Add(a.cfg.DoneFor), focus: s.ID, many: []string{name}}
+		sub: summary, until: now.Add(a.cfg.DoneFor), focus: s.ID, many: []string{name}, cheer: s.cheer}
+	s.cheer = cheer{}
 	if cur := a.ui.moment; cur != nil && strings.HasPrefix(cur.key, "done") && now.Before(cur.until) {
 		names := cur.many
 		if !slices.Contains(names, name) { // one that finishes again is named once
@@ -823,13 +833,8 @@ func (a *app) presence(idle bool) {
 	}
 	m.away = false
 	m.kick(now, 0.45, 0.1) // you're back: Ember perks up
-	first := a.ui.bond != nil && a.ui.bond.back(m.awaySince, now)
+	a.ui.returned(m.awaySince, now)
 	if now.Sub(m.awaySince) > 30*time.Second {
-		switch {
-		case first && now.Sub(m.awaySince) > 2*time.Hour && a.ui.flourish("stretch", 12*time.Hour): // the morning: a big stretch
-		default:
-			a.ui.play("hello", 0)
-		}
 		a.welcomeBack(now)
 	}
 }

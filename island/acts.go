@@ -52,12 +52,32 @@ func (u *UI) play(kind string, a float64) {
 
 func rank(kind string) int {
 	switch kind {
-	case "stopped", "needs", "done", "nod", "shake", "poke", "puff", "hide":
+	case "stopped", "needs", "done", "nod", "shake", "poke", "puff", "hide", "eyeroll", "stretch":
 		return 3
 	case "wince", "ignite", "wake", "charge", "hello", "shutter":
 		return 2
 	}
 	return 1
+}
+
+// cheer is how Ember celebrates a Done: as big as the work was long, with a
+// flare if it was earned (a long or hard-won turn that ended well), and an
+// eye-roll first if Claude opened with "You're absolutely right".
+type cheer struct {
+	size        float64
+	flare, roll bool
+}
+
+func (u *UI) cheer(c cheer) {
+	a := c.size
+	if a == 0 {
+		a = 0.3
+	}
+	u.flare = c.flare && u.bond != nil && u.bond.cooled("flare", 20*time.Minute, u.now())
+	if u.flare {
+		a = math.Max(a, 0.85)
+	}
+	u.play("done", a)
 }
 
 // doneSize is how big a Done's celebration is, 0..1, from how long the work
@@ -167,8 +187,9 @@ func (u *UI) actStep(now time.Time) {
 	if t > actLen[ac.kind] {
 		u.act = nil
 		if ac.kind == "eyeroll" {
-			u.play("done", u.doneA)
-			u.doneA = 0.3
+			c := u.afterRoll
+			c.roll = false
+			u.cheer(c)
 		}
 	}
 }
@@ -439,7 +460,9 @@ func (u *UI) posture(p *pose, now time.Time, t float64) {
 	}
 	// a moment beside it: it looks at what it's showing you
 	if mo := u.moment; mo != nil && u.lastView == vCompact && (mo.icon != "" || mo.thumb != nil) && u.act == nil {
-		p.lookX = 2
+		if !mo.meter { // riding a meter it looks ahead; otherwise at the icon beside it
+			p.lookX = 2
+		}
 		switch {
 		case mo.icon == "mic-off", mo.key == "osd:volume" && mo.icon == "mute": // shh
 			p.mouth, p.lid = mouthFlat, max(p.lid, 0.5)
@@ -490,8 +513,8 @@ func (u *UI) wantPhones() bool {
 // beat. Each beat bobs Ember down and swings it to the other side.
 func (u *UI) listen(now time.Time) {
 	b := u.body
-	if !b.phones.want || !b.phones.seated || u.lastView != vCompact {
-		u.dancing = false
+	if !b.phones.want || !b.phones.seated || u.lastView != vCompact || !u.calm() || u.senses().working {
+		u.dancing = false // it dances only when nothing else matters
 		return
 	}
 	lv, heard := u.audio.levels()

@@ -69,6 +69,7 @@ func (*edgePlugin) Message(a *app, raw json.RawMessage) {
 	}
 	switch msg.Type {
 	case "status":
+		a.edgeNews(a.ui.edge, msg.Status)
 		a.ui.edge = msg.Status
 	case "stats":
 		if msg.Stats != nil && msg.Stats.Version >= 1 {
@@ -302,4 +303,30 @@ type EdgeDay struct {
 	Pass     bool   `json:"pass"`
 	WorkSec  int    `json:"work_sec"`
 	CFSolved int    `json:"cf_solved"`
+}
+
+// edgeNews: Ember answers edge's news with its body. A letter solved in a
+// round is a hop; a streak reaching a milestone is a celebration, earned.
+func (a *app) edgeNews(old, cur *EdgeStatus) {
+	if old == nil || cur == nil {
+		return
+	}
+	if old.Round != nil && cur.Round != nil && old.Round.ID == cur.Round.ID {
+		was := map[string]string{}
+		for _, p := range old.Round.Problems {
+			was[p.Index] = p.State
+		}
+		for _, p := range cur.Round.Problems {
+			if (p.State == "solved" || p.State == "upsolved") && was[p.Index] != p.State {
+				a.ui.play("hop", 0)
+				break
+			}
+		}
+	}
+	if cur.Streak > old.Streak {
+		switch cur.Streak {
+		case 7, 30, 100, 365:
+			a.ui.cheer(cheer{size: 0.9, flare: true})
+		}
+	}
 }

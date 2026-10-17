@@ -31,8 +31,9 @@ type bond struct {
 	Turns   int                  `json:"turns,omitempty"`
 	Last    map[string]time.Time `json:"last"` // each flourish's last time, and "*" for any
 	Day     string               `json:"day,omitempty"`
-	Spent   int                  `json:"spent,omitempty"` // flourishes today
-	Seen    string               `json:"seen,omitempty"`  // the last day you came back to the desk
+	Spent   int                  `json:"spent,omitempty"`  // flourishes today
+	Seen    string               `json:"seen,omitempty"`   // the last day it greeted you with a stretch
+	Active  time.Time            `json:"active,omitempty"` // the last time you were at the desk
 	dirty   bool
 }
 
@@ -83,7 +84,7 @@ func (u *UI) calm() bool {
 	if u.casting || u.lastView != vCompact || len(u.cards) > 0 || u.mind.valence < -0.2 || u.edgeLive() {
 		return false
 	}
-	if m := u.moment; m != nil && m.mood == moodError {
+	if u.moment != nil || u.spot.s < 2 || u.act != nil { // busy saying something, tucked away, or already acting
 		return false
 	}
 	for _, s := range u.sessions {
@@ -151,20 +152,29 @@ func circEMA(old, x, k float64) float64 {
 	return math.Mod(old+d*k+1440, 1440)
 }
 
-// back: you returned after being away from since. A long evening absence
-// teaches it your bedtime; the first return of the day, your morning.
+// back: you returned after being away since. A long evening absence teaches
+// it your bedtime. It says whether this is the day's first real return (a
+// day starts at 4 am, so coming back at half past midnight isn't morning).
 func (b *bond) back(since, now time.Time) (firstToday bool) {
 	if now.Sub(since) >= 4*time.Hour {
 		if h := since.Hour(); h >= 20 || h < 5 {
 			b.Bedtime, b.dirty = circEMA(b.Bedtime, clockMin(since), 0.2), true
 		}
 	}
-	if d := now.Format("2006-01-02"); b.Seen != d {
-		b.Seen = d
-		b.Wake, b.dirty = circEMA(b.Wake, clockMin(now), 0.2), true
-		return true
+	return b.Seen != now.Add(-4*time.Hour).Format("2006-01-02") && now.Sub(since) >= 2*time.Hour
+}
+
+// greeted: the morning's stretch played; it learns when your mornings start.
+func (b *bond) greeted(now time.Time) {
+	b.Seen = now.Add(-4 * time.Hour).Format("2006-01-02")
+	b.Wake, b.dirty = circEMA(b.Wake, clockMin(now), 0.2), true
+}
+
+// present: you're at the desk now (noted once a minute, saved with the rest).
+func (b *bond) present(now time.Time) {
+	if b != nil && now.Sub(b.Active) > time.Minute {
+		b.Active, b.dirty = now, true
 	}
-	return false
 }
 
 // nearBedtime: within the hour after your usual bedtime (and ten minutes before).
@@ -193,6 +203,11 @@ func (u *UI) poke() {
 		u.body.shove(20)
 		return
 	}
+	if m := u.moment; m != nil && m.focus != "" && u.currentView() == vCompact { // a Done or a Stop: take you there
+		u.key("focus:" + m.focus)
+		u.moment = nil
+		return
+	}
 	if now.Sub(u.pokeAt) > 4*time.Second {
 		u.pokes = 0
 	}
@@ -206,5 +221,39 @@ func (u *UI) poke() {
 		u.play("puff", 0)
 	default:
 		u.play("poke", 0)
+	}
+}
+
+// returned: you came back after being away since then. The day's first real
+// return gets a big stretch (when it's calm; else as soon as it is), a long
+// break a small hello, once in a while.
+func (u *UI) returned(since, now time.Time) {
+	b := u.bond
+	if b == nil {
+		return
+	}
+	first := b.back(since, now)
+	switch {
+	case first && u.flourish("stretch", 12*time.Hour):
+		b.greeted(now)
+	case first:
+		u.greetAt = now
+	case now.Sub(since) >= 10*time.Minute && len(u.mind.missed) == 0 && !u.edgeLive() && b.cooled("hello", 30*time.Minute, now):
+		u.play("hello", 0)
+	}
+}
+
+// greet: a morning stretch waiting for a calm moment (for half an hour at most).
+func (u *UI) greet(now time.Time) {
+	if u.greetAt.IsZero() {
+		return
+	}
+	if now.Sub(u.greetAt) > 30*time.Minute {
+		u.greetAt = time.Time{}
+		return
+	}
+	if u.flourish("stretch", 12*time.Hour) {
+		u.greetAt = time.Time{}
+		u.bond.greeted(now)
 	}
 }
