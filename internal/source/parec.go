@@ -6,6 +6,7 @@ import (
 	"math"
 	"os/exec"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -30,6 +31,9 @@ const audioChunk = 320 // samples: 40 ms at 8 kHz
 
 // Set starts listening (on) or stops.
 func (a *Audio) Set(on bool) {
+	if a == nil {
+		return
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if on == a.want {
@@ -49,6 +53,7 @@ func (a *Audio) Set(on bool) {
 	}
 	cmd := exec.Command(path, "--device=@DEFAULT_MONITOR@", "--format=s16le", "--rate=8000", "--channels=1",
 		"--latency-msec=30", "--client-name=ember", "--stream-name=equaliser")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGTERM} // it goes when the island does, however it ends
 	out, err := cmd.StdoutPipe()
 	if err != nil || cmd.Start() != nil {
 		return

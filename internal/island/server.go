@@ -53,6 +53,9 @@ func listen(posts chan<- func(*app)) (*server, error) {
 	return s, nil
 }
 
+// close stops listening; the socket file goes with it.
+func (s *server) close() { s.ln.Close() }
+
 func (s *server) accept() {
 	for {
 		c, err := s.ln.AcceptUnix()

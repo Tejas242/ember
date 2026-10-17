@@ -10,10 +10,12 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Tejas242/ember/internal/config"
@@ -168,15 +170,20 @@ func parseBar(cfg string, b barLook) barLook {
 	return b
 }
 
-// Run opens the island and serves until the compositor goes away.
+// Run opens the island and serves until the compositor goes away, or until
+// SIGTERM or SIGINT, when it saves its state and stops cleanly.
 func Run() error {
 	if err := wayland.WaitSocket(5 * time.Second); err != nil { // a session still starting gets a moment
 		return err
 	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
 	posts := make(chan func(*app), 64)
-	if _, err := listen(posts); err != nil {
+	srv, err := listen(posts)
+	if err != nil {
 		return err
 	}
+	defer srv.close()
 	win, err := wayland.Open(surfW, surfH, 0, wayland.LayerTop)
 	if err != nil {
 		return err
@@ -195,7 +202,8 @@ func Run() error {
 	a.reloadConfig()
 	a.loadSessions()
 	a.music, a.sup = source.NewMPRIS(), source.NewSupervisor()
-	a.startSources(context.Background(), emitter(posts))
+	a.startSources(ctx, emitter(posts))
+	defer a.shutdown()
 	frameDue := false
 	win.OnPointer = func(e wayland.PointerEvent) {
 		redraw, hand := a.ui.pointer(fromWayland(e))
@@ -240,6 +248,9 @@ func Run() error {
 	saveDue := false
 	for {
 		select {
+		case <-ctx.Done():
+			log.Println("ember: stopping")
+			return nil
 		case m := <-win.Messages():
 			win.Dispatch(m)
 		case err := <-win.Errors():
@@ -315,6 +326,16 @@ func Run() error {
 		timer.Reset(a.nextWake(animating))
 		win.Flush()
 	}
+}
+
+// shutdown saves everything that outlives the island and stops the song's
+// listener.
+func (a *app) shutdown() {
+	a.saveSessions()
+	a.ui.habits.save()
+	a.ui.bond.save()
+	a.ui.day.save()
+	a.ui.audio.Set(false)
 }
 
 // nextWake: animation runs on frame callbacks; otherwise sleep until the next

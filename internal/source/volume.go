@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -49,6 +50,7 @@ func Levels(emit Emit) error {
 		}
 	}
 	cmd := exec.Command("pactl", "subscribe")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGTERM}
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
