@@ -102,8 +102,8 @@ func doctor() {
 		line(false, "claude hooks", "none in "+settings, "ember install")
 	case stale > 0:
 		line(false, "claude hooks", fmt.Sprintf("%d point at another ember binary", stale), "ember install")
-	case n < 15:
-		line(false, "claude hooks", fmt.Sprintf("%d of 15: from an older Ember", n), "ember install, then restart Claude sessions")
+	case n != len(emberHooks):
+		line(false, "claude hooks", fmt.Sprintf("%d of %d: from another Ember version", n, len(emberHooks)), "ember install, then restart Claude sessions")
 	default:
 		line(true, "claude hooks", fmt.Sprintf("%d hooks in %s", n, settings), "")
 	}
@@ -151,6 +151,10 @@ func hookCount(settings, exe string) (n, stale int) {
 	if err != nil {
 		return 0, 0
 	}
+	return hookCountIn(raw, exe)
+}
+
+func hookCountIn(raw []byte, exe string) (n, stale int) {
 	var cfg struct {
 		Hooks map[string][]struct {
 			Hooks []struct {

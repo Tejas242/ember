@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Tejas242/ember/island"
 )
@@ -27,8 +28,8 @@ func TestPatchSettingsOnRealCopy(t *testing.T) {
 		t.Fatal("not idempotent")
 	}
 	s := string(out)
-	if n := strings.Count(s, exe+" hook "); n != 15 || strings.Contains(s, "ember/hook'") {
-		t.Fatalf("want exactly 15 Ember entries and no old plugin ones, got %d", n)
+	if n := strings.Count(s, exe+" hook "); n != len(emberHooks) || strings.Contains(s, "ember/hook'") {
+		t.Fatalf("want exactly len(emberHooks) Ember entries and no old plugin ones, got %d", n)
 	}
 	if !strings.Contains(s, "edge hook") {
 		t.Fatal("must keep edge's gate hooks")
@@ -94,4 +95,33 @@ func sandbox(t *testing.T) string {
 	t.Setenv("XDG_RUNTIME_DIR", filepath.Join(d, "run"))
 	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path="+filepath.Join(d, "run", "bus"))
 	return d
+}
+
+// Claude waits on a request longer than the island and its client do, and
+// never on anything else for long.
+func TestHookTable(t *testing.T) {
+	seen := map[string]bool{}
+	for _, h := range emberHooks {
+		key := h.event + "/" + h.matcher
+		if seen[key] {
+			t.Errorf("%s twice", key)
+		}
+		seen[key] = true
+		if !h.async && h.timeout <= island.AskTimeout+5*time.Second {
+			t.Errorf("%s: Claude would kill the hook (%v) before the island answers", key, h.timeout)
+		}
+		if h.async && h.timeout > 10*time.Second {
+			t.Errorf("%s: async hook with a %v timeout", key, h.timeout)
+		}
+	}
+	out, err := patchSettings([]byte(`{}`), "/opt/ember", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := hookCountIn(out, "/opt/ember"); n != len(emberHooks) {
+		t.Fatalf("install wrote %d hooks, doctor counts %d", len(emberHooks), n)
+	}
+	if !strings.Contains(string(out), `"timeout": 100`) {
+		t.Fatal("the request hooks' timeout isn't AskTimeout+10s")
+	}
 }

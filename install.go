@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Tejas242/ember/island"
 )
@@ -171,30 +172,21 @@ func patchSettings(raw []byte, exe string, add bool) ([]byte, error) {
 			hooks[ev] = kept
 		}
 	}
-	put := func(event, matcher, arg string, timeout int, async bool) {
+	for _, hs := range emberHooks {
 		if !add {
-			return
+			break
 		}
-		h := map[string]any{"type": "command", "command": exe + " hook " + arg, "timeout": timeout}
-		if async {
+		h := map[string]any{"type": "command", "command": exe + " hook " + hs.arg, "timeout": int(hs.timeout / time.Second)}
+		if hs.async {
 			h["async"] = true
 		}
 		e := map[string]any{"hooks": []any{h}}
-		if matcher != "" {
-			e["matcher"] = matcher
+		if hs.matcher != "" {
+			e["matcher"] = hs.matcher
 		}
-		list, _ := hooks[event].([]any)
-		hooks[event] = append(list, e)
+		list, _ := hooks[hs.event].([]any)
+		hooks[hs.event] = append(list, e)
 	}
-	put("PermissionRequest", "*", "PermissionRequest", 100, false)
-	put("PreToolUse", "AskUserQuestion", "AskUserQuestion", 100, false)
-	for _, ev := range []string{"SessionStart", "UserPromptSubmit", "Notification", "Stop", "StopFailure", "SessionEnd",
-		"SubagentStart", "SubagentStop", "PreCompact", "PostCompact"} {
-		put(ev, "", ev, 5, true)
-	}
-	put("PreToolUse", "*", "PreToolUse", 5, true)
-	put("PostToolUse", "*", "PostToolUse", 5, true)
-	put("PostToolUseFailure", "*", "PostToolUseFailure", 5, true)
 	cfg["hooks"] = hooks
 	if len(hooks) == 0 {
 		delete(cfg, "hooks")
