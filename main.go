@@ -8,114 +8,213 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/Tejas242/ember/island"
 )
 
+// command is one subcommand: its usage, how many arguments it takes, and
+// what it does. Every argument rule lives here, so no command ever runs on
+// arguments it didn't ask for (`ember install --help` prints help).
+type command struct {
+	name    string
+	aliases []string
+	args    string // the usage after the name: "<Event>", "[page]"
+	summary string
+	need    string // what a missing argument is, for the error
+	min     int    // positional arguments
+	max     int
+	group   int // help's paragraphs
+	hidden  bool
+	run     func(args []string) int
+}
+
+var commands []*command
+
+func init() {
+	send := func(name string) func([]string) int {
+		return func([]string) int { return cmdOrFail(island.Cmd(name, "")) }
+	}
+	withArg := func(name string) func([]string) int {
+		return func(a []string) int {
+			arg := ""
+			if len(a) > 0 {
+				arg = a[0]
+			}
+			return cmdOrFail(island.Cmd(name, arg))
+		}
+	}
+	commands = []*command{
+		{name: "run", summary: "run the island (the service does this)", run: runIsland},
+		{name: "install", summary: "systemd service, Claude Code hooks, default config", run: runInstall},
+		{name: "uninstall", summary: "remove the hooks and the service (the config stays)", run: runUninstall},
+		{name: "doctor", summary: "check every piece and say what to fix", run: func([]string) int { doctor(); return 0 }},
+		{name: "version", aliases: []string{"--version", "-v"}, summary: "print Ember's version",
+			run: func([]string) int { fmt.Println("ember", versionString()); return 0 }},
+		{name: "help", aliases: []string{"--help", "-h"}, args: "[command]", max: 1, summary: "this list, or one command's help"},
+
+		{group: 1, name: "open", args: "[page]", max: 1, summary: "open the card (on a page)", run: withArg("open")},
+		{group: 1, name: "close", summary: "fold the card", run: send("close")},
+		{group: 1, name: "toggle", summary: "open or fold the card", run: send("toggle")},
+		{group: 1, name: "next", summary: "switch what the pill shows", run: send("next")},
+		{group: 1, name: "prev", summary: "switch back", run: send("prev")},
+		{group: 1, name: "play", summary: "play / pause", run: send("play")},
+		{group: 1, name: "dash", args: "[name]", max: 1, summary: "open or close a plugin's dashboard (edge)", run: withArg("dash")},
+
+		{group: 2, name: "allow", summary: "allow the oldest permission request", run: send("allow")},
+		{group: 2, name: "deny", summary: "deny it", run: send("deny")},
+		{group: 2, name: "always", summary: "allow it and don't ask again", run: send("always")},
+		{group: 2, name: "terminal", summary: "hand it back to Claude's own prompt", run: send("terminal")},
+		{group: 2, name: "answer", args: "opt:N | submit", min: 1, max: 1, need: "an answer: opt:N or submit",
+			summary: "answer the oldest question", run: withArg("answer")},
+
+		{group: 3, name: "hook", args: "<Event>", min: 1, max: 1, need: "a Claude Code hook event",
+			summary: "Claude Code's hook (installed for you)", run: hook},
+		{group: 3, name: "edge", args: "'<json>'", min: 1, max: 1, need: "a JSON message",
+			summary: "a message for the edge plugin", run: func(a []string) int { return cmdOrFail(island.Edge([]byte(a[0]))) }},
+	}
+	lookup("help").run = func(a []string) int { return help(a, os.Stdout, os.Stderr) }
+}
+
+// help is `ember help [command]`.
+func help(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprint(stdout, overview())
+		return 0
+	}
+	c := lookup(args[0])
+	if c == nil {
+		return unknown(stderr, args[0])
+	}
+	fmt.Fprint(stdout, c.usage())
+	return 0
+}
+
+func lookup(name string) *command {
+	for _, c := range commands {
+		if c.name == name {
+			return c
+		}
+		for _, a := range c.aliases {
+			if a == name {
+				return c
+			}
+		}
+	}
+	return nil
+}
+
+func (c *command) line() string {
+	s := "ember " + c.name
+	if c.args != "" {
+		s += " " + c.args
+	}
+	return s
+}
+
+func (c *command) usage() string {
+	return fmt.Sprintf("usage: %s\n\n%s\n", c.line(), c.summary)
+}
+
+func overview() string {
+	var b strings.Builder
+	b.WriteString("ember: a dynamic island for the top of your screen\n")
+	group := -1
+	for _, c := range commands {
+		if c.hidden {
+			continue
+		}
+		if c.group != group {
+			group = c.group
+			b.WriteString("\n")
+		}
+		fmt.Fprintf(&b, "  %-28s %s\n", c.line(), c.summary)
+	}
+	b.WriteString("\nember help <command> says more about one.\n")
+	b.WriteString("\nPlugins: edge (on when edge is installed; [plugins.edge] in the config)\n")
+	b.WriteString("\nConfig: ~/.config/ember/config.toml (re-read on change)\n")
+	return b.String()
+}
+
+func unknown(w io.Writer, name string) int {
+	fmt.Fprintf(w, "ember: unknown command %q\nrun ember help\n", name)
+	return 2
+}
+
+// route finds the command for argv (os.Args[1:]) and checks its arguments.
+// It returns the command to run, or nil and an exit code once it has printed
+// help or an error itself.
+func route(argv []string, stdout, stderr io.Writer) (*command, []string, int) {
+	name, args := "run", []string(nil)
+	if len(argv) > 0 {
+		name, args = argv[0], argv[1:]
+	}
+	c := lookup(name)
+	if c == nil {
+		return nil, nil, unknown(stderr, name)
+	}
+	for _, a := range args {
+		if a == "-h" || a == "--help" {
+			fmt.Fprint(stdout, c.usage())
+			return nil, nil, 0
+		}
+	}
+	switch {
+	case len(args) < c.min:
+		fmt.Fprintf(stderr, "ember %s: needs %s (see ember help %s)\n", c.name, c.need, c.name)
+		return nil, nil, 2
+	case len(args) > c.max:
+		fmt.Fprintf(stderr, "ember %s: unexpected argument %q (see ember help %s)\n", c.name, args[c.max], c.name)
+		return nil, nil, 2
+	}
+	return c, args, 0
+}
+
 func main() {
-	cmd := ""
-	if len(os.Args) > 1 {
-		cmd = os.Args[1]
+	c, args, code := route(os.Args[1:], os.Stdout, os.Stderr)
+	if c != nil {
+		code = c.run(args)
 	}
-	switch cmd {
-	case "", "run":
-		if err := island.Run(); err != nil {
-			fmt.Fprintln(os.Stderr, "ember:", err)
-			os.Exit(1)
-		}
-	case "hook":
-		hook()
-	case "allow", "deny", "always", "terminal", "toggle", "close", "next", "prev", "play":
-		cmdOrFail(island.Cmd(cmd, ""))
-	case "open":
-		page := ""
-		if len(os.Args) > 2 {
-			page = os.Args[2]
-		}
-		cmdOrFail(island.Cmd("open", page))
-	case "dash":
-		name := ""
-		if len(os.Args) > 2 {
-			name = os.Args[2]
-		}
-		cmdOrFail(island.Cmd("dash", name))
-	case "answer":
-		if len(os.Args) != 3 {
-			usage()
-		}
-		cmdOrFail(island.Cmd("answer", os.Args[2]))
-	case "edge":
-		if len(os.Args) != 3 {
-			usage()
-		}
-		cmdOrFail(island.Edge([]byte(os.Args[2])))
-	case "install":
-		if err := install(); err != nil {
-			fmt.Fprintln(os.Stderr, "ember:", err)
-			os.Exit(1)
-		}
-	case "uninstall":
-		if err := uninstall(); err != nil {
-			fmt.Fprintln(os.Stderr, "ember:", err)
-			os.Exit(1)
-		}
-	case "doctor":
-		doctor()
-	case "version", "--version", "-v":
-		fmt.Println("ember", versionString())
-	case "help", "--help", "-h":
-		fmt.Print(help)
-	default:
-		usage()
-	}
+	os.Exit(code)
 }
 
-const help = `ember: a dynamic island for the top of your screen
-
-  ember                  run the island (the service does this)
-  ember install          systemd service, Claude Code hooks, default config
-  ember uninstall        remove the hooks and the service (the config stays)
-  ember doctor           check every piece and say what to fix
-  ember version
-
-  ember open             open the card
-  ember close | toggle
-  ember next | prev      switch what the pill shows
-  ember play             play / pause
-  ember dash [name]      open or close a plugin's dashboard (edge)
-
-  ember allow | deny | always   answer the oldest permission request
-  ember terminal                hand it back to Claude's own prompt
-  ember answer opt:N | submit   answer the oldest question
-
-  ember hook <Event>     Claude Code's hook (installed for you)
-  ember edge '<json>'    a message for the edge plugin
-
-Plugins: edge (on when edge is installed; [plugins.edge] in the config)
-
-Config: ~/.config/ember/config.toml (re-read on change)
-`
-
-func usage() {
-	fmt.Fprint(os.Stderr, help)
-	os.Exit(2)
+func runIsland([]string) int {
+	if err := island.Run(); err != nil {
+		fmt.Fprintln(os.Stderr, "ember:", err)
+		return 1
+	}
+	return 0
 }
 
-func cmdOrFail(ok bool) {
+func runInstall([]string) int {
+	if err := install(); err != nil {
+		fmt.Fprintln(os.Stderr, "ember:", err)
+		return 1
+	}
+	return 0
+}
+
+func runUninstall([]string) int {
+	if err := uninstall(); err != nil {
+		fmt.Fprintln(os.Stderr, "ember:", err)
+		return 1
+	}
+	return 0
+}
+
+func cmdOrFail(ok bool) int {
 	if !ok {
 		fmt.Fprintln(os.Stderr, "ember: the island isn't running")
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 // hook relays a Claude Code hook event. Only a permission request or a
 // question waits for an answer (90 s at most); everything else returns at
 // once, and nothing waits when the island isn't running.
-func hook() {
-	if len(os.Args) < 3 {
-		return
-	}
-	event := os.Args[2]
+func hook(args []string) int {
+	event := args[0]
 	raw, _ := io.ReadAll(os.Stdin)
 	switch event {
 	case "PermissionRequest", "AskUserQuestion":
@@ -125,4 +224,5 @@ func hook() {
 	default:
 		island.Send(event, raw)
 	}
+	return 0
 }
