@@ -80,12 +80,7 @@ var systemctl = func(args ...string) ([]byte, error) {
 
 // unitPath is where systemd looks for the user's own units.
 func unitPath() string {
-	d := os.Getenv("XDG_CONFIG_HOME")
-	if d == "" {
-		h, _ := os.UserHomeDir()
-		d = filepath.Join(h, ".config")
-	}
-	return filepath.Join(d, "systemd", "user", "ember.service")
+	return filepath.Join(xdg.ConfigHome(), "systemd", "user", "ember.service")
 }
 
 func settingsPath() string {

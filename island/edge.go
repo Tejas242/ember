@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	"github.com/Tejas242/ember/internal/xdg"
 )
 
 // The edge plugin: edge (github.com/Tejas242/edge) is a practice coach. It
@@ -114,11 +116,7 @@ func edgeAction(key string) {
 }
 
 func edgeStatsPath() string {
-	dir := os.Getenv("XDG_RUNTIME_DIR")
-	if dir == "" {
-		dir = os.TempDir()
-	}
-	return filepath.Join(dir, "edge", "stats.json")
+	return filepath.Join(xdg.RuntimeDir(), "edge", "stats.json")
 }
 
 // watchFile calls got with the file's contents now and whenever its mtime

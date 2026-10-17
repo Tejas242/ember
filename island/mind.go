@@ -311,12 +311,7 @@ type habits struct {
 }
 
 func habitsPath() string {
-	d := os.Getenv("XDG_STATE_HOME")
-	if d == "" {
-		h, _ := os.UserHomeDir()
-		d = filepath.Join(h, ".local", "state")
-	}
-	return filepath.Join(d, "ember", "habits.json")
+	return filepath.Join(xdg.StateHome(), "ember", "habits.json")
 }
 
 func loadHabits() *habits {

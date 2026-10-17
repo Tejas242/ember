@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Tejas242/ember/internal/xdg"
 )
 
 // Config is ~/.config/ember/config.toml. Every key is optional; the file is
@@ -54,12 +56,7 @@ func DefaultConfig() Config {
 }
 
 func ConfigPath() string {
-	d := os.Getenv("XDG_CONFIG_HOME")
-	if d == "" {
-		h, _ := os.UserHomeDir()
-		d = filepath.Join(h, ".config")
-	}
-	return filepath.Join(d, "ember", "config.toml")
+	return filepath.Join(xdg.ConfigHome(), "ember", "config.toml")
 }
 
 // DefaultConfigText is what `ember install` writes when there's no config

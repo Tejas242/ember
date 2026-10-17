@@ -11,6 +11,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/Tejas242/ember/internal/xdg"
 )
 
 // AskTimeout is how long a permission or question waits on the island
@@ -18,11 +20,7 @@ import (
 const AskTimeout = 90 * time.Second
 
 func SockPath() string {
-	d := os.Getenv("XDG_RUNTIME_DIR")
-	if d == "" {
-		d = os.TempDir()
-	}
-	return filepath.Join(d, "ember.sock")
+	return filepath.Join(xdg.RuntimeDir(), "ember.sock")
 }
 
 // wire messages, one JSON object per line

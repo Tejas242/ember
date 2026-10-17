@@ -50,3 +50,19 @@ func TestAtomicWrite(t *testing.T) {
 		t.Fatal("wrote into a missing directory")
 	}
 }
+
+func TestDirs(t *testing.T) {
+	t.Setenv("HOME", "/h")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("XDG_STATE_HOME", "")
+	t.Setenv("XDG_RUNTIME_DIR", "")
+	if ConfigHome() != "/h/.config" || StateHome() != "/h/.local/state" || RuntimeDir() != os.TempDir() {
+		t.Fatal(ConfigHome(), StateHome(), RuntimeDir())
+	}
+	t.Setenv("XDG_CONFIG_HOME", "/c")
+	t.Setenv("XDG_STATE_HOME", "/s")
+	t.Setenv("XDG_RUNTIME_DIR", "/r")
+	if ConfigHome() != "/c" || StateHome() != "/s" || RuntimeDir() != "/r" {
+		t.Fatal(ConfigHome(), StateHome(), RuntimeDir())
+	}
+}
