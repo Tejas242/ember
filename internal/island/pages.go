@@ -133,7 +133,7 @@ func (u *UI) eqLiveS(x, y, h, bw, pitch float32, col color.NRGBA, playing bool) 
 	r := image.Rect(int(x)-1, int(y-h)-1, int(x+3*pitch)+1, int(y)+1)
 	u.eqShown = u.eqShown || playing
 	u.lives = append(u.lives, live{r: r, draw: func(c *canvas, t float64) {
-		lv, heard := u.audio.levels()
+		lv, heard := u.audio.Levels()
 		for i := 0; i < 3; i++ {
 			k := []float64{0.4, 0.75, 0.55}[i]
 			switch {

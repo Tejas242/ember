@@ -147,7 +147,7 @@ func (u *UI) listen(now time.Time) {
 		u.dancing = false
 		return
 	}
-	if lv, at, heard := u.audio.sample(); heard && at != g.sampleAt { // each 40 ms of the song once
+	if lv, at, heard := u.audio.Sample(); heard && at != g.sampleAt { // each 40 ms of the song once
 		g.sampleAt = at
 		g.hear(lv, now)
 	}

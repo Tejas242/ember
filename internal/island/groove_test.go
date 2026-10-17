@@ -6,6 +6,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/Tejas242/ember/internal/source"
 )
 
 // A steady kick: it finds the tempo, locks on, and its beats land on the kicks.
@@ -67,14 +69,11 @@ func TestGrooveOnARealSong(t *testing.T) {
 	g := newScene()
 	g.work("k", "kinvault", "fix it", 2)
 	g.music(true)
-	g.a.ui.audio = &audio{}
+	g.a.ui.audio = &source.Audio{}
 	g.run(1500 * time.Millisecond)
 	danced := 0
 	for _, v := range lv {
-		a := g.a.ui.audio
-		a.mu.Lock()
-		a.v, a.at = v, time.Now()
-		a.mu.Unlock()
+		g.a.ui.audio.Feed(v, time.Now())
 		for f := 0; f < 2; f++ { // two 20 ms frames a sample, so the song's time is the clock's
 			g.clock = g.clock.Add(20 * time.Millisecond)
 			g.a.ui.renderDamage()
@@ -95,14 +94,11 @@ func TestGrooveOnARealSong(t *testing.T) {
 func TestGrooveSwaysWithoutABeat(t *testing.T) {
 	g := newScene()
 	g.music(true)
-	g.a.ui.audio = &audio{}
+	g.a.ui.audio = &source.Audio{}
 	g.run(1500 * time.Millisecond)
 	lo, hi := 0.0, 0.0
 	for i := 0; i < 200; i++ { // 8 s of an even, quiet wash
-		a := g.a.ui.audio
-		a.mu.Lock()
-		a.v, a.at = [3]float64{0.4, 0.45, 0.35}, time.Now()
-		a.mu.Unlock()
+		g.a.ui.audio.Feed([3]float64{0.4, 0.45, 0.35}, time.Now())
 		for f := 0; f < 2; f++ {
 			g.clock = g.clock.Add(20 * time.Millisecond)
 			g.a.ui.renderDamage()

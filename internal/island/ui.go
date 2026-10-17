@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Tejas242/ember/internal/config"
+	"github.com/Tejas242/ember/internal/source"
 )
 
 type Button struct {
@@ -200,12 +201,12 @@ type UI struct {
 	swell       spring  // the pill's anticipation under the pointer, 0..1
 	prevK       float64 // how visible the view we're leaving was when we left it
 	prevAt      time.Time
-	haloAt      time.Time   // the last frame something waited on you (the halo fades after)
-	meterBump   time.Time   // a key pressed past the meter's end
-	audio       *audio      // the song's levels, while one plays
-	eqShown     bool        // an equaliser is on screen (it listens, so frames come quicker)
-	eqLevel     [3]float64  // its bars, smoothed
-	washImg     *image.RGBA // the cover's haze, scaled to the music section
+	haloAt      time.Time     // the last frame something waited on you (the halo fades after)
+	meterBump   time.Time     // a key pressed past the meter's end
+	audio       *source.Audio // the song's levels, while one plays
+	eqShown     bool          // an equaliser is on screen (it listens, so frames come quicker)
+	eqLevel     [3]float64    // its bars, smoothed
+	washImg     *image.RGBA   // the cover's haze, scaled to the music section
 	washKey     string
 	body        *body   // Ember's physical self
 	act         *act    // what it's acting out, if anything

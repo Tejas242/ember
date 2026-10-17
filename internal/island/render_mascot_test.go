@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Tejas242/ember/internal/source"
 	xdraw "golang.org/x/image/draw"
 )
 
@@ -208,7 +209,7 @@ func mascotFilms() []mascotFilm {
 		}, frames: 200, zoom: 3, whole: true},
 		{name: "music", set: none, settle: time.Second, act: func(g *galleryScene) { g.music(true) }, frames: 120, zoom: 3, whole: true},
 		{name: "dance", set: func(g *galleryScene) { g.music(true) }, settle: 1500 * time.Millisecond, act: func(g *galleryScene) {
-			g.a.ui.audio = &audio{}
+			g.a.ui.audio = &source.Audio{}
 		}, each: func(g *galleryScene, i int) { // a real song's levels, 40 ms apart
 			lv := songLevels()
 			n := int(float64(i) / 60 / 0.04)
@@ -216,11 +217,9 @@ func mascotFilms() []mascotFilm {
 				return
 			}
 			a := g.a.ui.audio
-			a.mu.Lock()
-			if a.v != lv[n] || time.Since(a.at) > 200*time.Millisecond {
-				a.v, a.at = lv[n], time.Now()
+			if v, at, _ := a.Sample(); v != lv[n] || time.Since(at) > 200*time.Millisecond {
+				a.Feed(lv[n], time.Now())
 			}
-			a.mu.Unlock()
 		}, frames: 600, zoom: 3, whole: true},
 		{name: "poke", set: none, settle: time.Second, act: play("poke", 0), frames: 45, zoom: 4},
 		{name: "stretch", set: none, settle: time.Second, act: play("stretch", 0), frames: 120, zoom: 4},

@@ -1,4 +1,4 @@
-package island
+package source
 
 import (
 	"encoding/binary"
@@ -16,7 +16,9 @@ import (
 // songs move the bars as much as loud ones. Nothing is kept: three numbers,
 // overwritten 25 times a second. It stops when the music does.
 
-type audio struct {
+// Audio is the song's sound in three bands, while one plays. Its zero
+// value is ready; a nil *Audio hears nothing.
+type Audio struct {
 	mu   sync.Mutex
 	v    [3]float64
 	at   time.Time
@@ -26,7 +28,8 @@ type audio struct {
 
 const audioChunk = 320 // samples: 40 ms at 8 kHz
 
-func (a *audio) set(on bool) {
+// Set starts listening (on) or stops.
+func (a *Audio) Set(on bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if on == a.want {
@@ -54,7 +57,7 @@ func (a *audio) set(on bool) {
 	go a.read(cmd, out)
 }
 
-func (a *audio) read(cmd *exec.Cmd, r io.Reader) {
+func (a *Audio) read(cmd *exec.Cmd, r io.Reader) {
 	defer cmd.Wait()
 	buf := make([]byte, audioChunk*2)
 	var lp1, lp2 float64
@@ -89,8 +92,8 @@ func (a *audio) read(cmd *exec.Cmd, r io.Reader) {
 	}
 }
 
-// sample is the three bands and when they were measured, if fresh.
-func (a *audio) sample() ([3]float64, time.Time, bool) {
+// Sample is the three bands and when they were measured, if fresh.
+func (a *Audio) Sample() ([3]float64, time.Time, bool) {
 	if a == nil {
 		return [3]float64{}, time.Time{}, false
 	}
@@ -99,12 +102,19 @@ func (a *audio) sample() ([3]float64, time.Time, bool) {
 	return a.v, a.at, time.Since(a.at) < 250*time.Millisecond
 }
 
-// levels are the three bands, if fresh.
-func (a *audio) levels() ([3]float64, bool) {
+// Levels are the three bands, if fresh.
+func (a *Audio) Levels() ([3]float64, bool) {
 	if a == nil {
 		return [3]float64{}, false
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.v, time.Since(a.at) < 250*time.Millisecond
+}
+
+// Feed sets the bands as if heard at at: for tests and replays.
+func (a *Audio) Feed(v [3]float64, at time.Time) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.v, a.at = v, at
 }

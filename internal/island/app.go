@@ -177,7 +177,7 @@ func Run() error {
 	bar := readBar()
 	a := &app{ui: NewUI(surfW, surfH, bar.h), win: win, posts: posts, started: time.Now()}
 	a.ui.onKey = a.key
-	a.ui.audio = &audio{}
+	a.ui.audio = &source.Audio{}
 	a.ui.habits = loadHabits()
 	a.ui.bond = loadBond(a.ui.now())
 	if t := a.ui.bond.Active; !t.IsZero() && a.ui.now().Sub(t) > 4*time.Hour { // the machine was off: this is a return
@@ -428,7 +428,7 @@ func (a *app) hasCard(session string) bool {
 func (a *app) setTrack(t *Track) {
 	prev := a.track
 	if a.ui.audio != nil { // the equaliser listens only while a song plays
-		a.ui.audio.set(t != nil && t.Playing && a.cfg.Music)
+		a.ui.audio.Set(t != nil && t.Playing && a.cfg.Music)
 	}
 	if t != nil && !t.Playing { // when it stopped: a song paused long ago leaves the card
 		t.PausedAt = a.ui.now()
