@@ -64,6 +64,8 @@ type Plugin struct {
 	Description string    `json:"description,omitempty"`
 	State       string    `json:"state"` // starting | running | waiting | suspended | stopped | off | broken
 	Caps        []string  `json:"caps,omitempty"`
+	Grants      []string  `json:"grants,omitempty"` // what the config grants it
+	Asks        []string  `json:"asks,omitempty"`   // what its manifest asks for
 	Since       time.Time `json:"since"`
 	Restarts    int       `json:"restarts"`
 	Dropped     int       `json:"dropped"`

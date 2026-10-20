@@ -14,7 +14,7 @@ import (
 func TestListPlugins(t *testing.T) {
 	now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
 	ps := []ipc.Plugin{
-		{Name: "pomodoro", Description: "Focus sessions", State: "running", Since: now.Add(-95 * time.Minute), Dropped: 3},
+		{Name: "pomodoro", Description: "Focus sessions", State: "running", Since: now.Add(-95 * time.Minute), Dropped: 3, Grants: []string{"badge"}, Asks: []string{"badge", "focus"}},
 		{Name: "ci", State: "suspended", LastError: "suspended: exited 5 times within 10m0s (exit status 1)", Restarts: 4},
 		{Name: "bad", State: "broken", LastError: "plugin.toml: no command"},
 		{Name: "quiet", State: "off"},
@@ -23,6 +23,7 @@ func TestListPlugins(t *testing.T) {
 	listPlugins(&b, ps, true, now)
 	want := `pomodoro         running for 1h 35m (3 dropped)
                  Focus sessions
+                 granted badge; asks for focus ([plugins.pomodoro] grants in the config)
 ci               suspended: exited 5 times within 10m0s (exit status 1) (4 restarts)
 bad              broken: plugin.toml: no command
 quiet            off

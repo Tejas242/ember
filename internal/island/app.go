@@ -75,7 +75,7 @@ func (a *app) status() ipc.Status {
 	}
 	if a.host != nil {
 		for _, p := range a.host.Info() {
-			st.Extern = append(st.Extern, ipc.Plugin{Name: p.Name, Description: p.Description, State: p.State, Caps: p.Caps,
+			st.Extern = append(st.Extern, ipc.Plugin{Name: p.Name, Description: p.Description, State: p.State, Caps: p.Caps, Grants: p.Grants, Asks: p.Asks,
 				Since: p.Since, Restarts: p.Restarts, Dropped: p.Dropped, Violations: p.Violations, LastError: p.LastError, Log: p.Log, Dir: p.Dir})
 		}
 	}

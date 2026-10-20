@@ -5,9 +5,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/Tejas242/ember/internal/config"
 	"github.com/Tejas242/ember/internal/ipc"
 	"github.com/Tejas242/ember/internal/plugin"
 	"github.com/Tejas242/ember/internal/xdg"
@@ -52,7 +54,9 @@ func pluginsOnDisk() []ipc.Plugin {
 			out = append(out, ipc.Plugin{Name: e.Name(), State: plugin.Broken, LastError: err.Error(), Dir: dir})
 			continue
 		}
-		out = append(out, ipc.Plugin{Name: m.Name, Description: m.Description, State: "installed", Caps: m.Caps, Dir: dir})
+		c, _ := config.Load(config.Path())
+		out = append(out, ipc.Plugin{Name: m.Name, Description: m.Description, State: "installed", Caps: m.Caps, Asks: m.Asks,
+			Grants: c.PluginGrants(m.Name), Dir: dir})
 	}
 	return out
 }
@@ -84,6 +88,24 @@ func health(p ipc.Plugin, now time.Time) string {
 	return s
 }
 
+// grantWords says what a plugin was granted, and what it asks for that it wasn't.
+func grantWords(p ipc.Plugin) string {
+	var asked []string
+	for _, a := range p.Asks {
+		if !slices.Contains(p.Grants, a) {
+			asked = append(asked, a)
+		}
+	}
+	var s []string
+	if len(p.Grants) > 0 {
+		s = append(s, "granted "+strings.Join(p.Grants, ", "))
+	}
+	if len(asked) > 0 {
+		s = append(s, "asks for "+strings.Join(asked, ", ")+" ([plugins."+p.Name+"] grants in the config)")
+	}
+	return strings.Join(s, "; ")
+}
+
 func listPlugins(w io.Writer, ps []ipc.Plugin, up bool, now time.Time) {
 	if !up {
 		fmt.Fprintln(w, "The island isn't running: this is what's installed.")
@@ -97,6 +119,9 @@ func listPlugins(w io.Writer, ps []ipc.Plugin, up bool, now time.Time) {
 		if p.Description != "" {
 			fmt.Fprintf(w, "%-16s %s\n", "", p.Description)
 		}
+		if g := grantWords(p); g != "" {
+			fmt.Fprintf(w, "%-16s %s\n", "", g)
+		}
 	}
 }
 
@@ -108,6 +133,9 @@ func pluginDetail(w io.Writer, p ipc.Plugin, up bool) {
 	fmt.Fprintf(w, "  dir:  %s\n", p.Dir)
 	if len(p.Caps) > 0 {
 		fmt.Fprintf(w, "  caps: %s\n", strings.Join(p.Caps, ", "))
+	}
+	if g := grantWords(p); g != "" {
+		fmt.Fprintf(w, "  %s\n", g)
 	}
 	if p.LastError != "" && !strings.Contains(health(p, time.Now()), p.LastError) {
 		fmt.Fprintf(w, "  last error: %s\n", p.LastError)

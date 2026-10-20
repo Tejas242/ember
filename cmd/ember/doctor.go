@@ -125,7 +125,11 @@ func doctor() {
 	for _, p := range ps {
 		switch p.State {
 		case plugin.Running, "installed":
-			line(true, p.Name, "plugin: "+health(p, time.Now()), "")
+			d := "plugin: " + health(p, time.Now())
+			if g := grantWords(p); g != "" {
+				d += " · " + g
+			}
+			line(true, p.Name, d, "")
 		case plugin.Suspended:
 			line(false, p.Name, "plugin "+health(p, time.Now()), "fix it, then save its plugin.toml (ember plugins "+p.Name+")")
 		case plugin.Broken:
