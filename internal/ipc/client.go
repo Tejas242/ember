@@ -52,6 +52,17 @@ func Ask(event string, payload []byte) []byte {
 // Edge sends one message from edge (status, card, remove) to the island.
 func Edge(raw []byte) bool { return oneShot(Msg{Type: "edge", Payload: raw}) }
 
+// Note shows a moment: payload is a protocol moment line.
+func Note(payload []byte) bool { return oneShot(Msg{Type: "note", Payload: payload}) }
+
+// SetStatus holds the pill line id: payload is a protocol status.
+func SetStatus(id string, payload []byte) bool {
+	return oneShot(Msg{Type: "line", ID: id, Payload: payload})
+}
+
+// ClearStatus takes the pill line id away.
+func ClearStatus(id string) bool { return oneShot(Msg{Type: "line", ID: id, Event: "clear"}) }
+
 // Cmd sends a keyboard command (allow, deny, always, terminal, answer <key>).
 func Cmd(cmd, arg string) bool { return oneShot(Msg{Type: "cmd", Event: cmd, ID: arg}) }
 

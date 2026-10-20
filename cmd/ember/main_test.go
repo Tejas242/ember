@@ -46,7 +46,7 @@ func TestRoute(t *testing.T) {
 		{argv: []string{"--bogus"}, code: 2, err: `ember: unknown command "--bogus"`},
 	} {
 		var out, errb bytes.Buffer
-		c, _, code := route(tc.argv, &out, &errb)
+		c, _, _, code := route(tc.argv, &out, &errb)
 		name := ""
 		if c != nil {
 			name = c.name
@@ -66,7 +66,7 @@ func TestCommandTable(t *testing.T) {
 	seen := map[string]bool{}
 	ov := overview()
 	for _, c := range commands {
-		if c.run == nil || c.summary == "" || c.min > c.max || (c.min > 0 && c.need == "") {
+		if (c.run == nil && c.runf == nil) || c.summary == "" || c.min > c.max || (c.min > 0 && c.need == "") {
 			t.Errorf("%s: incomplete entry", c.name)
 		}
 		for _, n := range append([]string{c.name}, c.aliases...) {
@@ -75,8 +75,8 @@ func TestCommandTable(t *testing.T) {
 			}
 			seen[n] = true
 		}
-		if !c.hidden && !strings.Contains(ov, c.line()) {
-			t.Errorf("help doesn't list %s", c.line())
+		if !c.hidden && !strings.Contains(ov, c.short()) {
+			t.Errorf("help doesn't list %s", c.short())
 		}
 	}
 }

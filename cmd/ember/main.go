@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/Tejas242/ember/internal/ipc"
@@ -30,6 +31,9 @@ type command struct {
 	group   int // help's paragraphs
 	hidden  bool
 	run     func(args []string) int
+	flags   []string                                     // --name value flags it takes
+	bools   []string                                     // --name flags without a value
+	runf    func(args []string, f map[string]string) int // run, for a command with flags
 }
 
 var commands []*command
@@ -71,9 +75,16 @@ func init() {
 		{group: 2, name: "answer", args: "opt:N | submit", min: 1, max: 1, need: "an answer: opt:N or submit",
 			summary: "answer the oldest question", run: withArg("answer")},
 
-		{group: 3, name: "hook", args: "<Event>", min: 1, max: 1, need: "a Claude Code hook event",
+		{group: 3, name: "note", args: "TEXT [--sub S] [--icon I] [--mood M] [--ttl SECONDS] [--open URL]", min: 1, max: 1,
+			need: "the note's text", summary: "show a moment: a short note in the pill",
+			flags: []string{"sub", "icon", "mood", "ttl", "open"}, runf: runNote},
+		{group: 3, name: "status", args: "ID [TEXT] [--sub S] [--icon I] [--mood M] [--progress 0..1] [--since now|5m] [--urgency U] [--ttl 10m] [--clear]",
+			min: 1, max: 2, need: "the line's id", summary: "hold a line in the pill until --ttl or --clear",
+			flags: []string{"sub", "icon", "mood", "progress", "since", "urgency", "ttl"}, bools: []string{"clear"}, runf: runStatus},
+
+		{group: 4, name: "hook", args: "<Event>", min: 1, max: 1, need: "a Claude Code hook event",
 			summary: "Claude Code's hook (installed for you)", run: hook},
-		{group: 3, name: "edge", args: "'<json>'", min: 1, max: 1, need: "a JSON message",
+		{group: 4, name: "edge", args: "'<json>'", min: 1, max: 1, need: "a JSON message",
 			summary: "a message for the edge plugin", run: func(a []string) int { return cmdOrFail(ipc.Edge([]byte(a[0]))) }},
 	}
 	lookup("help").run = func(a []string) int { return help(a, os.Stdout, os.Stderr) }
@@ -115,6 +126,15 @@ func (c *command) line() string {
 	return s
 }
 
+// short is the line for the list: the flags as "[flags]".
+func (c *command) short() string {
+	l := c.line()
+	if i := strings.Index(l, " [--"); i > 0 {
+		l = l[:i] + " [flags]"
+	}
+	return l
+}
+
 func (c *command) usage() string {
 	return fmt.Sprintf("usage: %s\n\n%s\n", c.line(), c.summary)
 }
@@ -131,7 +151,7 @@ func overview() string {
 			group = c.group
 			b.WriteString("\n")
 		}
-		fmt.Fprintf(&b, "  %-28s %s\n", c.line(), c.summary)
+		fmt.Fprintf(&b, "  %-28s %s\n", c.short(), c.summary)
 	}
 	b.WriteString("\nember help <command> says more about one.\n")
 	b.WriteString("\nPlugins: edge (on when edge is installed; [plugins.edge] in the config)\n")
@@ -145,37 +165,77 @@ func unknown(w io.Writer, name string) int {
 }
 
 // route finds the command for argv (os.Args[1:]) and checks its arguments.
-// It returns the command to run, or nil and an exit code once it has printed
-// help or an error itself.
-func route(argv []string, stdout, stderr io.Writer) (*command, []string, int) {
+// It returns the command to run with its positional arguments and flags,
+// or nil and an exit code once it has printed help or an error itself.
+func route(argv []string, stdout, stderr io.Writer) (*command, []string, map[string]string, int) {
 	name, args := "run", []string(nil)
 	if len(argv) > 0 {
 		name, args = argv[0], argv[1:]
 	}
 	c := lookup(name)
 	if c == nil {
-		return nil, nil, unknown(stderr, name)
+		return nil, nil, nil, unknown(stderr, name)
 	}
 	for _, a := range args {
 		if a == "-h" || a == "--help" {
 			fmt.Fprint(stdout, c.usage())
-			return nil, nil, 0
+			return nil, nil, nil, 0
 		}
+	}
+	args, flags, bad := c.parseFlags(args)
+	if bad != "" {
+		fmt.Fprintf(stderr, "ember %s: %s (see ember help %s)\n", c.name, bad, c.name)
+		return nil, nil, nil, 2
 	}
 	switch {
 	case len(args) < c.min:
 		fmt.Fprintf(stderr, "ember %s: needs %s (see ember help %s)\n", c.name, c.need, c.name)
-		return nil, nil, 2
+		return nil, nil, nil, 2
 	case len(args) > c.max:
 		fmt.Fprintf(stderr, "ember %s: unexpected argument %q (see ember help %s)\n", c.name, args[c.max], c.name)
-		return nil, nil, 2
+		return nil, nil, nil, 2
 	}
-	return c, args, 0
+	return c, args, flags, 0
+}
+
+// parseFlags takes the command's --flags out of args: "--name value",
+// "--name=value", or a bare "--name" for a bool. An unknown flag, or one
+// without its value, is an error; "--" ends the flags.
+func (c *command) parseFlags(args []string) (pos []string, flags map[string]string, bad string) {
+	flags = map[string]string{}
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			return append(pos, args[i+1:]...), flags, ""
+		}
+		if !strings.HasPrefix(a, "--") || len(c.flags)+len(c.bools) == 0 {
+			pos = append(pos, a)
+			continue
+		}
+		name, val, hasVal := strings.Cut(a[2:], "=")
+		switch {
+		case slices.Contains(c.bools, name) && !hasVal:
+			flags[name] = "true"
+		case slices.Contains(c.flags, name) && hasVal:
+			flags[name] = val
+		case slices.Contains(c.flags, name) && i+1 < len(args):
+			i++
+			flags[name] = args[i]
+		case slices.Contains(c.flags, name):
+			return nil, nil, fmt.Sprintf("--%s needs a value", name)
+		default:
+			return nil, nil, fmt.Sprintf("unexpected argument %q", a)
+		}
+	}
+	return pos, flags, ""
 }
 
 func main() {
-	c, args, code := route(os.Args[1:], os.Stdout, os.Stderr)
-	if c != nil {
+	c, args, flags, code := route(os.Args[1:], os.Stdout, os.Stderr)
+	switch {
+	case c != nil && c.runf != nil:
+		code = c.runf(args, flags)
+	case c != nil:
 		code = c.run(args)
 	}
 	os.Exit(code)

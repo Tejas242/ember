@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"image"
+	"log"
 	"math"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/Tejas242/ember/internal/ipc"
 	"github.com/Tejas242/ember/internal/plugin"
 	proto "github.com/Tejas242/ember/pkg/plugin"
 )
@@ -557,3 +559,44 @@ func (d extDash) Draw(u *UI, x, w float32, age time.Duration) bool {
 }
 
 var _ plugin.Sink = extSink{}
+
+// ---- one-liners: `ember note`, `ember status` ----
+
+// cliEvery is how often a one-liner may change what shows: notes are
+// coalesced to one a second, each status line to ten.
+var cliEvery = map[string]time.Duration{"note": time.Second, "line": 100 * time.Millisecond}
+
+// cli shows a one-liner. Notes are the plugin "note"; each status line is
+// its own "cli:<id>" (no plugin can have a colon in its name).
+func (a *app) cli(m ipc.Msg) {
+	key, name := m.Type, "note"
+	if m.Type == "line" {
+		if !proto.NameRe.MatchString(m.ID) {
+			return
+		}
+		key, name = "status:"+m.ID, "cli:"+m.ID
+		if m.Event == "clear" {
+			if x := a.ui.ext[name]; x != nil {
+				delete(a.ui.ext, name)
+			}
+			return
+		}
+	}
+	now := a.ui.now()
+	if a.cliLast == nil {
+		a.cliLast = map[string]time.Time{}
+	}
+	if now.Sub(a.cliLast[key]) < cliEvery[m.Type] {
+		a.quiet = true
+		return
+	}
+	msg, err := proto.Decode(m.Payload)
+	switch {
+	case err != nil:
+		log.Printf("ember %s: %v", map[string]string{"note": "note", "line": "status"}[m.Type], err)
+		return
+	case m.Type == "note" && msg.Type == "moment", m.Type == "line" && msg.Type == "status":
+		a.cliLast[key] = now
+		a.applyExt(name, msg)
+	}
+}

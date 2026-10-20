@@ -22,7 +22,7 @@ func SockPath() string {
 
 // Msg is one message to the island: a JSON object on one line.
 type Msg struct {
-	Type    string          `json:"type"`           // hook | plugin | edge | cmd
+	Type    string          `json:"type"`           // hook | plugin | edge | cmd | status | note | line
 	Name    string          `json:"name,omitempty"` // plugin: which one
 	Event   string          `json:"event,omitempty"`
 	Wait    bool            `json:"wait,omitempty"`

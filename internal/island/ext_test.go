@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Tejas242/ember/internal/ipc"
 	"github.com/Tejas242/ember/internal/xdg"
 	proto "github.com/Tejas242/ember/pkg/plugin"
 )
@@ -208,5 +209,41 @@ while read line; do case "$line" in *stop*) exit 0;; esac; done
 	a.shutdown()
 	if i := a.host.Info(); i[len(i)-1].Name != "hi" || i[len(i)-1].State != "stopped" {
 		t.Fatalf("%+v", i)
+	}
+}
+
+// `ember note` and `ember status`, as the island hears them.
+func TestOneLiners(t *testing.T) {
+	g := newScene()
+	note := func(text string) ipc.Msg {
+		b, _ := proto.Line("moment", proto.Moment{Text: text, Icon: "check", Mood: "done", URL: "https://ci.example.com"})
+		return ipc.Msg{Type: "note", Payload: b}
+	}
+	g.a.cli(note("Build passed"))
+	if m := g.a.ui.moment; m == nil || m.text != "Build passed" || m.open != "https://ci.example.com" {
+		t.Fatalf("%+v", g.a.ui.moment)
+	}
+	g.a.cli(note("Flood")) // within a second: coalesced away
+	if g.a.ui.moment.text != "Build passed" {
+		t.Fatal("notes come one a second at most")
+	}
+	line := func(id, text string, ttl float64) ipc.Msg {
+		b, _ := proto.Line("status", proto.Status{ID: id, Text: text, TTLs: ttl})
+		return ipc.Msg{Type: "line", ID: id, Payload: b}
+	}
+	g.a.cli(line("deploy", "Deploying", 600))
+	g.a.cli(line("tests", "Testing", 60))
+	if acts := g.a.ui.extActs(); len(acts) != 2 || acts[0] != "x:cli:deploy" {
+		t.Fatalf("%v", acts)
+	}
+	g.a.cli(ipc.Msg{Type: "line", ID: "deploy", Event: "clear"})
+	g.clock = g.clock.Add(2 * time.Minute) // tests' ttl runs out
+	if acts := g.a.ui.extActs(); len(acts) != 0 {
+		t.Fatalf("cleared and expired: %v", acts)
+	}
+	g.a.cli(ipc.Msg{Type: "line", ID: "Bad Id!", Payload: []byte(`{"type":"status","text":"x"}`)})
+	g.a.cli(ipc.Msg{Type: "line", ID: "x", Payload: []byte(`{"type":"moment","text":"wrong type"}`)})
+	if len(g.a.ui.extActs()) != 0 {
+		t.Fatal("bad lines must be refused")
 	}
 }

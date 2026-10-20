@@ -105,6 +105,8 @@ func (s *server) serve(c *net.UnixConn) {
 		s.posts <- func(a *app) { a.toPlugin("edge", m.Payload) }
 	case "plugin": // a tool talking to its plugin
 		s.posts <- func(a *app) { a.toPlugin(m.Name, m.Payload) }
+	case "note", "line": // `ember note`, `ember status`: a moment, a pill line
+		s.posts <- func(a *app) { a.cli(m) }
 	case "cmd": // keyboard: allow / deny / always / terminal / answer <key>
 		s.posts <- func(a *app) { a.command(m.Event, m.ID) }
 	case "status": // `ember doctor` asks what the island is connected to

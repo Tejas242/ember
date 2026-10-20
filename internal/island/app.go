@@ -39,10 +39,11 @@ type app struct {
 	ui        *UI
 	win       *wayland.Window
 	music     *source.MPRIS
-	sup       *source.Supervisor // runs the sources; knows how each is doing
-	host      *plugin.Host       // runs the external plugins
-	stopAll   func()             // ends the sources and the plugins
-	lastDash  string             // the dashboard open last time we looked: plugins hear of a change
+	sup       *source.Supervisor   // runs the sources; knows how each is doing
+	host      *plugin.Host         // runs the external plugins
+	stopAll   func()               // ends the sources and the plugins
+	lastDash  string               // the dashboard open last time we looked: plugins hear of a change
+	cliLast   map[string]time.Time // when each one-liner last changed what shows
 	version   string
 	track     *Track
 	posts     chan func(*app)

@@ -26,9 +26,10 @@ ember status deploy --clear
 most `24h`) or `ember status ID --clear`. Flags: `--sub`, `--icon`, `--mood`, `--progress 0..1`, `--since now`
 (an elapsed timer from now), `--urgency low|normal|high`. Saying `ember status ID …` again replaces the line.
 
-Both go over the island's socket and return at once; if the island isn't running they fail with exit 1. They
-follow the same rules and limits as plugins (below): `note` and `status` are the plugin protocol's `moment` and
-`status` messages (with, for the one-liners only, a line's `id` and `ttl_s`, and a note's `url`).
+Both go over the island's socket and return at once; if the island isn't running they fail with exit 1, and a
+bad flag fails with exit 2. `note` and `status` are the plugin protocol's `moment` and `status` messages (with,
+for the one-liners only, a line's `id` and `ttl_s`, and a note's `url`), checked the same way. A new note
+replaces the one showing, at most one a second (more are dropped); each status line takes ten updates a second.
 
 ## A plugin
 
