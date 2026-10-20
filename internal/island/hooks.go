@@ -94,6 +94,7 @@ func (a *app) hook(m ipc.Msg, answer chan<- json.RawMessage) string {
 	if s == nil && in.SessionID != "" && m.Event != "SessionEnd" && !over {
 		s = &Session{ID: in.SessionID, State: "idle", Since: now}
 		a.ui.sessions[in.SessionID] = s
+		a.ui.bond.meet()
 	}
 	if s != nil {
 		s.Seen = now

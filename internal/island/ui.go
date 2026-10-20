@@ -322,6 +322,8 @@ func (u *UI) Moment(m moment) {
 // momentAct: Ember answers the news with its body.
 func (u *UI) momentAct(m moment) {
 	switch {
+	case m.key == "hello": // the first time ever: a hello
+		u.play("hello", 0)
 	case m.key == "away": // you're back: a stretch may be playing; otherwise a small hello
 		if u.act == nil || u.act.kind != "stretch" {
 			u.play("hello", 0)
@@ -543,6 +545,7 @@ func (u *UI) stepEmber(dt float64, now time.Time) {
 	u.actStep(now)
 	u.listen(now)
 	u.greet(now)
+	u.introduce(now)
 	if now.Sub(u.yawnCheck) > time.Minute { // around your bedtime, on the quiet clock, a yawn (twice a night at most)
 		u.yawnCheck = now
 		if u.bond.nearBedtime(now) && !u.mind.away && !u.mind.asleep && (u.primary() == "" || u.primary() == "clock") && !u.senses().working {

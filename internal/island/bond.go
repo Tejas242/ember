@@ -34,7 +34,11 @@ type bond struct {
 	Spent   int                  `json:"spent,omitempty"`  // flourishes today
 	Seen    string               `json:"seen,omitempty"`   // the last day it greeted you with a stretch
 	Active  time.Time            `json:"active,omitempty"` // the last time you were at the desk
-	dirty   bool
+	// Introduced: when Ember first said hello (once, ever). MetClaude: it
+	// has seen a Claude Code session.
+	Introduced time.Time `json:"introduced,omitempty"`
+	MetClaude  bool      `json:"metClaude,omitempty"`
+	dirty      bool
 }
 
 const (
@@ -211,6 +215,30 @@ func (b *bond) nearBedtime(now time.Time) bool {
 	}
 	d := math.Mod(clockMin(now)-b.Bedtime+720+1440, 1440) - 720
 	return d > -10 && d < 60
+}
+
+// ---- the first time ----
+
+// introduce: the first time Ember ever runs, two seconds in, it says hello
+// in the pill, once.
+func (u *UI) introduce(now time.Time) {
+	b := u.bond
+	if b == nil || !b.Introduced.IsZero() || now.Sub(u.start) < 2*time.Second {
+		return
+	}
+	b.Introduced, b.dirty = now, true
+	u.Moment(moment{key: "hello", mood: moodHappy, text: "Hi, I'm Ember", until: now.Add(5 * time.Second)})
+}
+
+// metClaude: Ember has seen a Claude Code session, now or before it kept
+// count (a finished turn counts).
+func (b *bond) metClaude() bool { return b == nil || b.MetClaude || b.Turns > 0 }
+
+// meet notes a Claude Code session.
+func (b *bond) meet() {
+	if b != nil && !b.MetClaude {
+		b.MetClaude, b.dirty = true, true
+	}
 }
 
 // ---- the eye-roll ----

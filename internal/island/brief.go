@@ -209,6 +209,9 @@ func plural(n int, w string) string {
 // dayFacts: "6 tasks done · 2h 14m with Claude · mostly ember".
 func (u *UI) dayFacts() string {
 	d := u.day
+	if (d == nil || d.Tasks == 0) && u.cfg.Claude && !u.bond.metClaude() {
+		return "Start a Claude Code session and I'll follow it here"
+	}
 	if d == nil || d.Tasks == 0 {
 		return "Nothing finished with Claude yet today"
 	}

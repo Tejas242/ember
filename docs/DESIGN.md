@@ -210,6 +210,9 @@ is calm (nothing waits on you, nothing failed unseen, no card, no moment, nobody
 every twenty minutes and five a day, each on its own cooldown. It remembers in `~/.local/state/ember/bond.json`:
 when your mornings start, your bedtime, a turn's usual length, the cooldowns.
 
+The first time it ever runs, two seconds in, it says hello ("Hi, I'm Ember", for five seconds), once; until it
+has seen a Claude Code session, the quiet card says "Start a Claude Code session and I'll follow it here".
+
 Click Ember and it takes you where the pill would (a waiting session, a Done); otherwise it's a poke: it squashes
 and looks at you, the third puffs it up, the sixth sends it into its coal for a moment. Rest the pointer on it in
 the card and it closes its eyes, pleased.
