@@ -245,18 +245,43 @@ one update per plugin per frame.
 
 ## The Go SDK
 
-`github.com/Tejas242/ember/pkg/plugin` has the messages as types, a `Run` loop (the handshake, reading events,
-writing messages) and a test harness. See its package documentation and `plugins/pomodoro`.
+`github.com/Tejas242/ember/pkg/plugin` is the protocol in Go: the messages as types (with the limits Ember
+applies), `Run` (the handshake, then your function, with Ember's events on `p.Events()` until it says stop),
+helpers to build widgets, and `Harness`, a fake Ember for tests: it checks every line the way Ember does and
+sends events.
 
 ```go
-plugin.Run("pomodoro", func(p *plugin.Plugin) error {
-	p.Status(plugin.Status{Text: "Focus", Icon: "timer", Mood: plugin.Work, UntilMs: end.UnixMilli()})
-	for ev := range p.Events() {
-		…
+func main() {
+	err := plugin.Run("pomodoro", func(p *plugin.Plugin) error {
+		end := time.Now().Add(25 * time.Minute)
+		p.Status(plugin.Status{Text: "Focus", Icon: "timer", Mood: plugin.Work, UntilMs: end.UnixMilli()})
+		for ev := range p.Events() { // closed when Ember says stop
+			p.Logf("%s %s", ev.Type, ev.Target+ev.Key)
+		}
+		return nil
+	})
+	if err != nil {
+		log.Fatal(err) // stderr is the plugin's log
 	}
-	return nil
-})
+}
 ```
+
+```go
+h := plugin.NewHarness("pomodoro", plugin.Caps, run)
+st, err := h.Wait("status", time.Second)
+h.Button("break", "break")
+err = h.Stop()
+```
+
+## Examples
+
+- `plugins/pomodoro` (Go): focus sessions and breaks. A countdown in the pill, a row with its progress (a click
+  starts a session), a card offering the break, a moment at each end, today's sessions on its dashboard, and a
+  celebration when the day's goal is met. Install it with
+  `go build -o ~/.config/ember/plugins/pomodoro/pomodoro ./plugins/pomodoro` and
+  `cp plugins/pomodoro/plugin.toml ~/.config/ember/plugins/pomodoro/`.
+- `plugins/notify-build` (shell, no plugin needed): `notify-build make test` holds a pill line while the build
+  runs and leaves a note saying how it went. It is `ember status` and `ember note`, and nothing else.
 
 ## The schema
 

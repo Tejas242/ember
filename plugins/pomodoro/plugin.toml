@@ -1,0 +1,10 @@
+# Pomodoro: focus sessions with breaks between them. An example plugin in Go
+# (see main.go and docs/PLUGINS.md). Install:
+#   go build -o ~/.config/ember/plugins/pomodoro/pomodoro ./plugins/pomodoro
+#   cp plugins/pomodoro/plugin.toml ~/.config/ember/plugins/pomodoro/
+name         = "pomodoro"
+description  = "Focus sessions, with breaks between them"
+command      = "./pomodoro"
+args         = ["-focus", "25m", "-break", "5m", "-goal", "8"]
+icon         = "timer"
+capabilities = ["pill", "moment", "row", "card", "dashboard", "cheer"]

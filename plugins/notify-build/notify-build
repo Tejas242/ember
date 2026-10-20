@@ -1,0 +1,47 @@
+#!/bin/sh
+# notify-build: run a build, and let Ember say how it went. An example of
+# Ember's one-liners (no plugin needed): while it runs, a pill line with the
+# time it takes; when it ends, a note that it passed or failed.
+#
+#   notify-build make test
+#   notify-build --open https://ci.example.com go test ./...
+#
+# Put it on your PATH. It exits with the build's status, and without Ember
+# running it just runs the build.
+set -u
+
+open=""
+if [ "${1:-}" = "--open" ]; then
+	open="$2"
+	shift 2
+fi
+if [ $# -eq 0 ]; then
+	echo "usage: notify-build [--open URL] COMMAND [ARGS...]" >&2
+	exit 2
+fi
+
+name=$(basename "$1")
+id="build-$$"
+ember status "$id" "$name" --sub "$*" --icon run --mood work --since now --ttl 2h >/dev/null 2>&1
+
+start=$(date +%s)
+"$@"
+code=$?
+took=$(( $(date +%s) - start ))
+if [ "$took" -ge 60 ]; then
+	took="$((took / 60))m $((took % 60))s"
+else
+	took="${took}s"
+fi
+
+ember status "$id" --clear >/dev/null 2>&1
+if [ "$code" -eq 0 ]; then
+	set -- note "$name passed" --sub "in $took" --icon check --mood done
+else
+	set -- note "$name failed" --sub "exit $code after $took" --icon warning --mood fail
+fi
+if [ -n "$open" ]; then
+	set -- "$@" --open "$open"
+fi
+ember "$@" >/dev/null 2>&1
+exit "$code"
