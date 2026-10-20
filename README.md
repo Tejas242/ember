@@ -67,7 +67,8 @@ Ember sits next to Claude's permission prompts, so here is exactly what it does 
   the clock, Ember's game face) need a grant in your config.
 
 **Display limits.** Ember draws at 1×, so on a HiDPI output with scaling it's upscaled by the compositor and looks
-soft. It appears on whichever output the compositor gives it. The screen-sharing dot needs niri.
+soft. It appears on whichever output the compositor gives it. Knowing your screen is shared needs niri; while it is,
+Ember shows a dot and keeps Claude's words and screenshot previews off it (`[privacy]`).
 
 ## Install
 

@@ -96,7 +96,7 @@ func (a *app) deskChanged() {
 
 func (a *app) castsChanged(n int) {
 	was := a.desk.casts
-	a.desk.casts, a.ui.casting = n, n > 0 && a.ui.cfg.Privacy
+	a.desk.casts, a.ui.casting, a.ui.shared = n, n > 0 && a.ui.cfg.Privacy, n > 0
 	if n > 0 && was == 0 && a.ui.cfg.Privacy {
 		a.ui.Moment(moment{key: "cast", icon: "cast", tint: a.ui.pal.red, text: "Sharing your screen",
 			until: a.ui.now().Add(3 * time.Second)})

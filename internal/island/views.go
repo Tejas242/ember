@@ -90,8 +90,16 @@ func (u *UI) mainLine() line {
 	case "moment":
 		m := u.moment
 		l := line{key: "moment:" + m.key, mood: m.mood, verb: m.verb, text: m.text, sub: m.sub, textCol: p.fg}
+		if u.discreet() && m.act == "claude" && m.verb != "" { // Done kinvault, not what Claude said
+			l.sub = ""
+		}
 		if m.icon != "" || m.thumb != nil {
 			l.m = m
+		}
+		if m.thumb != nil && u.discreet() { // the camera, not the screenshot
+			mc := *m
+			mc.thumb = nil
+			l.m = &mc
 		}
 		return l
 	case "claude":

@@ -48,7 +48,8 @@ type Config struct {
 	OSD         bool // [show] osd: volume, microphone, brightness
 	Devices     bool // [show] devices: Bluetooth audio connecting
 	Screenshots bool // [show] screenshots
-	Privacy     bool // [show] privacy: screen sharing
+	Privacy     bool // [privacy] dot (once [show] privacy): a dot while the screen is shared
+	Discreet    bool // [privacy] discreet: while it's shared, no Claude words, no previews, no hover
 	Done        bool // [show] done: "Done · project" when Claude finishes
 
 	Plugins     map[string]map[string]string // [plugins.<name>] tables: raw key → value (quotes stripped)
@@ -69,7 +70,7 @@ func Default() Config {
 		Answer: true, Wait: ipc.AskTimeout - 5*time.Second, Settle: 30 * time.Minute, AgentQuiet: DefaultAgentQuiet, Opacity: 0.87,
 		Dance: true, Flourishes: true, Celebrate: true,
 		Claude: true, Music: true, Edge: true, Battery: true,
-		OSD: true, Devices: true, Screenshots: true, Privacy: true, Done: true}
+		OSD: true, Devices: true, Screenshots: true, Privacy: true, Discreet: true, Done: true}
 }
 
 // Path is the config file.
@@ -127,7 +128,10 @@ osd         = true  # volume, microphone and brightness changes
 battery     = true  # charging, fully charged, battery low
 devices     = true  # Bluetooth audio connecting and disconnecting
 screenshots = true  # a preview when a screenshot is saved
-privacy     = true  # a dot while your screen is being shared or recorded
+
+[privacy]
+dot      = true  # a dot while your screen is being shared or recorded (once [show] privacy, still read)
+discreet = true  # while it's shared: Done without Claude's words, no screenshot previews, the card opens on click only
 
 # Plugins run when their tool is installed (edge) or when they're in
 # ~/.config/ember/plugins (see docs/PLUGINS.md); ember plugins lists them.
@@ -202,7 +206,7 @@ func Paste(missing []string) string {
 	return strings.Join(append(top, rest...), "\n")
 }
 
-var configSections = []string{"", "pill", "card", "moments", "claude", "look", "ember", "show", "plugins"}
+var configSections = []string{"", "pill", "card", "moments", "claude", "look", "ember", "show", "privacy", "plugins"}
 
 // parse reads the small part of TOML Ember needs: sections and
 // key = value lines. It never fails: an unknown key is skipped and a value
@@ -309,8 +313,11 @@ func parse(text string) (c Config, warns, keys []string) {
 		}
 
 		canon := key
-		if key == "hover_delay_ms" {
+		switch key {
+		case "hover_delay_ms":
 			canon = "card.hover_delay_ms" // where it lived before [card]
+		case "show.privacy":
+			canon = "privacy.dot" // where it lived before [privacy]
 		}
 		switch canon {
 		case "clock":
@@ -391,8 +398,10 @@ func parse(text string) (c Config, warns, keys []string) {
 			flag(&c.Devices)
 		case "show.screenshots":
 			flag(&c.Screenshots)
-		case "show.privacy":
+		case "privacy.dot":
 			flag(&c.Privacy)
+		case "privacy.discreet":
+			flag(&c.Discreet)
 		case "show.done":
 			flag(&c.Done)
 		default:

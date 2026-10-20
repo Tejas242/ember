@@ -235,3 +235,16 @@ func TestMotion(t *testing.T) {
 		t.Fatalf("%v %v", c.Calm, warns)
 	}
 }
+
+// [privacy] dot is where [show] privacy went; the old key still works and
+// counts as the new one.
+func TestPrivacy(t *testing.T) {
+	c, warns, keys := parse("[show]\nprivacy = false\n")
+	if len(warns) > 0 || c.Privacy || !c.Discreet || !slices.Contains(keys, "privacy.dot") {
+		t.Fatalf("%v %+v %v", warns, c, keys)
+	}
+	c, warns, _ = parse("[privacy]\ndot = false\ndiscreet = false\n")
+	if len(warns) > 0 || c.Privacy || c.Discreet {
+		t.Fatalf("%v %+v", warns, c)
+	}
+}

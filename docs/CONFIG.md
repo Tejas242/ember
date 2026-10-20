@@ -52,7 +52,10 @@ osd         = true  # volume, microphone and brightness changes
 battery     = true  # charging, fully charged, battery low
 devices     = true  # Bluetooth audio connecting and disconnecting
 screenshots = true  # a preview when a screenshot is saved
-privacy     = true  # a dot while your screen is being shared or recorded
+
+[privacy]
+dot      = true  # a dot while your screen is being shared or recorded (once [show] privacy, still read)
+discreet = true  # while it's shared: Done without Claude's words, no screenshot previews, the card opens on click only
 
 # Plugins run when their tool is installed (edge) or when they're in
 # ~/.config/ember/plugins (see docs/PLUGINS.md); ember plugins lists them.
@@ -73,6 +76,11 @@ longer hops or throws sparks, bands of light don't cross the pill, a request wai
 and it doesn't dance. It also costs less CPU, since fewer frames are drawn. `dance`, `flourishes` (what it does on
 its own: the morning stretch, a yawn near your bedtime, the eye-roll, hello) and `celebrate` (the hops and sparks
 of a Done) turn just those off.
+
+`[privacy]` is for when someone can see your screen (niri tells Ember when it's being cast or recorded). `dot`
+shows a dot while it is; it used to be `[show] privacy`, which still works. `discreet` keeps Claude's words off a
+shared screen: a Done says only "Done kinvault", a screenshot shows the camera instead of its preview, and the card
+opens when you click, not when the pointer passes. Requests still show, since they need you.
 
 `[plugins] enabled` says which plugins may run at all: `"all"` (the default), `"none"`, or a list of names.
 `[plugins.<name>]` tables belong to plugins. `enabled = "auto"` runs a plugin when its tool is installed (a plugin in

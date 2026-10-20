@@ -76,7 +76,8 @@ type worldState struct {
 	moment     *moment
 	under      *moment // a note waiting under an OSD
 	power      *power  // the battery, if there is one
-	casting    bool    // the screen is being shared
+	casting    bool    // the screen is being shared, and [privacy] dot says so
+	shared     bool    // the screen is being shared, dot or not
 	vol        level   // the default output
 	light      float64 // screen brightness 0..1, -1 if there's no backlight
 	bond       *bond   // what Ember remembers about you
@@ -496,12 +497,17 @@ func (u *UI) currentView() view {
 	if u.dash != "" && u.dashboards[u.dash] != nil {
 		return vDash
 	}
-	if u.pinned || u.drag != "" || (u.hover && !u.suppress && u.now().Sub(u.hoverAt) >= u.cfg.HoverDelay) ||
+	if u.pinned || u.drag != "" || (u.hover && !u.suppress && !u.discreet() && u.now().Sub(u.hoverAt) >= u.cfg.HoverDelay) ||
 		(!u.hover && u.lastView == vExpanded && u.now().Sub(u.leftAt) < leaveGrace) {
 		return vExpanded
 	}
 	return vCompact
 }
+
+// discreet: the screen is shared and [privacy] discreet is on: Done and
+// Stopped keep Claude's words to themselves, screenshots show no preview, and
+// the card opens only on a click. Requests still show: they need you.
+func (u *UI) discreet() bool { return u.shared && u.cfg.Discreet }
 
 // used: you did something with a row in the open card; in this situation
 // that row is the one you reach for.
