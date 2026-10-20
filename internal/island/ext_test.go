@@ -5,6 +5,7 @@ import (
 	"image"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -246,4 +247,68 @@ func TestOneLiners(t *testing.T) {
 	if len(g.a.ui.extActs()) != 0 {
 		t.Fatal("bad lines must be refused")
 	}
+}
+
+// A plugin that floods: the island takes at most ten of its lines a second,
+// keeps drawing at its usual cost, and the host suspends it within seconds;
+// what it showed goes with it.
+func TestFloodingPluginStaysOutOfTheWay(t *testing.T) {
+	dir := filepath.Join(xdg.ConfigHome(), "ember", "plugins", "flood")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "run.sh"), []byte(`#!/bin/sh
+read hello
+echo '{"type":"hello","v":1,"name":"flood"}'
+exec yes '{"type":"status","text":"flood","mood":"wait","urgency":"high"}'
+`), 0o755)
+	os.WriteFile(filepath.Join(dir, "plugin.toml"), []byte("name = \"flood\"\ncommand = \"./run.sh\"\ncapabilities = [\"pill\"]\n"), 0o644)
+	defer os.RemoveAll(dir)
+
+	g := newScene()
+	g.a.posts = make(chan func(*app), 64)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	g.a.startPlugins(ctx, cancel)
+	start, applied := time.Now(), 0
+	var frames []time.Duration
+	suspended := false
+	for time.Since(start) < 8*time.Second && !suspended {
+		select {
+		case f := <-g.a.posts:
+			f(g.a)
+			applied++
+		default:
+		}
+		t0 := time.Now() // a frame, while the plugin floods
+		g.clock = g.clock.Add(time.Second / 60)
+		g.a.ui.renderDamage()
+		frames = append(frames, time.Since(t0))
+		for _, i := range g.a.host.Info() {
+			suspended = suspended || i.State == "suspended"
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	took := time.Since(start)
+	if !suspended {
+		t.Fatalf("not suspended after %v: %+v", took, g.a.host.Info())
+	}
+	if limit := int(took.Seconds()*10) + 4; applied > limit {
+		t.Fatalf("%d updates reached the loop in %v", applied, took)
+	}
+	sort.Slice(frames, func(i, j int) bool { return frames[i] < frames[j] })
+	if med := frames[len(frames)/2]; med > 4*time.Millisecond {
+		t.Fatalf("frames slowed to %v (median) while it flooded", med)
+	}
+	for drain := time.After(time.Second); ; { // its Gone
+		select {
+		case f := <-g.a.posts:
+			f(g.a)
+			continue
+		case <-drain:
+		}
+		break
+	}
+	if g.a.ui.ext["flood"] != nil {
+		t.Fatal("a suspended plugin's line stays")
+	}
+	t.Logf("suspended after %v; %d updates applied; frames median %v, max %v", took.Round(time.Millisecond), applied, frames[len(frames)/2], frames[len(frames)-1])
 }

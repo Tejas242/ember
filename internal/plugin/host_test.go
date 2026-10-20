@@ -64,6 +64,15 @@ func fakePlugin(mode string) {
 		}
 		say(`{"type":"moment","text":"one"}`)
 		say(`{"type":"moment","text":"two"}`) // within 10 s: dropped
+	case "flood": // as fast as it can, for as long as it's let
+		for i := 0; ; i++ {
+			fmt.Printf("{\"type\":\"status\",\"text\":\"%d\"}\n", i)
+		}
+	case "garbage": // a stream of lines Ember refuses
+		for {
+			say(`{"type":"status"}`)
+			time.Sleep(time.Millisecond)
+		}
 	case "beyond":
 		say(`{"type":"row","title":"not allowed"}`) // no row capability
 		say(`{"type":"status","text":""}`)          // no text: a violation
@@ -327,5 +336,38 @@ func TestPomodoroUnderTheHost(t *testing.T) {
 		if i.State != Stopped || i.Violations != 0 {
 			t.Fatalf("%+v", i)
 		}
+	}
+}
+
+// A plugin that floods is coalesced while it does, then suspended; one that
+// sends nothing but bad lines is suspended for its violations.
+func TestFloodSuspends(t *testing.T) {
+	h, s, _ := fakeHost(t, "flood")
+	start := time.Now()
+	eventually(t, "suspended", func() bool { return info(h).State == Suspended })
+	took := time.Since(start)
+	i := info(h)
+	if !strings.Contains(i.LastError, "flooding") || took > 5*time.Second {
+		t.Fatalf("after %v: %+v", took, i)
+	}
+	n := strings.Count(strings.Join(s.types(), ","), "status")
+	if limit := int(took.Seconds()*10) + 3; n > limit {
+		t.Fatalf("%d statuses reached the island in %v: more than 10 a second", n, took)
+	}
+	if i.Dropped < 1000 {
+		t.Fatalf("dropped %d", i.Dropped)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.gone != 1 {
+		t.Fatal("a suspended plugin's things go")
+	}
+}
+
+func TestViolationsSuspend(t *testing.T) {
+	h, s, _ := fakeHost(t, "garbage")
+	eventually(t, "suspended", func() bool { return info(h).State == Suspended })
+	if i := info(h); !strings.Contains(i.LastError, "bad messages within a minute") || len(s.types()) != 0 {
+		t.Fatalf("%+v %v", i, s.types())
 	}
 }
