@@ -161,6 +161,7 @@ func sandbox(t *testing.T) string {
 	t.Setenv("XDG_STATE_HOME", filepath.Join(d, ".local", "state"))
 	t.Setenv("XDG_RUNTIME_DIR", filepath.Join(d, "run"))
 	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path="+filepath.Join(d, "run", "bus"))
+	t.Setenv("PATH", filepath.Join(d, "nothing-on-path")) // no edge here, unless a test puts one
 	return d
 }
 
@@ -325,5 +326,34 @@ func TestRunExit(t *testing.T) {
 	if runExit(nil) != 0 || runExit(errors.New("boom")) != 1 ||
 		runExit(fmt.Errorf("%w at /run/x", wayland.ErrNoWayland)) != 78 || exNoWayland != 78 {
 		t.Fatal("wrong exit codes")
+	}
+}
+
+// With edge installed, install sets up its plugin (running this binary) and
+// grants it what it had, once.
+func TestInstallEdge(t *testing.T) {
+	h := sandbox(t)
+	fakeSystemctl(t)
+	bin := filepath.Join(h, "bin")
+	os.MkdirAll(bin, 0o755)
+	os.WriteFile(filepath.Join(bin, "edge"), []byte("#!/bin/sh\n"), 0o755)
+	t.Setenv("PATH", bin)
+	exe := "/opt/ember/bin/ember"
+	for i := 0; i < 2; i++ {
+		if err := install(exe); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m, err := os.ReadFile(filepath.Join(h, ".config", "ember", "plugins", "edge", "plugin.toml"))
+	if err != nil || !strings.Contains(string(m), `command      = "/opt/ember/bin/ember"`) || !strings.Contains(string(m), `args         = ["plugin", "edge"]`) {
+		t.Fatalf("%v %s", err, m)
+	}
+	c, _ := os.ReadFile(filepath.Join(h, ".config", "ember", "config.toml"))
+	if strings.Count(string(c), "[plugins.edge]\ngrants") != 1 {
+		t.Fatalf("grants written %d times:\n%s", strings.Count(string(c), "[plugins.edge]\ngrants"), c)
+	}
+	cfg, warns := config.Load(filepath.Join(h, ".config", "ember", "config.toml"))
+	if len(warns) > 0 || strings.Join(cfg.PluginGrants("edge"), ",") != "critical,badge,focus" {
+		t.Fatalf("%v %v", warns, cfg.PluginGrants("edge"))
 	}
 }

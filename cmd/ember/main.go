@@ -85,6 +85,8 @@ func init() {
 
 		{group: 4, name: "hook", args: "<Event>", min: 1, max: 1, need: "a Claude Code hook event",
 			summary: "Claude Code's hook (installed for you)", run: hook},
+		{group: 4, name: "plugin", args: "<name>", min: 1, max: 1, need: "a plugin's name", hidden: true,
+			summary: "run one of the plugins built into this binary (Ember starts it)", run: runPlugin},
 		{group: 4, name: "edge", args: "'<json>'", min: 1, max: 1, need: "a JSON message",
 			summary: "a message for the edge plugin", run: func(a []string) int { return cmdOrFail(ipc.Edge([]byte(a[0]))) }},
 	}

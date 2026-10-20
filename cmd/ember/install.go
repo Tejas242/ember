@@ -109,6 +109,10 @@ func install(exe string) error {
 		fmt.Println("config kept:", cfg, "(ember doctor lists any new settings)")
 	}
 
+	if err := installEdge(exe); err != nil {
+		return err
+	}
+
 	u := unitPath()
 	if err := os.MkdirAll(filepath.Dir(u), 0o755); err != nil {
 		return err
