@@ -233,6 +233,7 @@ socket protocol, the config file and the directories.
 - [docs/CONFIG.md](docs/CONFIG.md): the whole config file
 - [docs/PLUGINS.md](docs/PLUGINS.md): the plugin protocol, the Go SDK and the examples
 - [CHANGELOG.md](CHANGELOG.md): what each release brought
+- [CONTRIBUTING.md](CONTRIBUTING.md): building, testing, the pictures, the performance budget and commits
 
 ## Credits
 

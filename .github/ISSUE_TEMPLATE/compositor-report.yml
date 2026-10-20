@@ -1,0 +1,46 @@
+name: Compositor report
+description: How Ember works on your compositor, good or bad. Ember is made on niri; these reports are how the rest get better.
+labels: [compositor]
+body:
+  - type: input
+    id: compositor
+    attributes:
+      label: Compositor and version
+      placeholder: Hyprland 0.50, Sway 1.11, river 0.3, …
+    validations:
+      required: true
+  - type: input
+    id: bar
+    attributes:
+      label: Bar or shell, and its height
+      placeholder: Waybar at 30 px, …
+  - type: input
+    id: scale
+    attributes:
+      label: Output resolution and scale
+      placeholder: 1920×1080 at 1, …
+  - type: checkboxes
+    id: works
+    attributes:
+      label: What works
+      options:
+        - label: The island shows, hanging from the top edge over the bar
+        - label: Hover and clicks reach it (and only inside its shape)
+        - label: Claude's sessions and requests show, and answering works
+        - label: Clicking a request or a Done focuses the right terminal
+        - label: Music, volume and brightness
+        - label: Blur behind the island
+        - label: It stays above the bar when the bar or shell restarts
+  - type: textarea
+    id: notes
+    attributes:
+      label: What doesn't, or looks wrong
+      description: Screenshots welcome.
+  - type: textarea
+    id: doctor
+    attributes:
+      label: ember doctor
+      description: The whole output of `ember doctor`.
+      render: text
+    validations:
+      required: true

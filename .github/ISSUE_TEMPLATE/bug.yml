@@ -1,0 +1,45 @@
+name: Bug
+description: Something Ember does wrong, or doesn't do.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what Ember did instead. A screenshot or a short recording helps.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: ember doctor
+      description: The whole output of `ember doctor`.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: compositor
+    attributes:
+      label: Compositor and version
+      placeholder: niri 25.08, Hyprland 0.50, Sway 1.11, …
+    validations:
+      required: true
+  - type: input
+    id: bar
+    attributes:
+      label: Bar or shell
+      placeholder: Noctalia, Waybar at 30 px, none, …
+    validations:
+      required: true
+  - type: input
+    id: scale
+    attributes:
+      label: Output resolution and scale
+      placeholder: 1366×768 at 1, 2560×1600 at 1.5, …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Ember version
+      description: "`ember --version`"
