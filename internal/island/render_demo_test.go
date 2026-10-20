@@ -502,11 +502,11 @@ func TestBanner(t *testing.T) {
 		tag := face(fRegular, 31)
 		mono := face(fMono, 21)
 		lx, top := float32(104), float32(176)
-		lines := []string{"Knows what Claude Code is doing, asks before", "it runs anything, and plays your music."}
+		lines := []string{"Knows what Claude Code is doing, lets you answer it", "from the top of the screen, and dances to your music."}
 		if sz.name == "social" {
 			title, tag = face(fSemiBold, 128), face(fRegular, 29)
 			lx, top = 84, 230
-			lines = []string{"Knows what Claude Code is doing,", "asks before it runs anything,", "and plays your music."}
+			lines = []string{"Knows what Claude Code is doing,", "lets you answer it from the top", "of the screen, and dances to your music."}
 		}
 		center := func(float32) float32 { return lx }
 		eb := "A DYNAMIC ISLAND FOR WAYLAND"

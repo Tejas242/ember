@@ -12,9 +12,9 @@
 </p>
 
 <p align="center">
-  A small pill that hangs from the top of your screen and morphs to show what matters right now:<br>
-  what <b>Claude Code</b> is doing and what it needs from you, the song that's playing, and the moment you press a key.<br>
-  One native Go binary. No toolkit, no GPU, about 9 MB of memory.
+  <b>A dynamic island for Wayland, made for Claude Code.</b><br>
+  Watch your sessions, answer their requests, and see your music and system moments from the top of your screen.<br>
+  Useful without Claude too. One native Go binary: no toolkit, no GPU, about 9 MB of memory.
 </p>
 
 <p align="center">
@@ -36,8 +36,11 @@
 
 You run a few Claude Code sessions in terminals you can't all see. You want to know, at a glance, without switching
 windows: *does anything need me, is it going well, what just happened.* Ember answers those three questions from
-the top of the screen, and lets you answer Claude's permission requests right there. When nothing's going on it's a
-clock with a small flame that breathes, blinks, glances around and falls asleep at night.
+the top of the screen. Claude is still the one that asks for permission; Ember lets you answer from up there
+instead of hunting for the terminal. When nothing's going on it's a clock with a small flame that breathes, blinks, glances
+around and falls asleep at night.
+
+The name is two things: Ember, the app, and Ember, the flame who lives in it.
 
 ## What it shows
 
