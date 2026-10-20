@@ -1,12 +1,16 @@
 package island
 
 import (
+	"context"
 	"image"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Tejas242/ember/internal/xdg"
 	proto "github.com/Tejas242/ember/pkg/plugin"
 )
 
@@ -148,5 +152,61 @@ func TestProtocolIcons(t *testing.T) {
 		if painted(c.img) < 12 {
 			t.Errorf("icon %q draws nothing", name)
 		}
+	}
+}
+
+// End to end: a shell-script plugin in ~/.config/ember/plugins, started by
+// the host, its status on the island's loop, and gone when it stops.
+func TestExtPluginEndToEnd(t *testing.T) {
+	dir := filepath.Join(xdg.ConfigHome(), "ember", "plugins", "hi")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "run.sh"), []byte(`#!/bin/sh
+read hello
+echo '{"type":"hello","v":1,"name":"hi"}'
+echo '{"type":"status","text":"Hello from sh","mood":"done"}'
+while read line; do case "$line" in *stop*) exit 0;; esac; done
+`), 0o755)
+	os.WriteFile(filepath.Join(dir, "plugin.toml"), []byte("name = \"hi\"\ncommand = \"./run.sh\"\ncapabilities = [\"pill\"]\n"), 0o644)
+	os.MkdirAll(filepath.Join(xdg.ConfigHome(), "ember", "plugins", "edge"), 0o755) // a built-in's name: refused
+	os.WriteFile(filepath.Join(xdg.ConfigHome(), "ember", "plugins", "edge", "plugin.toml"), []byte("name = \"edge\"\ncommand = \"true\"\n"), 0o644)
+
+	clock := time.Now()
+	a := newTestApp(&clock)
+	a.posts = make(chan func(*app), 64)
+	ctx, cancel := context.WithCancel(context.Background())
+	a.startPlugins(ctx, cancel)
+	pump := func(until func() bool) {
+		t.Helper()
+		for end := time.Now().Add(5 * time.Second); time.Now().Before(end); {
+			select {
+			case f := <-a.posts:
+				f(a)
+			case <-time.After(10 * time.Millisecond):
+			}
+			if until() {
+				return
+			}
+		}
+		t.Fatalf("timed out: %+v", a.host.Info())
+	}
+	pump(func() bool { return a.ui.extStatus("hi") != nil })
+	if s := a.ui.extStatus("hi"); s.Text != "Hello from sh" {
+		t.Fatalf("%+v", s)
+	}
+	states := map[string]string{}
+	for _, i := range a.host.Info() {
+		states[i.Name] = i.State
+	}
+	if states["hi"] != "running" || states["edge"] != "broken" {
+		t.Fatalf("%v", states)
+	}
+	go func() {
+		for f := range a.posts { // the loop, while the island stops
+			f(a)
+		}
+	}()
+	a.shutdown()
+	if i := a.host.Info(); i[len(i)-1].Name != "hi" || i[len(i)-1].State != "stopped" {
+		t.Fatalf("%+v", i)
 	}
 }
