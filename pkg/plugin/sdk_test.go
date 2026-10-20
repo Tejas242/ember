@@ -24,7 +24,7 @@ func TestSDKRoundTrip(t *testing.T) {
 			plugin.Stats("Today", plugin.Stat("Done", "3", "of 8")),
 			plugin.Sparkline("Week", []float64{1, 2, 3}, "a day"),
 			plugin.Bars("Projects", plugin.Bar("ember", 5, "")),
-			plugin.Chips("Today", "", plugin.Chip("1", "done"), plugin.Chip("2", "todo")),
+			plugin.Chips("Today", "", plugin.ChipItem("1", "done"), plugin.ChipItem("2", "todo")),
 			plugin.List("Recent", plugin.ListItem("Plugin host", "25 min", "check", plugin.Done)),
 		}})
 		p.Card(plugin.Card{ID: "break", Title: "Break?", Buttons: []plugin.Button{{Key: "yes", Label: "Yes", Primary: true}}})

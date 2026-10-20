@@ -26,6 +26,7 @@ const MaxLine = 64 << 10
 const (
 	Work  = "work"  // at it
 	Wait  = "wait"  // needs you
+	Nudge = "nudge" // worth a look
 	Done  = "done"  // went well
 	Fail  = "fail"  // went wrong
 	Quiet = "quiet" // nothing to say
@@ -46,7 +47,18 @@ var Caps = []string{CapPill, CapMoment, CapRow, CapCard, CapDashboard, CapCheer}
 
 // Icons is Ember's icon set, the names a message may use.
 var Icons = []string{"check", "warning", "bolt", "timer", "chart", "note", "read", "edit", "run", "search", "web",
-	"agent", "camera", "screen", "cast", "headphones", "bluetooth", "battery", "unplug", "sun", "volume", "mic", "other"}
+	"agent", "camera", "screen", "cast", "headphones", "bluetooth", "battery", "unplug", "sun", "volume", "mic", "lock", "other"}
+
+// Grants the user may give a plugin in Ember's config ([plugins.<name>] grants).
+const (
+	GrantCritical = "critical" // its line may outrank Claude at work; its cards come first
+	GrantBadge    = "badge"    // its badge may sit on the clock
+	GrantFocus    = "focus"    // its line may set Ember's game face
+)
+
+// ChipStates are a chip's states: done (filled green), tried (ringed red),
+// owed (ringed amber), fixed (filled blue), gone (struck), todo (quiet).
+var ChipStates = []string{"done", "tried", "owed", "fixed", "gone", "todo"}
 
 // NameRe is what a plugin's name may be.
 var NameRe = regexp.MustCompile(`^[a-z0-9-]{1,32}$`)
@@ -68,7 +80,17 @@ type Status struct {
 	SinceMs  int64    `json:"since_ms,omitempty"` // a timer counting up from then
 	UntilMs  int64    `json:"until_ms,omitempty"` // a timer counting down to then
 	Progress *float64 `json:"progress,omitempty"` // 0..1
-	Urgency  string   `json:"urgency,omitempty"`  // low | normal | high
+	Urgency  string   `json:"urgency,omitempty"`  // low | normal | high | critical (granted)
+	Salience *float64 `json:"salience,omitempty"` // instead of urgency: 0..1, capped at 0.75 (0.95 granted)
+
+	Timer      string `json:"timer,omitempty"`       // auto | none | h:mm
+	WarnMs     int64  `json:"warn_ms,omitempty"`     // the last warn_ms before until_ms: the timer and sub turn amber
+	Value      string `json:"value,omitempty"`       // a quiet value at the right end
+	Chips      []Chip `json:"chips,omitempty"`       // letters in chips at the right end
+	Badge      string `json:"badge,omitempty"`       // a small amber icon at the right end
+	BadgeClock bool   `json:"badge_clock,omitempty"` // the badge on the clock too (granted)
+	Satellite  bool   `json:"satellite,omitempty"`   // its timer in the satellite when another line holds the pill
+	Focus      bool   `json:"focus,omitempty"`       // Ember's game face while it holds the pill (granted)
 
 	ID   string  `json:"id,omitempty"`    // `ember status` only: the line's name
 	TTLs float64 `json:"ttl_s,omitempty"` // `ember status` only: seconds until it expires
@@ -85,6 +107,21 @@ type Moment struct {
 	URL    string  `json:"url,omitempty"` // `ember note --open` only
 }
 
+// Chip is a letter in a chip.
+type Chip struct {
+	Label string `json:"label"`
+	State string `json:"state,omitempty"` // ChipStates
+}
+
+// Ring is a ring on the card's rail: filled to Value, or emptying from
+// StartMs to EndMs.
+type Ring struct {
+	Value   *float64 `json:"value,omitempty"`
+	StartMs int64    `json:"start_ms,omitempty"`
+	EndMs   int64    `json:"end_ms,omitempty"`
+	Mood    string   `json:"mood,omitempty"`
+}
+
 // Row is the plugin's row in the open card.
 type Row struct {
 	Title    string   `json:"title"`
@@ -93,6 +130,11 @@ type Row struct {
 	Mood     string   `json:"mood,omitempty"`
 	Progress *float64 `json:"progress,omitempty"`
 	Target   string   `json:"target,omitempty"`
+	Ring     *Ring    `json:"ring,omitempty"`
+	Buttons  []Button `json:"buttons,omitempty"` // at most 2; a press sends button with card "row"
+	Chips    []Chip   `json:"chips,omitempty"`
+	Badge    string   `json:"badge,omitempty"`
+	Flame    string   `json:"flame,omitempty"` // the end of Sub that a small flame goes before
 }
 
 // Button is one of a card's buttons.
@@ -111,6 +153,7 @@ type Card struct {
 	Mood    string   `json:"mood,omitempty"`
 	Buttons []Button `json:"buttons,omitempty"`
 	TTLs    float64  `json:"ttl_s,omitempty"`
+	Urgent  bool     `json:"urgent,omitempty"` // before Claude's requests (granted)
 }
 
 // Item is one entry of a widget: a stat, a bar, a chip or a list row, as
@@ -177,6 +220,8 @@ type Event struct {
 	Card   string `json:"card,omitempty"`   // button
 	Key    string `json:"key,omitempty"`    // button
 	State  string `json:"state,omitempty"`  // dash: open | close
+
+	Payload json.RawMessage `json:"payload,omitempty"` // tool: what the plugin's tool sent
 }
 
 // ---- decoding ----
@@ -340,7 +385,34 @@ func enum(v, def string, ok ...string) string {
 
 func icon(v string) string { return enum(v, "", Icons...) }
 
-func mood(v, def string) string { return enum(v, def, Work, Wait, Done, Fail, Quiet) }
+func mood(v, def string) string { return enum(v, def, Work, Wait, Nudge, Done, Fail, Quiet) }
+
+func chips(cs []Chip) []Chip {
+	if len(cs) > 9 {
+		cs = cs[:9]
+	}
+	out := cs[:0]
+	for _, c := range cs {
+		if c.Label = Cut(c.Label, 4); c.Label != "" {
+			c.State = enum(c.State, "todo", ChipStates...)
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func buttons(bs []Button, n int) []Button {
+	if len(bs) > n {
+		bs = bs[:n]
+	}
+	out := bs[:0]
+	for _, b := range bs {
+		if b.Key, b.Label = Cut(b.Key, 32), Cut(b.Label, 24); b.Key != "" && b.Label != "" {
+			out = append(out, b)
+		}
+	}
+	return out
+}
 
 func clamp(v, lo, hi float64) float64 {
 	if math.IsNaN(v) {
@@ -362,8 +434,10 @@ func (s *Status) fit() error {
 		return errors.New("needs text")
 	}
 	s.Sub, s.Icon, s.Mood = Cut(s.Sub, 40), icon(s.Icon), mood(s.Mood, Work)
-	s.Progress, s.Urgency = unit(s.Progress), enum(s.Urgency, "normal", "low", "normal", "high")
-	s.SinceMs, s.UntilMs = max(s.SinceMs, 0), max(s.UntilMs, 0)
+	s.Progress, s.Urgency = unit(s.Progress), enum(s.Urgency, "normal", "low", "normal", "high", "critical")
+	s.Salience = unit(s.Salience)
+	s.SinceMs, s.UntilMs, s.WarnMs = max(s.SinceMs, 0), max(s.UntilMs, 0), max(s.WarnMs, 0)
+	s.Timer, s.Value, s.Chips, s.Badge = enum(s.Timer, "auto", "auto", "none", "h:mm"), Cut(s.Value, 20), chips(s.Chips), icon(s.Badge)
 	s.ID, s.TTLs = Cut(s.ID, 32), clamp(s.TTLs, 0, 86400)
 	return nil
 }
@@ -387,6 +461,14 @@ func (r *Row) fit() error {
 	}
 	r.Sub, r.Icon, r.Mood = Cut(r.Sub, 60), icon(r.Icon), mood(r.Mood, Quiet)
 	r.Progress, r.Target = unit(r.Progress), Cut(r.Target, 32)
+	r.Buttons, r.Chips, r.Badge, r.Flame = buttons(r.Buttons, 2), chips(r.Chips), icon(r.Badge), Cut(r.Flame, 40)
+	if g := r.Ring; g != nil {
+		g.Value, g.Mood = unit(g.Value), mood(g.Mood, Work)
+		g.StartMs, g.EndMs = max(g.StartMs, 0), max(g.EndMs, 0)
+		if g.Value == nil && (g.EndMs <= g.StartMs) {
+			r.Ring = nil // neither a value nor a span: no ring
+		}
+	}
 	return nil
 }
 
@@ -396,16 +478,7 @@ func (c *Card) fit() error {
 		return errors.New("needs an id and a title")
 	}
 	c.Eyebrow, c.Body, c.Mood = Cut(c.Eyebrow, 32), Cut(c.Body, 280), mood(c.Mood, Work)
-	if len(c.Buttons) > 3 {
-		c.Buttons = c.Buttons[:3]
-	}
-	bs := c.Buttons[:0]
-	for _, b := range c.Buttons {
-		if b.Key, b.Label = Cut(b.Key, 32), Cut(b.Label, 24); b.Key != "" && b.Label != "" {
-			bs = append(bs, b)
-		}
-	}
-	c.Buttons = bs
+	c.Buttons = buttons(c.Buttons, 3)
 	switch {
 	case c.TTLs == 0 && len(c.Buttons) > 0:
 		c.TTLs = 180

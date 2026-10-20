@@ -110,7 +110,16 @@ thing going on, beside Claude, music and the clock; it never covers a request fr
 | `since_ms` | int | a timer counting up from then ("12m") |
 | `until_ms` | int | a timer counting down to then ("17:59"); wins over `since_ms` |
 | `progress` | number 0..1 | a meter |
-| `urgency` | `low` \| `normal` \| `high` | how much it asks for the pill; default `normal` |
+| `urgency` | `low` \| `normal` \| `high` \| `critical` | how much it asks for the pill; default `normal`. `critical` needs the `critical` grant (else it reads as `high`) |
+| `salience` | number 0..1 | instead of `urgency`, exactly how much: capped at 0.75, or 0.95 with the `critical` grant |
+| `timer` | `auto` \| `none` \| `h:mm` | how the timer shows: `auto` ("12m" up, "17:59" down), `none` (the times only drive `warn_ms`), `h:mm` ("1:12" down) |
+| `warn_ms` | int | in the last `warn_ms` before `until_ms`, the timer and `sub` turn amber |
+| `value` | string, ≤ 20 | a quiet value at the right end |
+| `chips` | ≤ 9 × `{label ≤ 4, state}` | letters in chips at the right end; states as the `chips` widget's |
+| `badge` | icon | one small amber icon at the right end; `lock` is a padlock |
+| `badge_clock` | bool | the badge also sits on the clock, when the clock shows (the `badge` grant; one plugin's at a time) |
+| `satellite` | bool | when another line holds the pill, its timer shows in the pill's satellite |
+| `focus` | bool | while this line holds the pill, Ember wears its game face: eyes front, no flourishes (the `focus` grant) |
 
 A new `status` replaces the last. `{"type":"remove","what":"status"}` takes it back.
 
@@ -143,6 +152,11 @@ A new `status` replaces the last. `{"type":"remove","what":"status"}` takes it b
 | `mood` | mood | default `quiet` |
 | `progress` | number 0..1 | a thin bar under the row |
 | `target` | string | a `[targets]` name for a click on the row |
+| `ring` | `{value 0..1, mood}` or `{start_ms, end_ms, mood}` | a ring on the card's rail instead of the icon: filled to `value`, or emptying from `start_ms` to `end_ms` |
+| `buttons` | ≤ 2 × `{key ≤ 32, label ≤ 24, primary bool}` | small buttons at the row's end; a press sends `button` with `"card":"row"` |
+| `chips` | ≤ 9 × `{label ≤ 4, state}` | letters in chips after the title |
+| `badge` | icon | a small amber icon after the title (`lock`) |
+| `flame` | string, ≤ 40 | the end of `sub` that a small live flame goes before ("4-day streak") |
 
 A click on the row opens the plugin's dashboard if it has one; otherwise it does `target` (if any) and Ember
 sends `click` with `"target":"row"` or the target's name. `{"type":"remove","what":"row"}` takes it back.
@@ -164,6 +178,7 @@ after them, and at most 3 of a plugin's are open at once (a fourth is dropped, a
 | `mood` | mood | default `work` |
 | `buttons` | ≤ 3 × `{key ≤ 32, label ≤ 24, primary bool}` | a pick sends `button` and closes the card |
 | `ttl_s` | number 5..600 | default 180 with buttons, 7 without |
+| `urgent` | bool | before Claude's own requests (the `critical` grant) |
 
 `{"type":"remove","what":"card","id":"break"}` takes it back. You can always close one yourself (right-click).
 
@@ -194,8 +209,9 @@ capitals, divided by hairlines.
 while it's open. `{"type":"remove","what":"dashboard"}` takes it back.
 
 **`cheer`**: asks Ember to react (capability `cheer`): `{"type":"cheer","kind":"hop"}`, `nod` or `celebrate`.
-It goes through the same gate as Ember's own flourishes (calm, within the day's budget, not while something
-needs you), at most once a minute per plugin, so it may well not happen. That's the point.
+`hop` and `nod` are reactions to something that just happened (a test passed, a letter solved): at most one
+every 5 seconds per plugin, and never while something waits on you. `celebrate` is for something earned (a
+milestone): at most once an hour per plugin. Neither is a flourish, and Ember may still let one go.
 
 **`log`**: `{"type":"log","level":"info","text":"synced 3 sessions"}`, `level` `info` | `warn` | `error`, text
 ≤ 500. Kept with the plugin's stderr for `ember plugins` and doctor.
@@ -211,18 +227,38 @@ needs you), at most once a minute per plugin, so it may well not happen. That's 
 | `{"type":"click","target":"docs"}` | a click on its moment or row: the target's name, or `"row"` for a row without one |
 | `{"type":"button","card":"break","key":"break"}` | a button on its card; the card has closed |
 | `{"type":"dash","state":"open"}` | its dashboard opened (`"close"`: it closed) |
+| `{"type":"tool","payload":{…}}` | a message from the plugin's own tool (below) |
 | `{"type":"stop"}` | the island is stopping: exit within 2 seconds (then SIGTERM, then SIGKILL) |
 
 A plugin must keep reading its stdin: a plugin that stops reading may miss events, but never blocks Ember.
 
+**A tool's messages.** A plugin often fronts a tool that has its own daemon. The tool can reach its plugin
+through Ember's socket, `$XDG_RUNTIME_DIR/ember.sock`, with one line, `{"type":"plugin","name":"<plugin>",
+"payload":{…}}`; the plugin gets the payload as a `tool` event. (edge's older `{"type":"edge","payload":…}` is
+the same, for the plugin named edge.) A payload is at most 60 KiB.
+
+### Grants
+
+Three things a plugin can do reach past its own line, so the user grants them, in Ember's config:
+
+```toml
+[plugins.edge]
+grants = ["critical", "badge", "focus"]
+```
+
+`critical` lets its line outrank Claude at work (never a request waiting on you) and its cards come first;
+`badge` lets its badge sit on the clock; `focus` lets its line set Ember's game face. Without the grant the
+field is ignored (`critical` reads as `high`). `ember plugins` and doctor show each plugin's grants. A
+manifest may ask with `grants = [...]`; that is a request shown in `ember plugins`, never a grant.
+
 ### Vocabulary
 
-**Moods**: `work` (at it: Ember's working colour), `wait` (needs you: blue), `done` (green), `fail` (red),
-`quiet` (muted).
+**Moods**: `work` (at it: Ember's working colour), `wait` (needs you: blue), `nudge` (worth a look: amber),
+`done` (green), `fail` (red), `quiet` (muted).
 
 **Icons**: `check`, `warning`, `bolt`, `timer`, `chart`, `note`, `read`, `edit`, `run`, `search`, `web`,
 `agent`, `camera`, `screen`, `cast`, `headphones`, `bluetooth`, `battery`, `unplug`, `sun`, `volume`, `mic`,
-`other`. An unknown name shows no icon.
+`lock`, `other`. An unknown name shows no icon.
 
 ### Limits
 
@@ -233,7 +269,7 @@ A plugin must keep reading its stdin: a plugin that stops reading may miss event
 | `dashboard` | 4 a second | coalesced: the latest wins |
 | `moment` | 1 every 10 seconds | dropped |
 | `card` | 3 open, 1 new a second | dropped, a violation |
-| `cheer` | 1 a minute, and Ember's own gate | dropped |
+| `cheer` | `hop`/`nod` 1 every 5 seconds, `celebrate` 1 an hour | dropped |
 | `log` | 5 a second | dropped |
 | everything | 100 messages a second for 3 seconds | suspended |
 | violations | 50 within a minute | suspended |

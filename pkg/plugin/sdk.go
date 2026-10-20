@@ -199,8 +199,8 @@ func Chips(title, caption string, items ...Item) Widget {
 	return Widget{Kind: "chips", Title: title, Caption: caption, Items: items}
 }
 
-// Chip is one: a label of up to 4 characters and a state: done, tried, owed, fixed, gone or todo.
-func Chip(label, state string) Item { return Item{Label: label, State: state} }
+// ChipItem is one: a label of up to 4 characters and a state: done, tried, owed, fixed, gone or todo.
+func ChipItem(label, state string) Item { return Item{Label: label, State: state} }
 
 // List is rows of a title and words.
 func List(title string, items ...Item) Widget {

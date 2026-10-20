@@ -174,7 +174,7 @@ func (s *pomodoro) dashboard() {
 		if i <= s.today() {
 			st = "done"
 		}
-		chips = append(chips, plugin.Chip(fmt.Sprint(i), st))
+		chips = append(chips, plugin.ChipItem(fmt.Sprint(i), st))
 	}
 	var recent []plugin.Item
 	for i := len(s.done) - 1; i >= 0 && len(recent) < 5; i-- {

@@ -8,6 +8,7 @@
       "enum": [
         "work",
         "wait",
+        "nudge",
         "done",
         "fail",
         "quiet"
@@ -124,6 +125,22 @@
       ],
       "description": "Exit within 2 seconds."
     },
+    "tool": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "tool"
+        },
+        "payload": {
+          "description": "what the plugin's tool sent to Ember's socket for it"
+        }
+      },
+      "required": [
+        "type",
+        "payload"
+      ],
+      "description": "A message from the plugin's own tool."
+    },
     "hello_plugin": {
       "type": "object",
       "properties": {
@@ -183,8 +200,71 @@
           "enum": [
             "low",
             "normal",
-            "high"
+            "high",
+            "critical"
+          ],
+          "description": "critical needs the critical grant"
+        },
+        "salience": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "capped at 0.75, 0.95 with the critical grant"
+        },
+        "timer": {
+          "enum": [
+            "auto",
+            "none",
+            "h:mm"
           ]
+        },
+        "warn_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "value": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "chips": {
+          "type": "array",
+          "maxItems": 9,
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "maxLength": 4
+              },
+              "state": {
+                "enum": [
+                  "done",
+                  "tried",
+                  "owed",
+                  "fixed",
+                  "gone",
+                  "todo"
+                ]
+              }
+            },
+            "required": [
+              "label"
+            ]
+          }
+        },
+        "badge": {
+          "$ref": "#/$defs/icon"
+        },
+        "badge_clock": {
+          "type": "boolean",
+          "description": "the badge grant"
+        },
+        "satellite": {
+          "type": "boolean"
+        },
+        "focus": {
+          "type": "boolean",
+          "description": "the focus grant"
         },
         "id": {
           "type": "string",
@@ -271,6 +351,82 @@
         "target": {
           "type": "string",
           "maxLength": 32
+        },
+        "ring": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "start_ms": {
+              "type": "integer"
+            },
+            "end_ms": {
+              "type": "integer"
+            },
+            "mood": {
+              "$ref": "#/$defs/mood"
+            }
+          }
+        },
+        "buttons": {
+          "type": "array",
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "maxLength": 32
+              },
+              "label": {
+                "type": "string",
+                "maxLength": 24
+              },
+              "primary": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "key",
+              "label"
+            ]
+          }
+        },
+        "chips": {
+          "type": "array",
+          "maxItems": 9,
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "maxLength": 4
+              },
+              "state": {
+                "enum": [
+                  "done",
+                  "tried",
+                  "owed",
+                  "fixed",
+                  "gone",
+                  "todo"
+                ]
+              }
+            },
+            "required": [
+              "label"
+            ]
+          }
+        },
+        "badge": {
+          "$ref": "#/$defs/icon"
+        },
+        "flame": {
+          "type": "string",
+          "maxLength": 40
         }
       },
       "required": [
@@ -332,6 +488,10 @@
               "label"
             ]
           }
+        },
+        "urgent": {
+          "type": "boolean",
+          "description": "the critical grant"
         }
       },
       "required": [
@@ -621,6 +781,9 @@
         },
         {
           "$ref": "#/$defs/dash"
+        },
+        {
+          "$ref": "#/$defs/tool"
         },
         {
           "$ref": "#/$defs/stop"

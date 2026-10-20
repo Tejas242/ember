@@ -123,6 +123,8 @@ func (c *canvas) icon(name string, cx, cy, s float32, col color.NRGBA) {
 		c.roundRect(cx-4.4*u, cy-3.6*u, 8.8*u, 5.4*u, 1.6*u, col)
 		c.line(P(8, 9.8), P(8, 12), 1.4*u, col)
 		c.arc(cx+2.2*u, cy+4*u, 2.2*u, 1.4*u, math.Pi, math.Pi*1.5, col)
+	case "lock": // a padlock, as the pill's lock is drawn
+		c.lock(cx-s*0.39*0.75, cy-s*0.5*0.75, s*0.75, col)
 	case "timer": // a stopwatch: a ring, its hand, the button on top
 		c.frame(cx-5.8*u, cy-4.6*u, 11.6*u, 11.6*u, 5.8*u, 1.6*u, col)
 		c.line(P(8, 9.2), P(8, 6), 1.6*u, col)
