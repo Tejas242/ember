@@ -88,7 +88,7 @@ type Status struct {
 	Value      string `json:"value,omitempty"`       // a quiet value at the right end
 	Chips      []Chip `json:"chips,omitempty"`       // letters in chips at the right end
 	Badge      string `json:"badge,omitempty"`       // a small amber icon at the right end
-	BadgeClock bool   `json:"badge_clock,omitempty"` // the badge on the clock too (granted)
+	BadgeClock string `json:"badge_clock,omitempty"` // an icon on the clock (granted)
 	Satellite  bool   `json:"satellite,omitempty"`   // its timer in the satellite when another line holds the pill
 	Focus      bool   `json:"focus,omitempty"`       // Ember's game face while it holds the pill (granted)
 
@@ -559,6 +559,7 @@ func (s *Status) fit() error {
 	s.Salience = unit(s.Salience)
 	s.SinceMs, s.UntilMs, s.WarnMs = max(s.SinceMs, 0), max(s.UntilMs, 0), max(s.WarnMs, 0)
 	s.Timer, s.Value, s.Chips, s.Badge = enum(s.Timer, "auto", "auto", "none", "h:mm"), Cut(s.Value, 20), chips(s.Chips), icon(s.Badge)
+	s.BadgeClock = icon(s.BadgeClock)
 	s.ID, s.TTLs = Cut(s.ID, 32), clamp(s.TTLs, 0, 86400)
 	return nil
 }
@@ -598,7 +599,7 @@ func (c *Card) fit() error {
 	if c.ID == "" || c.Title == "" {
 		return errors.New("needs an id and a title")
 	}
-	c.Eyebrow, c.Body, c.Mood = Cut(c.Eyebrow, 32), Cut(c.Body, 280), mood(c.Mood, Work)
+	c.Eyebrow, c.Body, c.Mood = Cut(c.Eyebrow, 32), Cut(c.Body, 280), mood(c.Mood, Nudge)
 	c.Buttons = buttons(c.Buttons, 3)
 	switch {
 	case c.TTLs == 0 && len(c.Buttons) > 0:

@@ -26,7 +26,7 @@ func TestDecode(t *testing.T) {
 	}
 
 	m, err = Decode([]byte(`{"type":"card","id":"c","title":"T","buttons":[{"key":"a","label":"A"},{"key":"","label":"B"},{"key":"c","label":"C"},{"key":"d","label":"D"},{"key":"e","label":"E"}],"ttl_s":9999}`))
-	if err != nil || len(m.Card.Buttons) != 2 || m.Card.TTLs != 600 || m.Card.Mood != Work {
+	if err != nil || len(m.Card.Buttons) != 2 || m.Card.TTLs != 600 || m.Card.Mood != Nudge {
 		t.Fatalf("%v %+v", err, m.Card)
 	}
 	m, _ = Decode([]byte(`{"type":"card","id":"c","title":"T"}`))

@@ -9,6 +9,7 @@ import (
 
 	"github.com/Tejas242/ember/internal/plugin"
 	"github.com/Tejas242/ember/internal/xdg"
+	proto "github.com/Tejas242/ember/pkg/plugin"
 )
 
 // Plugins are the parts of Ember that belong to a tool not everyone has
@@ -78,8 +79,16 @@ func (a *app) reconcile() {
 	a.detectedAt = a.ui.now()
 }
 
-// toPlugin hands a message from a tool to its plugin, if that plugin runs.
+// toPlugin hands a message from a tool to its plugin, if that plugin runs:
+// an external one gets it as a tool event.
 func (a *app) toPlugin(name string, payload json.RawMessage) {
+	if a.host != nil && a.host.Has(name) {
+		if len(payload) <= 60<<10 {
+			a.host.Send(name, proto.Event{Type: "tool", Payload: payload})
+		}
+		a.quiet = true
+		return
+	}
 	if p := a.plugins[name]; p != nil {
 		p.Message(a, payload)
 	}

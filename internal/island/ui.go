@@ -539,7 +539,7 @@ func (u *UI) secondary(primary string) string {
 	case primary != "edge" && u.edge != nil && u.edge.StartedMs > 0:
 		return "edge"
 	}
-	return ""
+	return u.extSatellite(primary)
 }
 
 // cycle moves the pill's focus to the next / previous activity.

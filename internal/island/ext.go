@@ -6,6 +6,7 @@ import (
 	"image"
 	"log"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -60,6 +61,8 @@ func extMood(s string) mood {
 		return moodWork
 	case proto.Wait:
 		return moodWait
+	case proto.Nudge:
+		return moodNudge
 	case proto.Done:
 		return moodHappy
 	case proto.Fail:
@@ -113,15 +116,13 @@ func (a *app) applyExt(name string, m proto.Message) {
 			u.dashboards = map[string]Dashboard{}
 		}
 		u.dashboards[name] = extDash{name: name}
-	case "cheer":
-		if u.may("plugin:"+name, time.Minute) {
+	case "cheer": // the host keeps the rates; Ember never cheers over something waiting on you
+		if !u.waitingOnYou() {
 			switch m.Cheer.Kind {
-			case "hop":
-				u.play("hop", 0)
-			case "nod":
-				u.play("nod", 0)
-			case "celebrate":
-				u.cheer(cheer{size: 0.6})
+			case "hop", "nod": // reactions to something that just happened
+				u.play(m.Cheer.Kind, 0)
+			case "celebrate": // earned
+				u.cheer(cheer{size: 0.9, flare: true})
 			}
 		}
 	case "remove":
@@ -144,15 +145,15 @@ func (a *app) applyExt(name string, m proto.Message) {
 
 func (a *app) extCard(name string, w *proto.Card) {
 	md := extMood(w.Mood)
-	if w.Mood == proto.Work {
-		md = moodNudge // an offer: amber, the way edge's are
-	}
 	eyebrow := w.Eyebrow
 	if eyebrow == "" {
 		eyebrow = name
 	}
 	c := &Card{ID: "x:" + name + ":" + w.ID, Kind: "plugin", Mood: md, Eyebrow: eyebrow, Title: w.Title, Body: w.Body,
-		Priority: 1, Expires: a.ui.now().Add(time.Duration(w.TTLs * float64(time.Second)))}
+		Priority: 2, Expires: a.ui.now().Add(time.Duration(w.TTLs * float64(time.Second)))}
+	if w.Urgent && a.ui.granted(name, proto.GrantCritical) {
+		c.Priority = 5 // before Claude's own requests
+	}
 	for _, b := range w.Buttons {
 		c.Buttons = append(c.Buttons, Button{Key: b.Key, Label: b.Label, Primary: b.Primary})
 	}
@@ -193,13 +194,23 @@ func (a *app) extGone(name string) {
 	}
 }
 
-// extKey handles a click on a plugin's row or moment ("x:click:<name>\x00<target>").
+// extKey handles a click on a plugin's row or moment ("x:click:<name>\x00<target>"),
+// or a button on its row ("x:btn:<name>\x00<key>") or its dashboard ("x:dbtn:…").
 func (a *app) extKey(k string) {
 	if a.host == nil {
 		return
 	}
-	name, target, _ := strings.Cut(strings.TrimPrefix(k, "x:click:"), "\x00")
-	a.host.Click(name, target)
+	switch {
+	case strings.HasPrefix(k, "x:btn:"):
+		name, key, _ := strings.Cut(strings.TrimPrefix(k, "x:btn:"), "\x00")
+		a.host.Send(name, proto.Event{Type: "button", Card: "row", Key: key})
+	case strings.HasPrefix(k, "x:dbtn:"):
+		name, key, _ := strings.Cut(strings.TrimPrefix(k, "x:dbtn:"), "\x00")
+		a.host.Send(name, proto.Event{Type: "button", Card: "dash", Key: key})
+	default:
+		name, target, _ := strings.Cut(strings.TrimPrefix(k, "x:click:"), "\x00")
+		a.host.Click(name, target)
+	}
 }
 
 // extDashChanged tells plugins their dashboard opened or closed.
@@ -250,23 +261,86 @@ func (u *UI) extActs() []string {
 	return out
 }
 
-// extSalience: what a plugin says it is (low, normal, high), a little more
-// when it needs you, never above Claude at work or a live round.
+// granted says whether the user's config grants a plugin a power.
+func (u *UI) granted(name, grant string) bool {
+	return slices.Contains(u.cfg.PluginGrants(name), grant)
+}
+
+// waitingOnYou: a request from Claude, or a session that needs you.
+func (u *UI) waitingOnYou() bool {
+	if c := u.top(); c != nil && (c.Kind == "perm" || c.Kind == "ask") {
+		return true
+	}
+	ss := u.sessionList()
+	return len(ss) > 0 && ss[0].State == "wait"
+}
+
+// extSalience: what a plugin says it is (low, normal, high, or exactly), a
+// little more when it needs you; never above Claude at work (0.75), unless
+// the user granted it critical (0.95: still below anything waiting on you).
 func (u *UI) extSalience(act string) float64 {
-	s := u.extStatus(strings.TrimPrefix(act, "x:"))
+	name := strings.TrimPrefix(act, "x:")
+	s := u.extStatus(name)
 	if s == nil {
 		return 0
 	}
-	v := map[string]float64{"low": 0.3, "normal": 0.45, "high": 0.6}[s.Urgency]
+	top := 0.75
+	if u.granted(name, proto.GrantCritical) {
+		top = 0.95
+	}
+	if s.Salience != nil {
+		return min(*s.Salience, top)
+	}
+	v := map[string]float64{"low": 0.3, "normal": 0.45, "high": 0.6, "critical": 0.95}[s.Urgency]
 	if s.Mood == proto.Wait {
 		v += 0.15
 	}
-	return v
+	return min(v, top)
 }
 
-// extTimer is the line's clock: time left ("17:59", "1h 05m") or time spent ("12m").
+// extFocus: a plugin's line asks for Ember's game face (and is granted it).
+func (u *UI) extFocus() bool {
+	for _, n := range u.extNames() {
+		if s := u.extStatus(n); s != nil && s.Focus && u.granted(n, proto.GrantFocus) {
+			return true
+		}
+	}
+	return false
+}
+
+// extClockBadge is the icon a plugin puts on the clock, if one is granted it.
+func (u *UI) extClockBadge() string {
+	for _, n := range u.extNames() {
+		if s := u.extStatus(n); s != nil && s.BadgeClock != "" && u.granted(n, proto.GrantBadge) {
+			return s.BadgeClock
+		}
+	}
+	return ""
+}
+
+// extSatellite is a plugin whose timer may ride in the satellite.
+func (u *UI) extSatellite(primary string) string {
+	for _, n := range u.extNames() {
+		if s := u.extStatus(n); s != nil && s.Satellite && extAct(n) != primary && extTimer(s, u.now()) != "" {
+			return extAct(n)
+		}
+	}
+	return ""
+}
+
+// extWarn: within the line's warn_ms of its until_ms.
+func extWarn(s *proto.Status, now time.Time) bool {
+	return s.UntilMs > 0 && s.WarnMs > 0 && time.UnixMilli(s.UntilMs).Sub(now) <= time.Duration(s.WarnMs)*time.Millisecond
+}
+
+// extTimer is the line's clock: time left ("17:59", "1h 05m"; "1:12" as
+// h:mm) or time spent ("12m"), or none.
 func extTimer(s *proto.Status, now time.Time) string {
 	switch {
+	case s.Timer == "none":
+		return ""
+	case s.Timer == "h:mm" && s.UntilMs > 0:
+		return left(now, time.UnixMilli(s.UntilMs))
 	case s.UntilMs > 0:
 		d := max(0, time.UnixMilli(s.UntilMs).Sub(now))
 		if d >= time.Hour {
@@ -284,9 +358,19 @@ func (u *UI) extLine(act string) (line, bool) {
 	if s == nil {
 		return line{}, false
 	}
-	p := u.pal
+	p, now := u.pal, u.now()
 	md := extMood(s.Mood)
-	l := line{key: act, mood: md, text: s.Text, sub: s.Sub, textCol: p.fg, timer: extTimer(s, u.now()), timerCol: p.muted}
+	l := line{key: act + ":" + s.Mood, mood: md, text: s.Text, sub: s.Sub, textCol: p.fg, timer: extTimer(s, now), timerCol: p.muted,
+		chip: s.Value, chipCol: p.muted, lock: s.Badge == "lock", flag: s.Badge, letters: chipLetters(s.Chips)}
+	if l.lock {
+		l.flag = ""
+	}
+	if s.UntilMs > 0 { // a countdown reads as a clock
+		l.timerCol = p.fg
+	}
+	if extWarn(s, now) { // its last minutes
+		l.timerCol, l.subCol = p.yellow, p.yellow
+	}
 	if md == moodWait {
 		l.textCol = p.blue
 	}
@@ -318,48 +402,97 @@ func (u *UI) extRows() []*extPlugin {
 	return out
 }
 
-// extRow: a plugin on one line, the way edge's row looks: its icon on the
-// rail, the title, the words, a thin bar for its progress, and a chevron when
-// the line opens its dashboard.
+// extRow: a plugin on one line, the way edge's row looks: a ring or its
+// icon on the rail, the title, its letters and badge, the words (a small
+// flame before the streak), a thin bar for its progress, and its buttons or,
+// when the line opens its dashboard, a chevron.
 func (u *UI) extRow(x *extPlugin, rx, w, y float32) {
-	p, r := u.pal, x.row
+	p, r, now := u.pal, x.row, u.now()
 	on := u.rowHot("x:"+x.name, rx, w, y, extH)
-	key := "x:click:" + x.name + "\x00" + r.Target
 	_, hasDash := u.dashboards[x.name]
+	key := "x:click:" + x.name + "\x00" + r.Target
 	if hasDash {
 		key = "dash:" + x.name
-	}
-	if on > 0.01 {
-		u.panel(rx+pad-8, y+2, w-2*pad+16, extH-4, radRow, alpha(p.fg, 0.05*on))
+		if on > 0.01 {
+			u.panel(rx+pad-8, y+2, w-2*pad+16, extH-4, radRow, alpha(p.fg, 0.05*on))
+		}
 	}
 	u.hits = append(u.hits, hit{image.Rect(int(rx+pad-8), int(y), int(rx+w-pad+8), int(y+extH)), key})
 	cy, md := y+extH/2, extMood(r.Mood)
-	tint := p.moodColor(md)
-	if md == moodIdle {
-		tint = mix(p.muted, p.fg, 0.4)
-	}
 	gx := rx + railX
-	if r.Icon != "" {
+	switch g := r.Ring; {
+	case g != nil: // a ring on the rail: filled to its value, or emptying with its time
+		col := p.moodColor(extMood(g.Mood))
+		frac, k := 0.0, 1.0
+		if g.Value != nil {
+			frac = *g.Value
+			k = u.tw("ring:"+x.name, frac, 0)
+		} else if span := time.UnixMilli(g.EndMs).Sub(time.UnixMilli(g.StartMs)); span > 0 {
+			frac = math.Max(0, math.Min(1, float64(time.UnixMilli(g.EndMs).Sub(now))/float64(span)))
+		}
+		u.dc.arc(gx, cy, 6, 1.8, 0, 2*math.Pi, alpha(p.fg, 0.12))
+		if g.Value != nil {
+			if v := frac * k; v > 0.01 {
+				ringArc(u.dc, gx, cy, 6, 1.8, -math.Pi/2, -math.Pi/2+2*math.Pi*v, col)
+			}
+		} else if frac > 0.01 {
+			ringArc(u.dc, gx, cy, 6, 1.8, -math.Pi/2, -math.Pi/2+2*math.Pi*frac, col)
+		}
+	case r.Icon != "":
+		tint := p.moodColor(md)
+		if md == moodIdle {
+			tint = mix(p.muted, p.fg, 0.4)
+		}
 		u.dc.icon(r.Icon, gx, cy, 13, tint)
-	} else {
-		u.dc.circle(gx, cy, 3, tint)
+	default:
+		u.dc.circle(gx, cy, 3, mix(p.muted, p.fg, 0.4))
 	}
 	tx, right := rx+textX, rx+w-pad
-	if hasDash {
+	for i := len(r.Buttons) - 1; i >= 0; i-- {
+		b := r.Buttons[i]
+		bw := u.pillButton(Button{Key: b.Key, Label: b.Label, Primary: b.Primary}, "x:btn:"+x.name+"\x00"+b.Key, right, cy-btnH/2, btnH, p.yellow)
+		right -= bw + 8
+	}
+	switch {
+	case len(r.Buttons) > 0:
+		right -= 2
+	case hasDash: // the line opens the dashboard: say so
 		u.chevron(right-3, cy, 0, mix(p.faint, p.fg, 0.4*on))
 		right -= 16
 	}
 	base := cy + 4.5
 	nw := u.dc.text(fBody(), ellipsize(fBody(), r.Title, (right-tx)*0.55), tx, base, p.fg)
-	if r.Sub != "" {
-		sx := tx + nw + 8
-		u.dc.text(fSecond(), ellipsize(fSecond(), r.Sub, right-sx), sx, base, p.muted)
+	sx := tx + nw + 8
+	if ls := chipLetters(r.Chips); len(ls) > 0 && sx+lettersW(ls, 14)+60 < right {
+		sx += u.letters(ls, sx, cy, 14, 1) + 8
+	}
+	switch r.Badge {
+	case "":
+	case "lock":
+		u.dc.lock(sx, cy-5.5, 10, p.yellow)
+		sx += 15
+	default:
+		u.dc.icon(r.Badge, sx+5, cy, 10, p.yellow)
+		sx += 15
+	}
+	sub := r.Sub
+	if f := r.Flame; f != "" && strings.HasSuffix(sub, f) && len(sub) > len(f) { // a small live flame before it
+		sx += u.dc.text(fSecond(), sub[:len(sub)-len(f)], sx, base, p.muted)
+		fx, fy := sx+4, cy+1
+		u.lives = append(u.lives, live{r: image.Rect(int(fx-6), int(fy-10), int(fx+7), int(fy+6)), draw: func(c *canvas, t float64) {
+			flame(c, fx, fy, 4.6, t, true, p)
+		}})
+		sx += 11
+		sub = f
+	}
+	if sub != "" {
+		u.dc.text(fSecond(), ellipsize(fSecond(), sub, right-sx), sx, base, p.muted)
 	}
 	if r.Progress != nil {
 		bw := right - tx
 		u.dc.roundRect(tx, y+extH-5, bw, 2, 1, alpha(p.fg, 0.08))
 		if k := float32(*r.Progress); k > 0 {
-			u.dc.roundRect(tx, y+extH-5, max(bw*k, 2), 2, 1, tint)
+			u.dc.roundRect(tx, y+extH-5, max(bw*k, 2), 2, 1, p.moodColor(md))
 		}
 	}
 }
@@ -519,6 +652,19 @@ func (d extDash) blocks(u *UI, x, w float32) []block {
 		}
 	}
 	return append(out, block{h: 8})
+}
+
+// chipLetters speaks the protocol's chip states in the letters' own.
+func chipLetters(cs []proto.Chip) []EdgeProblem {
+	if len(cs) == 0 {
+		return nil
+	}
+	state := map[string]string{"done": "solved", "tried": "tried", "owed": "upsolve", "fixed": "upsolved", "gone": "lapsed"}
+	ps := make([]EdgeProblem, len(cs))
+	for i, c := range cs {
+		ps[i] = EdgeProblem{Index: c.Label, State: state[c.State]}
+	}
+	return ps
 }
 
 // chipsAsLetters speaks the round chips' states: the dashboard draws a

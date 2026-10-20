@@ -117,9 +117,9 @@ thing going on, beside Claude, music and the clock; it never covers a request fr
 | `value` | string, ≤ 20 | a quiet value at the right end |
 | `chips` | ≤ 9 × `{label ≤ 4, state}` | letters in chips at the right end; states as the `chips` widget's |
 | `badge` | icon | one small amber icon at the right end; `lock` is a padlock |
-| `badge_clock` | bool | the badge also sits on the clock, when the clock shows (the `badge` grant; one plugin's at a time) |
+| `badge_clock` | icon | an icon on the clock, while the clock shows (the `badge` grant; one plugin's at a time): edge's padlock while Claude is locked |
 | `satellite` | bool | when another line holds the pill, its timer shows in the pill's satellite |
-| `focus` | bool | while this line holds the pill, Ember wears its game face: eyes front, no flourishes (the `focus` grant) |
+| `focus` | bool | while this line is up, Ember wears its game face: eyes front, no flourishes (the `focus` grant) |
 
 A new `status` replaces the last. `{"type":"remove","what":"status"}` takes it back.
 
@@ -175,7 +175,7 @@ after them, and at most 3 of a plugin's are open at once (a fourth is dropped, a
 | `eyebrow` | string, ≤ 32 | the small capitals above; default the plugin's name |
 | `title` | string, ≤ 60 | required |
 | `body` | string, ≤ 280 | |
-| `mood` | mood | default `work` |
+| `mood` | mood | default `nudge` |
 | `buttons` | ≤ 3 × `{key ≤ 32, label ≤ 24, primary bool}` | a pick sends `button` and closes the card |
 | `ttl_s` | number 5..600 | default 180 with buttons, 7 without |
 | `urgent` | bool | before Claude's own requests (the `critical` grant) |

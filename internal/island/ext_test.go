@@ -43,7 +43,7 @@ func TestExtPillLine(t *testing.T) {
 		itoa(g.clock.Add(17*time.Minute+30*time.Second).UnixMilli())+`,"progress":0.3}`))
 	g.run(600 * time.Millisecond)
 	l := g.a.ui.compactLine()
-	if l.key != "x:pomodoro" || l.text != "Focus" || l.timer != "17:30" || !l.hasProg || l.m == nil || l.m.icon != "timer" {
+	if l.key != "x:pomodoro:work" || l.text != "Focus" || l.timer != "17:30" || !l.hasProg || l.m == nil || l.m.icon != "timer" {
 		t.Fatalf("%+v", l)
 	}
 	g.work("k", "kinvault", "fix it", 2) // Claude at work outranks it
@@ -127,20 +127,22 @@ func TestExtMomentRowCardDashboard(t *testing.T) {
 	}
 }
 
-// A plugin's cheer goes through Ember's own gate: once, then not again soon.
-func TestExtCheerIsGated(t *testing.T) {
+// A plugin's cheer (the host keeps its rate) never plays over something
+// waiting on you.
+func TestExtCheerWaitsForYou(t *testing.T) {
 	g := newScene()
-	g.a.ui.bond = loadBond(g.clock)
 	g.run(2 * time.Second)
 	g.a.applyExt("p", extMsg(t, `{"type":"cheer","kind":"hop"}`))
 	if g.a.ui.act == nil || g.a.ui.act.kind != "hop" {
-		t.Fatal("a calm Ember hops for a plugin's first cheer")
+		t.Fatal("a reaction plays")
 	}
 	g.run(3 * time.Second)
 	g.a.ui.act = nil
-	g.a.applyExt("p", extMsg(t, `{"type":"cheer","kind":"hop"}`))
-	if g.a.ui.act != nil {
-		t.Fatal("a second cheer right away got through")
+	g.work("k", "kinvault", "fix it", 2)
+	hookAt(g.a, "Notification", "k", "kinvault", map[string]any{"notification_type": "permission_prompt"})
+	g.a.applyExt("p", extMsg(t, `{"type":"cheer","kind":"celebrate"}`))
+	if g.a.ui.act != nil && g.a.ui.act.kind == "done" {
+		t.Fatal("a celebration over a session that needs you")
 	}
 }
 
@@ -311,4 +313,42 @@ exec yes '{"type":"status","text":"flood","mood":"wait","urgency":"high"}'
 		t.Fatal("a suspended plugin's line stays")
 	}
 	t.Logf("suspended after %v; %d updates applied; frames median %v, max %v", took.Round(time.Millisecond), applied, frames[len(frames)/2], frames[len(frames)-1])
+}
+
+// critical, the clock's badge and the game face only work when granted.
+func TestExtGrants(t *testing.T) {
+	g := newScene()
+	end := g.clock.Add(70 * time.Minute)
+	g.a.applyExt("edge", extMsg(t, `{"type":"status","text":"CF 1128","mood":"work","urgency":"critical","badge":"lock","badge_clock":"lock",
+		"focus":true,"satellite":true,"timer":"h:mm","warn_ms":600000,"until_ms":`+itoa(end.UnixMilli())+`,"chips":[{"label":"A","state":"done"},{"label":"B","state":"tried"}]}`))
+	if s := g.a.ui.extSalience("x:edge"); s != 0.75 {
+		t.Fatalf("critical without the grant: %v", s)
+	}
+	if g.a.ui.extFocus() || g.a.ui.extClockBadge() != "" {
+		t.Fatal("focus and the clock's badge without grants")
+	}
+	g.a.cfg.Plugins = map[string]map[string]string{"edge": {"grants": `["critical", "badge", "focus"]`}}
+	g.a.ui.cfg = g.a.cfg
+	if s := g.a.ui.extSalience("x:edge"); s != 0.95 || !g.a.ui.extFocus() || g.a.ui.extClockBadge() != "lock" {
+		t.Fatalf("granted: %v %v %q", s, g.a.ui.extFocus(), g.a.ui.extClockBadge())
+	}
+	l, _ := g.a.ui.extLine("x:edge")
+	if l.timer != "1:10" || !l.lock || len(l.letters) != 2 || l.letters[0].State != "solved" || l.timerCol != g.a.ui.pal.fg {
+		t.Fatalf("%+v", l)
+	}
+	g.clock = end.Add(-9 * time.Minute) // its last ten minutes
+	if l, _ := g.a.ui.extLine("x:edge"); l.timerCol != g.a.ui.pal.yellow || l.timer != "0:09" {
+		t.Fatalf("warn: %+v", l)
+	}
+	g.work("k", "kinvault", "fix it", 2) // Claude holds the pill: the plugin's clock rides the satellite
+	g.run(5 * time.Second)
+	if p := g.a.ui.primary(); p != "x:edge" {
+		t.Fatalf("critical outranks Claude at work: %s", p)
+	}
+	g.a.cfg.Plugins = nil
+	g.a.ui.cfg = g.a.cfg
+	g.run(5 * time.Second)
+	if p, s := g.a.ui.primary(), g.a.ui.secondary("claude"); p != "claude" || s != "x:edge" {
+		t.Fatalf("primary %s, satellite %s", p, s)
+	}
 }

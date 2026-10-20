@@ -256,8 +256,8 @@
           "$ref": "#/$defs/icon"
         },
         "badge_clock": {
-          "type": "boolean",
-          "description": "the badge grant"
+          "$ref": "#/$defs/icon",
+          "description": "an icon on the clock: the badge grant"
         },
         "satellite": {
           "type": "boolean"

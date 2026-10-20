@@ -154,6 +154,9 @@ func (h *Host) proc(name string) *proc {
 	return h.ps[name]
 }
 
+// Has says whether a plugin by that name is installed and on.
+func (h *Host) Has(name string) bool { return h.proc(name) != nil }
+
 // Send tells a plugin about an event. It never blocks: a plugin that isn't
 // reading misses it.
 func (h *Host) Send(name string, ev proto.Event) {

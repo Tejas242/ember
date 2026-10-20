@@ -70,6 +70,7 @@ type line struct {
 	trail    string        // the second activity, as a satellite at the pill's end
 	m        *moment       // a system moment: icon, meter, value, battery
 	letters  []EdgeProblem // a contest round's problems, as chips
+	flag     string        // a plugin's badge, an amber icon at the right end (the padlock is lock)
 	prog     float64       // a plugin's progress, 0..1, when hasProg
 	hasProg  bool
 }
@@ -169,6 +170,13 @@ func (u *UI) mainLine() line {
 	l := line{key: "clock", mood: moodIdle, text: now.Format(u.cfg.PillFormat()), textCol: mix(p.fg, p.muted, 0.7*u.sleepK)}
 	if e := u.edge; e != nil && e.Closed {
 		l.lock = true
+	}
+	switch b := u.extClockBadge(); b {
+	case "":
+	case "lock":
+		l.lock = true
+	default:
+		l.flag = b
 	}
 	// what finished or stopped while you weren't looking stays, quietly,
 	// beside the time until you've seen it
@@ -331,6 +339,9 @@ func (u *UI) pillLayout(l line, h float32) (left, right []seg, w float32) {
 	}
 	if l.lock {
 		right = append(right, seg{w: 11, gap: 8, draw: func(x float32) { u.dc.lock(x, cy-6, 11, p.yellow) }})
+	}
+	if l.flag != "" {
+		right = append(right, seg{w: 11, gap: 8, draw: func(x float32) { u.dc.icon(l.flag, x+5.5, cy, 11, p.yellow) }})
 	}
 	if l.hasProg { // a plugin's progress: a short bar in its mood's colour
 		right = append(right, seg{w: 44, gap: 10, draw: func(x float32) {
@@ -688,6 +699,12 @@ func (u *UI) drawTrail(act string, x, cy, h float32) {
 			}
 			f := face(fSemiBold, 10)
 			u.dc.text(f, txt, x+9-measure(f, txt)/2, cy+3.5, p.green)
+		}
+	default: // a plugin's timer, in its mood's colour
+		if s := u.extStatus(strings.TrimPrefix(act, "x:")); s != nil && strings.HasPrefix(act, "x:") {
+			txt := extTimer(s, u.now())
+			f := face(fSemiBold, 10)
+			u.dc.text(f, txt, x+9-measure(f, txt)/2, cy+3.5, p.moodColor(extMood(s.Mood)))
 		}
 	}
 }

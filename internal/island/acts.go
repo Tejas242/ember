@@ -438,7 +438,7 @@ func (u *UI) posture(p *pose, now time.Time, t float64) {
 		p.eyes = eyeShut
 		p.core *= float32(1 + 0.3*(0.5-0.5*math.Cos(2*math.Pi*t/4.2))) // its light breathes
 	}
-	if r := u.edgeLive(); r { // a contest round is on: game face, eyes front
+	if r := u.edgeLive() || u.extFocus(); r { // a contest round is on: game face, eyes front
 		p.slant, p.lid, p.lookX = 0.35, max(p.lid, 0.15), 0
 	}
 	if u.worried() {

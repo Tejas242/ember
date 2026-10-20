@@ -207,9 +207,9 @@ func (u *UI) press(k string, button int) {
 		if c.OnPick != nil {
 			c.OnPick("option", []int{i})
 		}
-	case strings.HasPrefix(k, "x:click:"): // a plugin's row
+	case strings.HasPrefix(k, "x:click:"), strings.HasPrefix(k, "x:btn:"): // a plugin's row, or a button on it
 		u.key(k)
-		u.used(strings.SplitN(strings.TrimPrefix(k, "x:click:"), "\x00", 2)[0])
+		u.used(strings.SplitN(strings.TrimPrefix(strings.TrimPrefix(k, "x:click:"), "x:btn:"), "\x00", 2)[0])
 	case strings.HasPrefix(k, "btn:edge:"), strings.HasPrefix(k, "music:"), strings.HasPrefix(k, "focus:"):
 		u.key(k)
 		if strings.HasPrefix(k, "music:") {

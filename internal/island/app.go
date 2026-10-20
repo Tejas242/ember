@@ -530,7 +530,7 @@ func (a *app) key(k string) {
 	case strings.HasPrefix(k, "sys:light:"):
 		f, _ := strconv.ParseFloat(strings.TrimPrefix(k, "sys:light:"), 64)
 		go source.SetBrightness(f)
-	case strings.HasPrefix(k, "x:click:"):
+	case strings.HasPrefix(k, "x:click:"), strings.HasPrefix(k, "x:btn:"):
 		a.extKey(k)
 	case strings.HasPrefix(k, "open:"):
 		go exec.Command("xdg-open", strings.TrimPrefix(k, "open:")).Run()
