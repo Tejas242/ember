@@ -166,3 +166,43 @@ func TestLine(t *testing.T) {
 		t.Fatalf("%s %v", b, err)
 	}
 }
+
+func TestDecodeDashboardWidgets(t *testing.T) {
+	m, err := Decode([]byte(`{"type":"dashboard","widgets":[
+		{"kind":"hero","title":"1 to go today","ring":{"value":0,"goal":1,"mode":"spin"},"ember":{"pose":"dancing","react":"hop"},
+		 "step":{"tag":"Upsolve","text":"2261B","dots":{"used":9,"ready":2,"total":12}},"buttons":[{"key":"a","label":"A"},{"key":"b","label":"B"},{"key":"c","label":"C"}],"fold":true},
+		{"kind":"hero","title":"a second hero"},
+		{"kind":"columns","split":0.9,"a":{"kind":"bars","layout":"columns","items":[{"label":"M","value":1,"target":2,"today":true,"state":"future"}]},
+		 "b":{"kind":"agenda","items":[{"at_ms":1792234567000,"title":"CF Div. 2","chips":[{"label":"B","state":"owed"},{"label":"C"},{"label":"D"},{"label":"E"},{"label":"F"}]},{"title":"no time"}]},"fold":"auto","summary":"the week"},
+		{"kind":"columns","a":{"kind":"columns","a":{"kind":"note","text":"x"},"b":{"kind":"note","text":"y"}},"b":{"kind":"note","text":"z"}},
+		{"kind":"stats","cols":9,"count_up":true,"items":[{"label":"Solo","value":83.3,"unit":"%"},{"label":"Focus","value":6780,"unit":"s"}]},
+		{"kind":"heatmap","weeks":200,"days":[{"date":"2026-10-20","level":3,"mood":"wait"}]},
+		{"kind":"line","values":[1,2],"band":{"lo":5,"hi":1}},
+		{"kind":"note","text":""}
+	]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws := m.Dashboard.Widgets
+	if len(ws) != 5 {
+		t.Fatalf("%d widgets: the second hero, nested columns and an empty note go", len(ws))
+	}
+	h := ws[0]
+	if h.Ring.Mode != "fill" || h.Ember.Pose != "calm" || h.Ember.React != "hop" || h.Step.Dots.Used != 5 || h.Step.Dots.Total != 5 || len(h.Buttons) != 2 || h.Folded != "no" {
+		t.Fatalf("hero %+v %+v %+v", h.Ring, h.Ember, h.Step.Dots)
+	}
+	c := ws[1]
+	if c.Split != 0.7 || c.Folded != "auto" || c.A.Layout != "columns" || *c.A.Items[0].Target != 2 || !c.A.Items[0].Today || c.A.Items[0].State != "future" ||
+		len(c.B.Items) != 1 || len(c.B.Items[0].Chips) != 4 || c.B.Items[0].Chips[0].State != "owed" {
+		t.Fatalf("columns %+v %+v %+v", c, c.A, c.B)
+	}
+	if s := ws[2]; s.Cols != 4 || !s.CountUp || s.Items[0].Num != 83.3 || s.Items[1].Unit != "s" {
+		t.Fatalf("stats %+v", s)
+	}
+	if hm := ws[3]; hm.Weeks != 53 || hm.Days[0].Level != 1 || hm.Days[0].Mood != "wait" {
+		t.Fatalf("heatmap %+v", hm)
+	}
+	if ln := ws[4]; ln.Band != nil || len(ln.Values) != 2 {
+		t.Fatalf("line %+v", ln)
+	}
+}

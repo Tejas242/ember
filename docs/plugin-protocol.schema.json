@@ -509,23 +509,234 @@
       "properties": {
         "kind": {
           "enum": [
+            "hero",
             "stats",
             "sparkline",
+            "line",
             "bars",
             "chips",
-            "list"
+            "list",
+            "heatmap",
+            "agenda",
+            "columns",
+            "note"
           ]
         },
         "title": {
           "type": "string",
           "maxLength": 32
+        },
+        "caption": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "fold": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "const": "auto"
+            }
+          ]
         }
       },
       "oneOf": [
         {
           "properties": {
             "kind": {
+              "const": "hero"
+            },
+            "ring": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "number"
+                },
+                "goal": {
+                  "type": "number"
+                },
+                "mode": {
+                  "enum": [
+                    "fill",
+                    "countdown"
+                  ]
+                },
+                "start_ms": {
+                  "type": "integer"
+                },
+                "end_ms": {
+                  "type": "integer"
+                },
+                "mood": {
+                  "$ref": "#/$defs/mood"
+                }
+              }
+            },
+            "ember": {
+              "type": "object",
+              "properties": {
+                "mood": {
+                  "$ref": "#/$defs/mood"
+                },
+                "pose": {
+                  "enum": [
+                    "calm",
+                    "attentive",
+                    "sidelong",
+                    "game",
+                    "sleepy",
+                    "proud"
+                  ]
+                },
+                "react": {
+                  "enum": [
+                    "hop",
+                    "nod",
+                    "celebrate"
+                  ]
+                }
+              }
+            },
+            "aside": {
+              "type": "string",
+              "maxLength": 12
+            },
+            "sub": {
+              "type": "string",
+              "maxLength": 60
+            },
+            "sub_icon": {
+              "$ref": "#/$defs/icon"
+            },
+            "sub_mood": {
+              "$ref": "#/$defs/mood"
+            },
+            "chips": {
+              "type": "array",
+              "maxItems": 9,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "maxLength": 4
+                  },
+                  "state": {
+                    "enum": [
+                      "done",
+                      "tried",
+                      "owed",
+                      "fixed",
+                      "gone",
+                      "todo"
+                    ]
+                  }
+                },
+                "required": [
+                  "label"
+                ]
+              }
+            },
+            "stat": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "string",
+                  "maxLength": 6
+                },
+                "caption": {
+                  "type": "string",
+                  "maxLength": 16
+                }
+              }
+            },
+            "step": {
+              "type": "object",
+              "properties": {
+                "tag": {
+                  "type": "string",
+                  "maxLength": 12
+                },
+                "tag_mood": {
+                  "$ref": "#/$defs/mood"
+                },
+                "text": {
+                  "type": "string",
+                  "maxLength": 48
+                },
+                "meta": {
+                  "type": "string",
+                  "maxLength": 12
+                },
+                "facts": {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                "dots": {
+                  "type": "object",
+                  "properties": {
+                    "used": {
+                      "type": "integer"
+                    },
+                    "ready": {
+                      "type": "integer"
+                    },
+                    "total": {
+                      "type": "integer",
+                      "maximum": 5
+                    },
+                    "next": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  }
+                }
+              }
+            },
+            "buttons": {
+              "type": "array",
+              "maxItems": 2,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "maxLength": 32
+                  },
+                  "label": {
+                    "type": "string",
+                    "maxLength": 24
+                  },
+                  "primary": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "key",
+                  "label"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind": {
               "const": "stats"
+            },
+            "cols": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4
+            },
+            "count_up": {
+              "type": "boolean"
             },
             "items": {
               "type": "array",
@@ -538,12 +749,24 @@
                     "maxLength": 20
                   },
                   "value": {
-                    "type": "string",
-                    "maxLength": 12
+                    "type": [
+                      "string",
+                      "number"
+                    ]
+                  },
+                  "unit": {
+                    "enum": [
+                      "",
+                      "%",
+                      "s"
+                    ]
                   },
                   "caption": {
                     "type": "string",
                     "maxLength": 24
+                  },
+                  "mood": {
+                    "$ref": "#/$defs/mood"
                   }
                 },
                 "required": [
@@ -565,10 +788,54 @@
               "items": {
                 "type": "number"
               }
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "line"
             },
-            "caption": {
+            "values": {
+              "type": "array",
+              "maxItems": 120,
+              "items": {
+                "type": "number"
+              }
+            },
+            "value": {
               "type": "string",
-              "maxLength": 40
+              "maxLength": 12
+            },
+            "delta": {
+              "type": "string",
+              "maxLength": 12
+            },
+            "delta_mood": {
+              "$ref": "#/$defs/mood"
+            },
+            "extra": {
+              "type": "string",
+              "maxLength": 12
+            },
+            "band": {
+              "type": "object",
+              "properties": {
+                "lo": {
+                  "type": "number"
+                },
+                "hi": {
+                  "type": "number"
+                },
+                "label": {
+                  "type": "string",
+                  "maxLength": 32
+                }
+              },
+              "required": [
+                "lo",
+                "hi"
+              ]
             }
           }
         },
@@ -576,6 +843,16 @@
           "properties": {
             "kind": {
               "const": "bars"
+            },
+            "layout": {
+              "enum": [
+                "rows",
+                "columns"
+              ]
+            },
+            "value": {
+              "type": "string",
+              "maxLength": 12
             },
             "items": {
               "type": "array",
@@ -594,6 +871,23 @@
                   "caption": {
                     "type": "string",
                     "maxLength": 12
+                  },
+                  "target": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "today": {
+                    "type": "boolean"
+                  },
+                  "mood": {
+                    "$ref": "#/$defs/mood"
+                  },
+                  "state": {
+                    "enum": [
+                      "",
+                      "future",
+                      "excused"
+                    ]
                   }
                 },
                 "required": [
@@ -661,6 +955,14 @@
                   },
                   "mood": {
                     "$ref": "#/$defs/mood"
+                  },
+                  "mark": {
+                    "enum": [
+                      "done",
+                      "skip",
+                      "fail",
+                      "none"
+                    ]
                   }
                 },
                 "required": [
@@ -669,6 +971,152 @@
               }
             }
           }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "heatmap"
+            },
+            "weeks": {
+              "type": "integer",
+              "minimum": 4,
+              "maximum": 53
+            },
+            "days": {
+              "type": "array",
+              "maxItems": 371,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "date": {
+                    "type": "string",
+                    "maxLength": 10
+                  },
+                  "level": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "mood": {
+                    "$ref": "#/$defs/mood"
+                  }
+                },
+                "required": [
+                  "date"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "agenda"
+            },
+            "day_ends": {
+              "type": "string",
+              "maxLength": 5
+            },
+            "empty": {
+              "type": "string",
+              "maxLength": 60
+            },
+            "items": {
+              "type": "array",
+              "maxItems": 5,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "at_ms": {
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "tag": {
+                    "type": "string",
+                    "maxLength": 14
+                  },
+                  "tag_mood": {
+                    "$ref": "#/$defs/mood"
+                  },
+                  "chips": {
+                    "type": "array",
+                    "maxItems": 4,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "label": {
+                          "type": "string",
+                          "maxLength": 4
+                        },
+                        "state": {
+                          "enum": [
+                            "done",
+                            "tried",
+                            "owed",
+                            "fixed",
+                            "gone",
+                            "todo"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "label"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "at_ms",
+                  "title"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "columns"
+            },
+            "split": {
+              "type": "number",
+              "minimum": 0.3,
+              "maximum": 0.7
+            },
+            "a": {
+              "$ref": "#/$defs/widget"
+            },
+            "b": {
+              "$ref": "#/$defs/widget"
+            }
+          },
+          "required": [
+            "a",
+            "b"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "note"
+            },
+            "icon": {
+              "$ref": "#/$defs/icon"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "mood": {
+              "$ref": "#/$defs/mood"
+            }
+          },
+          "required": [
+            "text"
+          ]
         }
       ]
     },

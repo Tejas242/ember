@@ -198,15 +198,27 @@ capitals, divided by hairlines.
 
 | widget | fields |
 | --- | --- |
-| `stats` | `title`, `items`: ≤ 4 × `{label ≤ 20, value ≤ 12, caption ≤ 24}`: big numbers in a row |
+| `hero` | the page's head, first and only once: `ring` `{value, goal, mode: fill \| countdown, start_ms, end_ms, mood}` with Ember standing in it (`ember` `{mood, pose, react}`), `title ≤ 32` and a quieter `aside ≤ 12`, `sub ≤ 60` (with `sub_icon`, `sub_mood`, or `chips` ≤ 9 before it), `stat` `{value ≤ 6, caption ≤ 16}` at the top right, the next `step` `{tag ≤ 12, tag_mood, text ≤ 48, meta ≤ 12, facts ≤ 32, dots {used, ready, total ≤ 5, next 0..1}}`, and `buttons` ≤ 2 (a press sends `button` with `"card":"dash"`) |
+| `stats` | `title`, `items`: ≤ 4 × `{label ≤ 20, value ≤ 12 or a number, unit "" \| % \| s, caption ≤ 24, mood}`, `cols` 1..4 (rows wrap), `count_up` (numbers count up as it opens) |
 | `sparkline` | `title`, `values`: ≤ 120 numbers, `caption ≤ 40`: a line, oldest first |
-| `bars` | `title`, `items`: ≤ 12 × `{label ≤ 20, value number ≥ 0, caption ≤ 12}`: horizontal bars, longest first as given |
+| `line` | `title`, `values` ≤ 120, `value ≤ 12` (by the title), `delta ≤ 12` with `delta_mood`, `extra ≤ 12`, `band` `{lo, hi, label ≤ 32}`: a line over a shaded range, its last point lit |
+| `bars` | `title`, `items`: ≤ 12 × `{label ≤ 20, value number ≥ 0, caption ≤ 12}`: horizontal bars. With `layout: "columns"`: columns with labels under them, each with `target` (a ghost of what it asks), `today`, `mood` (`done` green, else amber) and `state` (`future`: none yet; `excused`), and `value` and `caption` by the title |
 | `chips` | `title`, `items`: ≤ 12 × `{label ≤ 4, state}`: letters in chips; `state` is `done` (filled green), `tried` (ringed red), `owed` (ringed amber), `fixed` (filled blue), `gone` (struck), or `todo` (quiet, the default) |
-| `list` | `title`, `items`: ≤ 8 × `{title ≤ 40, sub ≤ 60, icon, mood}` |
+| `list` | `title`, `items`: ≤ 8 × `{title ≤ 40, sub ≤ 60, icon, mood}`; with `mark` (`done`, `skip`, `fail`, `none`) an outcome mark leads each row and `sub` sits at its right end |
+| `heatmap` | `title`, `caption`, `weeks` 4..53, `days`: `{date, level 0..1, mood}` (`done` green as deep as the level, `wait` blue: excused, `quiet` a whisper), Monday on top, today ringed |
+| `agenda` | `title`, `caption`, `items`: ≤ 5 × `{at_ms, title ≤ 40, tag ≤ 14, tag_mood, chips ≤ 4}`; Ember sorts them, drops what's past, says when ("in 1h 07m", "Sun night", "Mon 20:05", "Thu 29") and brightens what's within a day; `day_ends` ("04:00") makes a time before it the night before; `empty` is said when nothing's coming |
+| `columns` | `split` 0.3..0.7, `a` and `b`: two widgets (not a hero, not columns) side by side, a hairline between |
+| `note` | `icon`, `text ≤ 80`, `mood`: one quiet line |
 
-`title` is ≤ 32 for every widget and the dashboard (default the plugin's name); at most 12 widgets. A new
-`dashboard` replaces the last; Ember sends `dash` when it opens or closes, so a plugin can send updates only
-while it's open. `{"type":"remove","what":"dashboard"}` takes it back.
+`title` is ≤ 32 for every widget and the dashboard (default the plugin's name); at most 12 widgets. Every widget
+but the hero can fold to one line (a chevron, its title, its `summary ≤ 80`): `fold: true`, `false`, or `"auto"`
+(folded from the bottom up until the page fits the screen); a click unfolds it. A new `dashboard` replaces the
+last; Ember sends `dash` when it opens or closes, so a plugin can send updates only while it's open.
+`{"type":"remove","what":"dashboard"}` takes it back.
+
+Ember's poses in a hero: `calm`, `attentive` (reading), `sidelong` (a look at the button), `game` (eyes front,
+determined: needs the `focus` grant), `sleepy`, `proud`. Its `react` (`hop`, `nod`, `celebrate`) plays once as the
+page opens, through the same limits as a `cheer`. Without a hero, Ember stays in the pill.
 
 **`cheer`**: asks Ember to react (capability `cheer`): `{"type":"cheer","kind":"hop"}`, `nod` or `celebrate`.
 `hop` and `nod` are reactions to something that just happened (a test passed, a letter solved): at most one

@@ -156,28 +156,149 @@ type Card struct {
 	Urgent  bool     `json:"urgent,omitempty"` // before Claude's requests (granted)
 }
 
-// Item is one entry of a widget: a stat, a bar, a chip or a list row, as
-// the widget's kind says.
+// Item is one entry of a widget: a stat, a bar, a chip, a list row or an
+// agenda entry, as the widget's kind says.
 type Item struct {
-	Label   string  `json:"label,omitempty"`   // stats, bars, chips
-	Value   any     `json:"value,omitempty"`   // stats: a string; bars: a number
-	Caption string  `json:"caption,omitempty"` // stats, bars
-	State   string  `json:"state,omitempty"`   // chips
-	Title   string  `json:"title,omitempty"`   // list
-	Sub     string  `json:"sub,omitempty"`     // list
-	Icon    string  `json:"icon,omitempty"`    // list
-	Mood    string  `json:"mood,omitempty"`    // list
-	Num     float64 `json:"-"`                 // bars: Value as a number, after decoding
-	Text    string  `json:"-"`                 // stats: Value as text, after decoding
+	Label   string   `json:"label,omitempty"`   // stats, bars, chips
+	Value   any      `json:"value,omitempty"`   // stats: a string, or a number (with Unit, it can count up); bars: a number
+	Unit    string   `json:"unit,omitempty"`    // stats, a number's: "" | "%" | "s" (seconds, shown as "1h 53m")
+	Caption string   `json:"caption,omitempty"` // stats, bars
+	State   string   `json:"state,omitempty"`   // chips: ChipStates; bars: "" | "future" | "excused"
+	Title   string   `json:"title,omitempty"`   // list, agenda
+	Sub     string   `json:"sub,omitempty"`     // list
+	Icon    string   `json:"icon,omitempty"`    // list
+	Mood    string   `json:"mood,omitempty"`    // list, stats (its dot), bars (its colour: done green, else amber)
+	Mark    string   `json:"mark,omitempty"`    // list: done | skip | fail | none, an outcome instead of an icon
+	Target  *float64 `json:"target,omitempty"`  // bars: a ghost of what it asks
+	Today   bool     `json:"today,omitempty"`   // bars: this one is now
+	AtMs    int64    `json:"at_ms,omitempty"`   // agenda: when
+	Tag     string   `json:"tag,omitempty"`     // agenda: a quiet word at the right
+	TagMood string   `json:"tag_mood,omitempty"`
+	Chips   []Chip   `json:"chips,omitempty"` // agenda: letters at the right
+
+	Num  float64 `json:"-"` // stats, bars: Value as a number, after decoding
+	Text string  `json:"-"` // stats: Value as text, after decoding
 }
 
-// Widget is one section of a dashboard.
+// Band is a shaded range across a line widget.
+type Band struct {
+	Lo    float64 `json:"lo"`
+	Hi    float64 `json:"hi"`
+	Label string  `json:"label,omitempty"`
+}
+
+// Day is one day of a heatmap.
+type Day struct {
+	Date  string  `json:"date"`            // 2006-01-02
+	Level float64 `json:"level,omitempty"` // 0..1: 1 is the whole day's goal
+	Mood  string  `json:"mood,omitempty"`  // done (green, the default), wait (blue: excused), quiet (a whisper)
+}
+
+// HeroRing is the hero's ring: Value of Goal filled, or a countdown that
+// empties (from StartMs to EndMs, or Value of Goal left).
+type HeroRing struct {
+	Value   float64 `json:"value,omitempty"`
+	Goal    float64 `json:"goal,omitempty"`
+	Mode    string  `json:"mode,omitempty"` // fill | countdown
+	StartMs int64   `json:"start_ms,omitempty"`
+	EndMs   int64   `json:"end_ms,omitempty"`
+	Mood    string  `json:"mood,omitempty"`
+}
+
+// HeroEmber is how Ember stands in the hero's ring: its mood, a pose
+// (calm | attentive | sidelong | game | sleepy | proud), and a reaction when
+// the dashboard opens (hop | nod | celebrate, through Ember's gate).
+type HeroEmber struct {
+	Mood  string `json:"mood,omitempty"`
+	Pose  string `json:"pose,omitempty"`
+	React string `json:"react,omitempty"`
+}
+
+// HeroStat is the hero's number at the top right, and its caption.
+type HeroStat struct {
+	Value   string `json:"value"`
+	Caption string `json:"caption,omitempty"`
+}
+
+// Dots are a ladder: used, ready, the next one filling.
+type Dots struct {
+	Used  int     `json:"used"`
+	Ready int     `json:"ready"`
+	Total int     `json:"total"`
+	Next  float64 `json:"next,omitempty"`
+}
+
+// Step is the next thing to do: a tag, the thing, quiet facts, its dots.
+type Step struct {
+	Tag     string `json:"tag,omitempty"`
+	TagMood string `json:"tag_mood,omitempty"`
+	Text    string `json:"text"`
+	Meta    string `json:"meta,omitempty"`  // quieter, after the text ("1400")
+	Facts   string `json:"facts,omitempty"` // under the text
+	Dots    *Dots  `json:"dots,omitempty"`
+}
+
+// Widget is one section of a dashboard. Its kind says which fields count:
+//
+//   - hero: Ring, Ember, Title, Aside, Sub, SubIcon, SubMood, Chips, Stat, Step, Buttons (first, at most one)
+//   - stats: Items (label, value, unit, caption, mood), Cols, CountUp
+//   - sparkline: Values, Caption
+//   - line: Values, Value, Delta, DeltaMood, Extra, Band
+//   - bars: Items (label, value, caption; columns: target, today, mood, state), Layout, Value, Caption
+//   - chips: Items (label, state), Caption
+//   - list: Items (title, sub, icon, mood, mark), Caption
+//   - heatmap: Days, Weeks, Caption
+//   - agenda: Items (at_ms, title, tag, tag_mood, chips), DayEnds, Empty, Caption
+//   - columns: Split, A, B (neither a hero nor columns)
+//   - note: Icon, Text, Mood
+//
+// Every kind but hero may fold to one line: Fold true, false or "auto"
+// (folded from the bottom up until the dashboard fits), showing Summary.
 type Widget struct {
-	Kind    string    `json:"kind"` // stats | sparkline | bars | chips | list
+	Kind    string    `json:"kind"`
 	Title   string    `json:"title,omitempty"`
-	Items   []Item    `json:"items,omitempty"`
-	Values  []float64 `json:"values,omitempty"` // sparkline
 	Caption string    `json:"caption,omitempty"`
+	Items   []Item    `json:"items,omitempty"`
+	Values  []float64 `json:"values,omitempty"`
+	Summary string    `json:"summary,omitempty"`
+	Fold    any       `json:"fold,omitempty"` // true | false | "auto"
+
+	Cols    int    `json:"cols,omitempty"`     // stats
+	CountUp bool   `json:"count_up,omitempty"` // stats
+	Layout  string `json:"layout,omitempty"`   // bars: rows | columns
+	Value   string `json:"value,omitempty"`    // bars, line: the number by the title
+
+	Band      *Band  `json:"band,omitempty"` // line
+	Delta     string `json:"delta,omitempty"`
+	DeltaMood string `json:"delta_mood,omitempty"`
+	Extra     string `json:"extra,omitempty"`
+
+	Weeks int   `json:"weeks,omitempty"` // heatmap
+	Days  []Day `json:"days,omitempty"`
+
+	DayEnds string `json:"day_ends,omitempty"` // agenda: when the day turns, HH:MM ("04:00")
+	Empty   string `json:"empty,omitempty"`    // agenda: said when nothing's coming
+
+	Split float64 `json:"split,omitempty"` // columns
+	A     *Widget `json:"a,omitempty"`
+	B     *Widget `json:"b,omitempty"`
+
+	Icon string `json:"icon,omitempty"` // note
+	Text string `json:"text,omitempty"`
+	Mood string `json:"mood,omitempty"`
+
+	Ring    *HeroRing  `json:"ring,omitempty"` // hero
+	Ember   *HeroEmber `json:"ember,omitempty"`
+	Aside   string     `json:"aside,omitempty"`
+	Sub     string     `json:"sub,omitempty"`
+	SubIcon string     `json:"sub_icon,omitempty"`
+	SubMood string     `json:"sub_mood,omitempty"`
+	Chips   []Chip     `json:"chips,omitempty"`
+	Stat    *HeroStat  `json:"stat,omitempty"`
+	Step    *Step      `json:"step,omitempty"`
+	Buttons []Button   `json:"buttons,omitempty"`
+
+	Folded string `json:"-"` // after decoding: yes | no | auto
 }
 
 // Dashboard is the plugin's page.
@@ -495,8 +616,11 @@ func (d *Dashboard) fit() error {
 		d.Widgets = d.Widgets[:12]
 	}
 	ws := d.Widgets[:0]
-	for _, w := range d.Widgets {
-		if w.fit() {
+	for i, w := range d.Widgets {
+		if w.Kind == "hero" && i > 0 {
+			continue // a hero comes first, once
+		}
+		if w.fit(true) {
 			ws = append(ws, w)
 		}
 	}
@@ -504,14 +628,29 @@ func (d *Dashboard) fit() error {
 	return nil
 }
 
-// fit makes a widget fit; false for a kind this version doesn't draw.
-func (w *Widget) fit() bool {
-	w.Title, w.Caption = Cut(w.Title, 32), Cut(w.Caption, 40)
-	limit := map[string]int{"stats": 4, "bars": 12, "chips": 12, "list": 8, "sparkline": 0}
-	n, ok := limit[w.Kind]
-	if !ok {
+var itemLimit = map[string]int{"stats": 4, "bars": 12, "chips": 12, "list": 8, "agenda": 5,
+	"sparkline": 0, "line": 0, "heatmap": 0, "columns": 0, "note": 0, "hero": 0}
+
+// fit makes a widget fit; false for a kind this version doesn't draw. top
+// is false for a column's children: no hero, no columns there.
+func (w *Widget) fit(top bool) bool {
+	n, ok := itemLimit[w.Kind]
+	if !ok || (!top && (w.Kind == "hero" || w.Kind == "columns")) {
 		return false
 	}
+	w.Title, w.Caption, w.Summary = Cut(w.Title, 32), Cut(w.Caption, 40), Cut(w.Summary, 80)
+	switch f := w.Fold.(type) {
+	case bool:
+		w.Folded = map[bool]string{true: "yes", false: "no"}[f]
+	case string:
+		w.Folded = enum(f, "no", "auto", "yes", "no")
+	default:
+		w.Folded = "no"
+	}
+	if w.Kind == "hero" || !top {
+		w.Folded = "no"
+	}
+	w.Fold = nil
 	if len(w.Items) > n {
 		w.Items = w.Items[:n]
 	}
@@ -521,36 +660,123 @@ func (w *Widget) fit() bool {
 	for i := range w.Values {
 		w.Values[i] = clamp(w.Values[i], -1e12, 1e12)
 	}
-	if w.Kind != "sparkline" {
+	if w.Kind != "sparkline" && w.Kind != "line" {
 		w.Values = nil
+	}
+	w.Value, w.Delta, w.Extra = Cut(w.Value, 12), Cut(w.Delta, 12), Cut(w.Extra, 12)
+	w.DeltaMood = mood(w.DeltaMood, Quiet)
+	switch w.Kind {
+	case "stats":
+		w.Cols = int(clamp(float64(w.Cols), 0, 4))
+		if w.Cols == 0 {
+			w.Cols = max(len(w.Items), 1)
+		}
+	case "bars":
+		w.Layout = enum(w.Layout, "rows", "rows", "columns")
+	case "line":
+		if b := w.Band; b != nil {
+			b.Label = Cut(b.Label, 32)
+			if !(b.Hi > b.Lo) {
+				w.Band = nil
+			}
+		}
+	case "heatmap":
+		w.Weeks = int(clamp(float64(w.Weeks), 4, 53))
+		if len(w.Days) > 53*7 {
+			w.Days = w.Days[len(w.Days)-53*7:]
+		}
+		for i := range w.Days {
+			d := &w.Days[i]
+			d.Date, d.Level, d.Mood = Cut(d.Date, 10), clamp(d.Level, 0, 1), mood(d.Mood, Done)
+		}
+	case "agenda":
+		w.DayEnds, w.Empty = Cut(w.DayEnds, 5), Cut(w.Empty, 60)
+	case "columns":
+		if w.Split == 0 {
+			w.Split = 0.5
+		}
+		w.Split = clamp(w.Split, 0.3, 0.7)
+		if w.A == nil || w.B == nil || !w.A.fit(false) || !w.B.fit(false) {
+			return false
+		}
+	case "note":
+		w.Icon, w.Text, w.Mood = icon(w.Icon), Cut(w.Text, 80), mood(w.Mood, Quiet)
+		if w.Text == "" {
+			return false
+		}
+	case "hero":
+		w.Aside, w.Sub, w.SubIcon, w.SubMood = Cut(w.Aside, 12), Cut(w.Sub, 60), icon(w.SubIcon), mood(w.SubMood, Quiet)
+		w.Chips, w.Buttons = chips(w.Chips), buttons(w.Buttons, 2)
+		if r := w.Ring; r != nil {
+			r.Mode, r.Mood = enum(r.Mode, "fill", "fill", "countdown"), mood(r.Mood, Nudge)
+			r.Value, r.Goal = clamp(r.Value, 0, 1e12), clamp(r.Goal, 0, 1e12)
+		}
+		if e := w.Ember; e != nil {
+			e.Mood = mood(e.Mood, Quiet)
+			e.Pose = enum(e.Pose, "calm", "calm", "attentive", "sidelong", "game", "sleepy", "proud")
+			e.React = enum(e.React, "", "hop", "nod", "celebrate")
+		}
+		if st := w.Stat; st != nil {
+			st.Value, st.Caption = Cut(st.Value, 6), Cut(st.Caption, 16)
+		}
+		if sp := w.Step; sp != nil {
+			sp.Tag, sp.TagMood, sp.Text = Cut(sp.Tag, 12), mood(sp.TagMood, Nudge), Cut(sp.Text, 48)
+			sp.Meta, sp.Facts = Cut(sp.Meta, 12), Cut(sp.Facts, 32)
+			if d := sp.Dots; d != nil {
+				d.Total = int(clamp(float64(d.Total), 0, 5))
+				d.Used, d.Ready = int(clamp(float64(d.Used), 0, float64(d.Total))), int(clamp(float64(d.Ready), 0, float64(d.Total)))
+				d.Next = clamp(d.Next, 0, 1)
+			}
+		}
+	}
+	if w.Kind != "hero" {
+		w.Ring, w.Ember, w.Stat, w.Step, w.Chips, w.Buttons = nil, nil, nil, nil, nil, nil
+	}
+	if w.Kind != "columns" {
+		w.A, w.B = nil, nil
 	}
 	items := w.Items[:0]
 	for _, it := range w.Items {
+		num, isNum := it.Value.(float64)
 		switch w.Kind {
 		case "stats":
-			it.Label, it.Caption = Cut(it.Label, 20), Cut(it.Caption, 24)
+			it.Label, it.Caption, it.Mood = Cut(it.Label, 20), Cut(it.Caption, 24), mood(it.Mood, Quiet)
+			it.Unit = enum(it.Unit, "", "", "%", "s")
 			switch v := it.Value.(type) {
 			case string:
 				it.Text = Cut(v, 12)
 			case float64:
-				it.Text = Cut(fmt.Sprint(v), 12)
+				it.Num, it.Text = clamp(num, -1e12, 1e12), Cut(fmt.Sprint(v), 12)
 			}
 			if it.Label == "" && it.Text == "" {
 				continue
 			}
 		case "bars":
-			it.Label, it.Caption = Cut(it.Label, 20), Cut(it.Caption, 12)
-			if v, ok := it.Value.(float64); ok {
-				it.Num = clamp(v, 0, 1e12)
+			it.Label, it.Caption, it.Mood = Cut(it.Label, 20), Cut(it.Caption, 12), mood(it.Mood, Nudge)
+			it.State = enum(it.State, "", "", "future", "excused")
+			if isNum {
+				it.Num = clamp(num, 0, 1e12)
+			}
+			if t := it.Target; t != nil {
+				*t = clamp(*t, 0, 1e12)
 			}
 		case "chips":
-			it.Label, it.State = Cut(it.Label, 4), enum(it.State, "todo", "done", "tried", "owed", "fixed", "gone", "todo")
+			it.Label, it.State = Cut(it.Label, 4), enum(it.State, "todo", ChipStates...)
 			if it.Label == "" {
 				continue
 			}
 		case "list":
 			it.Title, it.Sub, it.Icon, it.Mood = Cut(it.Title, 40), Cut(it.Sub, 60), icon(it.Icon), mood(it.Mood, Quiet)
+			it.Mark = enum(it.Mark, "", "", "done", "skip", "fail", "none")
 			if it.Title == "" {
+				continue
+			}
+		case "agenda":
+			it.Title, it.Tag, it.TagMood, it.Chips = Cut(it.Title, 40), Cut(it.Tag, 14), mood(it.TagMood, Quiet), chips(it.Chips)
+			if len(it.Chips) > 4 {
+				it.Chips = it.Chips[:4]
+			}
+			if it.Title == "" || it.AtMs <= 0 {
 				continue
 			}
 		}
