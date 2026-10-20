@@ -324,7 +324,10 @@ devices     = true  # Bluetooth audio connecting and disconnecting
 screenshots = true  # a preview when a screenshot is saved
 privacy     = true  # a dot while your screen is being shared or recorded
 
-# Plugins run when their tool is installed; set enabled to turn one on or off.
+# Plugins run when their tool is installed (edge) or when they're in
+# ~/.config/ember/plugins (see docs/PLUGINS.md); ember plugins lists them.
+# [plugins]
+# enabled = "all"   # all | none | ["pomodoro", "edge"]: only these
 # [plugins.edge]
 # enabled = "auto"  # auto | true | false — edge's practice status, cards and dashboard
 ```
@@ -335,8 +338,11 @@ lists settings newer than your file, so you can copy them from here. `hover_dela
 it lived before `[card]`, still works. `EMBER_AWAY_AFTER` (a Go duration, like `20s`) overrides `away_after_s` for
 testing.
 
-`[plugins.<name>]` tables belong to plugins. `enabled = "auto"` runs a plugin when its tool is installed; `true` or
-`false` decides for it. `[show] edge = false` still turns edge off.
+`[plugins] enabled` says which plugins may run at all: `"all"` (the default), `"none"`, or a list of names.
+`[plugins.<name>]` tables belong to plugins. `enabled = "auto"` runs a plugin when its tool is installed (a plugin in
+`~/.config/ember/plugins` always is); `true` or `false` decides for it. `[show] edge = false` still turns edge off.
+Anyone can write a plugin, in any language: [docs/PLUGINS.md](docs/PLUGINS.md). `ember plugins` says how each is
+doing.
 
 ## How it works
 

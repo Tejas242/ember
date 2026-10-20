@@ -56,6 +56,22 @@ type Status struct {
 	Config      string   `json:"config"`
 	Plugins     []string `json:"plugins"` // running, with a word on each
 	Sources     []Source `json:"sources"` // each watcher: running, or why not
+	Extern      []Plugin `json:"extern"`  // the plugins in ~/.config/ember/plugins
+}
+
+// Plugin is how an external plugin is doing.
+type Plugin struct {
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	State       string    `json:"state"` // starting | running | waiting | suspended | stopped | off | broken
+	Caps        []string  `json:"caps,omitempty"`
+	Since       time.Time `json:"since"`
+	Restarts    int       `json:"restarts"`
+	Dropped     int       `json:"dropped"`
+	Violations  int       `json:"violations"`
+	LastError   string    `json:"lastError,omitempty"`
+	Log         []string  `json:"log,omitempty"`
+	Dir         string    `json:"dir,omitempty"`
 }
 
 // Source is one of the island's watchers (volume, battery, niri, …).

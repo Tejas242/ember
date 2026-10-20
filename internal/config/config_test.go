@@ -173,3 +173,26 @@ func writeFile(t *testing.T, p, s string) {
 		t.Fatal(err)
 	}
 }
+
+func TestPluginsEnabled(t *testing.T) {
+	for text, want := range map[string]map[string]bool{
+		"":                                    {"edge": true, "pomodoro": true},
+		"[plugins]\nenabled = \"all\"":        {"edge": true, "pomodoro": true},
+		"[plugins]\nenabled = \"none\"":       {"edge": false, "pomodoro": false},
+		"[plugins]\nenabled = [\"pomodoro\"]": {"edge": false, "pomodoro": true},
+		"[plugins]\nenabled = ['edge', 'ci']\n[plugins.edge]\nenabled = false": {"edge": false, "ci": true, "pomodoro": false},
+	} {
+		c, warns, _ := parse(text)
+		if len(warns) > 0 {
+			t.Fatalf("%q: %v", text, warns)
+		}
+		for name, on := range want {
+			if c.PluginOn(name, true) != on {
+				t.Errorf("%q: %s on = %v", text, name, !on)
+			}
+		}
+	}
+	if _, warns, _ := parse("[plugins]\nenabled = \"some\"\ncolour = 1"); len(warns) != 2 {
+		t.Fatalf("%v", warns)
+	}
+}

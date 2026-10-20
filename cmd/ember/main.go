@@ -66,7 +66,8 @@ func init() {
 		{group: 1, name: "next", summary: "switch what the pill shows", run: send("next")},
 		{group: 1, name: "prev", summary: "switch back", run: send("prev")},
 		{group: 1, name: "play", summary: "play / pause", run: send("play")},
-		{group: 1, name: "dash", args: "[name]", max: 1, summary: "open or close a plugin's dashboard (edge)", run: withArg("dash")},
+		{group: 1, name: "dash", args: "[name]", max: 1, summary: "open or close a plugin's dashboard", run: withArg("dash")},
+		{group: 1, name: "plugins", args: "[name]", max: 1, summary: "each plugin: its state, its health, its last error", run: runPlugins},
 
 		{group: 2, name: "allow", summary: "allow the oldest permission request", run: send("allow")},
 		{group: 2, name: "deny", summary: "deny it", run: send("deny")},
@@ -154,7 +155,7 @@ func overview() string {
 		fmt.Fprintf(&b, "  %-28s %s\n", c.short(), c.summary)
 	}
 	b.WriteString("\nember help <command> says more about one.\n")
-	b.WriteString("\nPlugins: edge (on when edge is installed; [plugins.edge] in the config)\n")
+	b.WriteString("\nPlugins: edge (on when edge is installed), and any in ~/.config/ember/plugins (docs/PLUGINS.md)\n")
 	b.WriteString("\nConfig: ~/.config/ember/config.toml (re-read on change)\n")
 	return b.String()
 }

@@ -7,9 +7,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Tejas242/ember/internal/config"
 	"github.com/Tejas242/ember/internal/ipc"
+	"github.com/Tejas242/ember/internal/plugin"
 )
 
 // doctor checks every piece Ember depends on and says what to do about
@@ -118,6 +120,22 @@ func doctor() {
 		}
 	} else {
 		note("config", "defaults (ember install writes "+cfg+")")
+	}
+	ps := st.Extern // the plugins: the island says how each is doing; without it, what's installed
+	if !up {
+		ps = pluginsOnDisk()
+	}
+	for _, p := range ps {
+		switch p.State {
+		case plugin.Running, "installed":
+			line(true, p.Name, "plugin: "+health(p, time.Now()), "")
+		case plugin.Suspended:
+			line(false, p.Name, "plugin "+health(p, time.Now()), "fix it, then save its plugin.toml (ember plugins "+p.Name+")")
+		case plugin.Broken:
+			line(false, p.Name, "plugin: "+p.LastError, "fix "+filepath.Join(p.Dir, "plugin.toml"))
+		default:
+			note(p.Name, "plugin: "+health(p, time.Now()))
+		}
 	}
 	if p := filepath.Join(h, ".config", "alacritty", "themes", "noctalia.toml"); fileExists(p) {
 		line(true, "palette", "follows Noctalia's wallpaper colours", "")

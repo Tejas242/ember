@@ -85,6 +85,12 @@ func (a *app) status() ipc.Status {
 			st.Sources = append(st.Sources, ipc.Source{Name: h.Name, OK: h.OK, Detail: h.Detail})
 		}
 	}
+	if a.host != nil {
+		for _, p := range a.host.Info() {
+			st.Extern = append(st.Extern, ipc.Plugin{Name: p.Name, Description: p.Description, State: p.State, Caps: p.Caps,
+				Since: p.Since, Restarts: p.Restarts, Dropped: p.Dropped, Violations: p.Violations, LastError: p.LastError, Log: p.Log, Dir: p.Dir})
+		}
+	}
 	return st
 }
 

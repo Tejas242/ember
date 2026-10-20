@@ -46,7 +46,8 @@ type Config struct {
 	Privacy     bool // [show] privacy: screen sharing
 	Done        bool // [show] done: "Done · project" when Claude finishes
 
-	Plugins map[string]map[string]string // [plugins.<name>] tables: raw key → value (quotes stripped)
+	Plugins     map[string]map[string]string // [plugins.<name>] tables: raw key → value (quotes stripped)
+	PluginsOnly []string                     // [plugins] enabled = [...]: only these run; nil means all
 }
 
 // The defaults the island's own code also uses.
@@ -116,7 +117,10 @@ devices     = true  # Bluetooth audio connecting and disconnecting
 screenshots = true  # a preview when a screenshot is saved
 privacy     = true  # a dot while your screen is being shared or recorded
 
-# Plugins run when their tool is installed; set enabled to turn one on or off.
+# Plugins run when their tool is installed (edge) or when they're in
+# ~/.config/ember/plugins (see docs/PLUGINS.md); ember plugins lists them.
+# [plugins]
+# enabled = "all"   # all | none | ["pomodoro", "edge"]: only these
 # [plugins.edge]
 # enabled = "auto"  # auto | true | false — edge's practice status, cards and dashboard
 `
@@ -150,7 +154,7 @@ func Check(path string) (warns, missing []string) {
 	return warns, missing
 }
 
-var configSections = []string{"", "pill", "card", "moments", "claude", "look", "show"}
+var configSections = []string{"", "pill", "card", "moments", "claude", "look", "show", "plugins"}
 
 // parse reads the small part of TOML Ember needs: sections and
 // key = value lines. It never fails: an unknown key is skipped and a value
@@ -181,6 +185,19 @@ func parse(text string) (c Config, warns, keys []string) {
 			continue
 		}
 		k, v = strings.TrimSpace(k), strings.Trim(strings.TrimSpace(v), `"'`)
+		if section == "plugins" {
+			if k != "enabled" {
+				warn("unknown key plugins.%s", k)
+				continue
+			}
+			if only, ok := pluginList(v); ok {
+				c.PluginsOnly = only
+				keys = append(keys, "plugins.enabled")
+			} else {
+				warn(`plugins.enabled must be "all", "none" or a list: ["pomodoro", "edge"]`)
+			}
+			continue
+		}
 		if name, ok := strings.CutPrefix(section, "plugins."); ok {
 			name = strings.Trim(name, `"'`)
 			if c.Plugins == nil {
@@ -339,12 +356,36 @@ func stripComment(ln string) string {
 	return ln
 }
 
-// PluginOn reports whether a plugin should run: [plugins.<name>] enabled =
-// "auto" (the default: run if its tool is installed, i.e. detected), true
-// or false.
+// pluginList reads [plugins] enabled: "all" (nil), "none" (empty), or a
+// list of names.
+func pluginList(v string) ([]string, bool) {
+	switch v {
+	case "all":
+		return nil, true
+	case "none", "[]":
+		return []string{}, true
+	}
+	if !strings.HasPrefix(v, "[") || !strings.HasSuffix(v, "]") {
+		return nil, false
+	}
+	out := []string{}
+	for _, n := range strings.Split(v[1:len(v)-1], ",") {
+		if n = strings.Trim(strings.TrimSpace(n), `"'`); n != "" {
+			out = append(out, n)
+		}
+	}
+	return out, true
+}
+
+// PluginOn reports whether a plugin should run: in [plugins] enabled (all,
+// by default), and then [plugins.<name>] enabled = "auto" (the default: run
+// if its tool is installed, i.e. detected), true or false.
 func (c Config) PluginOn(name string, detected bool) bool {
 	if name == "edge" && !c.Edge {
 		return false // [show] edge = false, from before plugins
+	}
+	if c.PluginsOnly != nil && !slices.Contains(c.PluginsOnly, name) {
+		return false
 	}
 	if b, err := strconv.ParseBool(c.Plugins[name]["enabled"]); err == nil {
 		return b
