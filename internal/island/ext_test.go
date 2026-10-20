@@ -325,8 +325,7 @@ func TestExtGrants(t *testing.T) {
 	if g.a.ui.extFocus() || g.a.ui.extClockBadge() != "" {
 		t.Fatal("focus and the clock's badge without grants")
 	}
-	g.a.cfg.Plugins = map[string]map[string]string{"edge": {"grants": `["critical", "badge", "focus"]`}}
-	g.a.ui.cfg = g.a.cfg
+	g.a.ui.cfg.Plugins = map[string]map[string]string{"edge": {"grants": `["critical", "badge", "focus"]`}}
 	if s := g.a.ui.extSalience("x:edge"); s != 0.95 || !g.a.ui.extFocus() || g.a.ui.extClockBadge() != "lock" {
 		t.Fatalf("granted: %v %v %q", s, g.a.ui.extFocus(), g.a.ui.extClockBadge())
 	}
@@ -343,8 +342,7 @@ func TestExtGrants(t *testing.T) {
 	if p := g.a.ui.primary(); p != "x:edge" {
 		t.Fatalf("critical outranks Claude at work: %s", p)
 	}
-	g.a.cfg.Plugins = nil
-	g.a.ui.cfg = g.a.cfg
+	g.a.ui.cfg.Plugins = nil
 	g.run(5 * time.Second)
 	if p, s := g.a.ui.primary(), g.a.ui.secondary("claude"); p != "claude" || s != "x:edge" {
 		t.Fatalf("primary %s, satellite %s", p, s)

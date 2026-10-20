@@ -50,8 +50,8 @@ func (a *app) toPlugin(name string, payload json.RawMessage) {
 // (stop ends it).
 func (a *app) startPlugins(ctx context.Context, stop func()) {
 	a.host = plugin.NewHost(filepath.Join(xdg.ConfigHome(), "ember", "plugins"), a.version, extSink{posts: a.posts, ctx: ctx})
-	a.host.Enabled = func(name string) bool { return a.cfg.PluginOn(name, true) } // Scan runs on the loop
-	a.host.Grants = func(name string) []string { return a.cfg.PluginGrants(name) }
+	a.host.Enabled = func(name string) bool { return a.ui.cfg.PluginOn(name, true) } // Scan runs on the loop
+	a.host.Grants = func(name string) []string { return a.ui.cfg.PluginGrants(name) }
 	a.stopAll = stop
 	a.host.Start(ctx)
 }

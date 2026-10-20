@@ -438,7 +438,6 @@ func TestGallery(t *testing.T) {
 		g := newScene()
 		g.clock = at
 		edgeSays(g.a.ui, nil, st)
-		g.a.cfg = g.a.ui.cfg
 		g.run(500 * time.Millisecond)
 		g.a.ui.openDash("edge")
 		g.run(2500 * time.Millisecond)
@@ -476,5 +475,4 @@ func (g *galleryScene) edge() {
 	}
 	st := edgeFixture()
 	edgeSays(g.a.ui, &adapter.Status{Today: 1, Need: 2, Streak: 4}, st)
-	g.a.cfg = g.a.ui.cfg
 }

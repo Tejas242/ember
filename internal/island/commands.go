@@ -37,18 +37,18 @@ func (a *app) key(k string) {
 		a.extKey(k)
 	case strings.HasPrefix(k, "open:"):
 		go exec.Command("xdg-open", strings.TrimPrefix(k, "open:")).Run()
-	case strings.HasPrefix(k, "music:seek:") && a.track != nil:
+	case strings.HasPrefix(k, "music:seek:") && a.ui.track != nil:
 		d, _ := strconv.ParseInt(strings.TrimPrefix(k, "music:seek:"), 10, 64)
-		a.music.Seek(a.track.Player, time.Duration(d))
-	case strings.HasPrefix(k, "music:volume:") && a.track != nil:
+		a.music.Seek(a.ui.track.Player, time.Duration(d))
+	case strings.HasPrefix(k, "music:volume:") && a.ui.track != nil:
 		d, _ := strconv.Atoi(strings.TrimPrefix(k, "music:volume:"))
-		a.music.NudgeVolume(a.track.Player, float64(d)*0.05)
-	case strings.HasPrefix(k, "music:") && a.track != nil:
+		a.music.NudgeVolume(a.ui.track.Player, float64(d)*0.05)
+	case strings.HasPrefix(k, "music:") && a.ui.track != nil:
 		if method := map[string]string{"music:prev": "Previous", "music:toggle": "PlayPause", "music:next": "Next"}[k]; method != "" {
-			a.music.Control(a.track.Player, method)
+			a.music.Control(a.ui.track.Player, method)
 			if method == "PlayPause" { // feel instant; the player confirms a moment later
-				a.track.Playing = !a.track.Playing
-				a.track.PosAt = a.ui.now()
+				a.ui.track.Playing = !a.ui.track.Playing
+				a.ui.track.PosAt = a.ui.now()
 			}
 		}
 	}

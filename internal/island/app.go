@@ -34,9 +34,7 @@ type app struct {
 	lastDash  string               // the dashboard open last time we looked: plugins hear of a change
 	cliLast   map[string]time.Time // when each one-liner last changed what shows
 	version   string
-	track     *Track
 	posts     chan func(*app)
-	cfg       config.Config
 	cfgAt     time.Time // the config file's mtime when read
 	desk      desktop
 	started   time.Time
@@ -51,8 +49,8 @@ func (a *app) status() ipc.Status {
 		Blur: a.win.Caps().Blur, CursorShape: a.win.Caps().CursorShape, Presence: a.win.Caps().Idle, Niri: a.desk.live, Music: a.music.Connected(),
 		Volume: a.ui.vol.ok, Backlight: a.ui.light >= 0, Battery: a.ui.power != nil,
 		Sessions: len(a.ui.sessions), Pending: len(a.ui.cards), Config: "defaults"}
-	if a.track != nil {
-		st.Track = a.track.Title
+	if a.ui.track != nil {
+		st.Track = a.ui.track.Title
 	}
 	if !mtime(config.Path()).IsZero() {
 		st.Config = config.Path()
@@ -79,7 +77,7 @@ func (a *app) raise(why string) {
 	go func() { // the bar may have changed too: take its new look
 		b := readBar()
 		a.posts <- func(a *app) {
-			if b.h != a.ui.BarH && a.cfg.BarHeight == 0 {
+			if b.h != a.ui.BarH && a.ui.cfg.BarHeight == 0 {
 				a.ui.BarH = b.h
 				a.ui.Invalidate()
 			}
@@ -98,20 +96,19 @@ func (a *app) reloadConfig() bool {
 		a.cfgAt = time.Unix(1, 0) // no file: defaults, and don't look again until one appears
 	}
 	var warns []string
-	a.cfg, warns = config.Load(config.Path())
+	a.ui.cfg, warns = config.Load(config.Path())
 	for _, w := range warns {
 		log.Println(w)
 	}
-	a.ui.cfg = a.cfg
-	a.ui.TimeFmt = a.cfg.TimeFormat()
-	if h := float32(a.cfg.BarHeight); h > 0 && h != a.ui.BarH { // a bar that isn't Noctalia's says its height here
+	a.ui.TimeFmt = a.ui.cfg.TimeFormat()
+	if h := float32(a.ui.cfg.BarHeight); h > 0 && h != a.ui.BarH { // a bar that isn't Noctalia's says its height here
 		a.ui.BarH = h
 	}
-	a.ui.pal = applyLook(a.cfg, loadPalette())
+	a.ui.pal = applyLook(a.ui.cfg, loadPalette())
 	if a.win != nil {
-		a.win.WatchIdle(a.cfg.Away())
+		a.win.WatchIdle(a.ui.cfg.Away())
 	}
-	a.ui.casting = a.desk.casts > 0 && a.cfg.Privacy
+	a.ui.casting = a.desk.casts > 0 && a.ui.cfg.Privacy
 	a.reconcile()
 	return true
 }
@@ -163,9 +160,9 @@ func Run(version string) error {
 }
 
 func (a *app) setTrack(t *Track) {
-	prev := a.track
+	prev := a.ui.track
 	if a.ui.audio != nil { // the equaliser listens only while a song plays
-		a.ui.audio.Set(t != nil && t.Playing && a.cfg.Music)
+		a.ui.audio.Set(t != nil && t.Playing && a.ui.cfg.Music)
 	}
 	if t != nil && !t.Playing { // when it stopped: a song paused long ago leaves the card
 		t.PausedAt = a.ui.now()
@@ -173,12 +170,12 @@ func (a *app) setTrack(t *Track) {
 			t.PausedAt = prev.PausedAt
 		}
 	}
-	a.track, a.ui.track = t, t
+	a.ui.track = t
 	if t != nil && t.Playing && (prev == nil || prev.Title != t.Title) {
 		a.ui.mind.novel["music"] = a.ui.now()
 		a.ui.mind.kick(a.ui.now(), 0.1, 0.1)
 	}
-	if t != nil && t.Playing && a.cfg.Music && (prev == nil || prev.Title != t.Title) && a.ui.primary() != "music" && a.ui.primary() != "moment" {
+	if t != nil && t.Playing && a.ui.cfg.Music && (prev == nil || prev.Title != t.Title) && a.ui.primary() != "music" && a.ui.primary() != "moment" {
 		a.ui.Moment(moment{key: "track:" + t.Title, act: "music", mood: moodIdle, text: t.Title, sub: t.Artist,
 			until: a.ui.now().Add(4 * time.Second)})
 	}
@@ -191,7 +188,7 @@ func (a *app) setTrack(t *Track) {
 		if t.ArtURL != "" {
 			loadArt(t.ArtURL, func(art *albumArt) {
 				a.posts <- func(a *app) {
-					if a.track != nil && a.track.ArtURL == art.url {
+					if a.ui.track != nil && a.ui.track.ArtURL == art.url {
 						a.ui.art = art
 					}
 				}

@@ -49,7 +49,7 @@ type power struct {
 func charging(s uint32) bool { return s == 1 || s == 4 || s == 5 }
 
 func (a *app) powerChanged(prev, p power) {
-	if !a.cfg.Battery {
+	if !a.ui.cfg.Battery {
 		return
 	}
 	now := a.ui.now()
@@ -93,7 +93,7 @@ func pctText(p float64) string { return strconv.Itoa(int(p+0.5)) + "%" }
 // ---- Bluetooth audio (BlueZ) ----
 
 func (a *app) deviceChanged(name, kind string, on bool, pct float64) {
-	if !a.cfg.Devices {
+	if !a.ui.cfg.Devices {
 		return
 	}
 	icon := "bluetooth"
@@ -126,7 +126,7 @@ func (a *app) volumeChanged(l level) {
 		l.v = a.ui.vol.v // your hand wins over the echo of an older position
 	}
 	a.ui.vol = l
-	if !a.cfg.OSD {
+	if !a.ui.cfg.OSD {
 		return
 	}
 	icon, tint := "volume", a.ui.pal.fg
@@ -137,7 +137,7 @@ func (a *app) volumeChanged(l level) {
 		icon = "volume-low"
 	}
 	m := moment{key: "osd:volume", icon: icon, tint: tint, meter: true, level: min(l.v, 1), right: strconv.Itoa(int(l.v*100 + 0.5)),
-		until: a.ui.now().Add(a.cfg.OSDFor), osd: true}
+		until: a.ui.now().Add(a.ui.cfg.OSDFor), osd: true}
 	if l.muted {
 		m.right = "Muted"
 	}
@@ -145,10 +145,10 @@ func (a *app) volumeChanged(l level) {
 }
 
 func (a *app) micChanged(muted bool) {
-	if !a.cfg.OSD {
+	if !a.ui.cfg.OSD {
 		return
 	}
-	m := moment{key: "osd:mic", icon: "mic", tint: a.ui.pal.green, text: "Microphone on", until: a.ui.now().Add(a.cfg.OSDFor), osd: true}
+	m := moment{key: "osd:mic", icon: "mic", tint: a.ui.pal.green, text: "Microphone on", until: a.ui.now().Add(a.ui.cfg.OSDFor), osd: true}
 	if muted {
 		m.icon, m.tint, m.text = "mic-off", a.ui.pal.red, "Microphone muted"
 	}
@@ -162,11 +162,11 @@ func (a *app) brightnessChanged(v float64) {
 		return
 	}
 	a.ui.light = v
-	if !a.cfg.OSD {
+	if !a.ui.cfg.OSD {
 		return
 	}
 	a.ui.Moment(moment{key: "osd:brightness", icon: "sun", tint: a.ui.pal.yellow, meter: true, level: v,
-		right: strconv.Itoa(int(v*100 + 0.5)), until: a.ui.now().Add(a.cfg.OSDFor), osd: true})
+		right: strconv.Itoa(int(v*100 + 0.5)), until: a.ui.now().Add(a.ui.cfg.OSDFor), osd: true})
 }
 
 // screenshotTaken loads a small preview and shows it.
@@ -183,7 +183,7 @@ func screenshotTaken(posts chan<- func(*app), path string) {
 }
 
 func (a *app) screenshot(path string, thumb *image.RGBA) {
-	if !a.cfg.Screenshots {
+	if !a.ui.cfg.Screenshots {
 		return
 	}
 	key := "shot:" + path

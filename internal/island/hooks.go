@@ -25,11 +25,11 @@ func (a *app) sweep() bool {
 		case !slices.ContainsFunc(s.Pids, ipc.Alive) || (s.State == "idle" && quiet > 3*time.Hour):
 			a.forget(id)
 			changed = true
-		case s.State != "idle" && quiet > a.cfg.Settle && !a.hasCard(id):
+		case s.State != "idle" && quiet > a.ui.cfg.Settle && !a.hasCard(id):
 			s.State, s.Label = "idle", ""
 			changed = true
 		}
-		if s.sweepAgents(now, a.cfg.AgentQuiet) {
+		if s.sweepAgents(now, a.ui.cfg.AgentQuiet) {
 			changed = true
 		}
 	}
@@ -247,7 +247,7 @@ func (a *app) hook(m ipc.Msg, answer chan<- json.RawMessage) string {
 			a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"done", a.ui.name(s), s.ID})
 			break
 		}
-		if !a.cfg.Done || a.looking(s) || s.running() > 0 {
+		if !a.ui.cfg.Done || a.looking(s) || s.running() > 0 {
 			break // they're looking at it, or it isn't done: its agents work on
 		}
 		a.done(s, summarize(in.LastMessage), now)
@@ -260,7 +260,7 @@ func (a *app) hook(m ipc.Msg, answer chan<- json.RawMessage) string {
 func (a *app) done(s *Session, summary string, now time.Time) {
 	name := a.ui.short(s)
 	m := moment{key: "done:" + s.ID, act: "claude", mood: moodHappy, verb: "Done", text: name,
-		sub: summary, until: now.Add(a.cfg.DoneFor), focus: s.ID, many: []string{name}, cheer: s.cheer}
+		sub: summary, until: now.Add(a.ui.cfg.DoneFor), focus: s.ID, many: []string{name}, cheer: s.cheer}
 	s.cheer = cheer{}
 	if cur := a.ui.moment; cur != nil && strings.HasPrefix(cur.key, "done") && now.Before(cur.until) {
 		names := cur.many
@@ -271,7 +271,7 @@ func (a *app) done(s *Session, summary string, now time.Time) {
 			m.key, m.many = "done:many", names
 			m.text = strings.Join(names, ", ")
 			m.sub = fmt.Sprintf("%d sessions finished", len(names))
-			m.until = now.Add(a.cfg.DoneFor + time.Second)
+			m.until = now.Add(a.ui.cfg.DoneFor + time.Second)
 		}
 	}
 	a.ui.Moment(m)
@@ -312,12 +312,12 @@ func (a *app) permission(s *Session, in hookInput, tin map[string]any, answer ch
 		a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"wait", a.ui.name(s), s.ID})
 	}
 	str := func(k string) string { v, _ := tin[k].(string); return v }
-	if !a.cfg.Answer { // [claude] answer = false: the terminal asks
+	if !a.ui.cfg.Answer { // [claude] answer = false: the terminal asks
 		answer <- nil
 		return ""
 	}
 	c := &Card{ID: "perm:" + s.ID + ":" + fmt.Sprint(time.Now().UnixNano()), Kind: "perm", Mood: moodWait,
-		Eyebrow: a.ui.short(s) + " wants to " + wants(in.Tool), Priority: 10, Footer: "Answer in terminal", Expires: a.ui.now().Add(a.cfg.Wait)}
+		Eyebrow: a.ui.short(s) + " wants to " + wants(in.Tool), Priority: 10, Footer: "Answer in terminal", Expires: a.ui.now().Add(a.ui.cfg.Wait)}
 	switch in.Tool {
 	case "Bash": // Claude says what it wants in words: that's the title; the command is the detail
 		c.Title, c.Code, c.Shell = str("description"), str("command"), true
@@ -499,12 +499,12 @@ func (a *app) ask(s *Session, in hookInput, tin map[string]any, answer chan<- js
 	var qs []question
 	b, _ := json.Marshal(tin["questions"])
 	json.Unmarshal(b, &qs)
-	if len(qs) == 0 || !a.cfg.Answer {
+	if len(qs) == 0 || !a.ui.cfg.Answer {
 		answer <- nil
 		return ""
 	}
 	answers := map[string]string{}
-	deadline := a.ui.now().Add(a.cfg.Wait)
+	deadline := a.ui.now().Add(a.ui.cfg.Wait)
 	id := "ask:" + s.ID
 	var show func(i int)
 	show = func(i int) {

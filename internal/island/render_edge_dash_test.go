@@ -144,7 +144,6 @@ func TestEdgeDashStates(t *testing.T) {
 		u.start, u.lastBlink, u.bounceAt = g.clock, g.clock, g.clock.Add(-time.Hour)
 		g.a.ui = u
 		edgeSays(u, nil, &st)
-		g.a.cfg = u.cfg
 		g.run(500 * time.Millisecond)
 		u.openDash("edge")
 		g.run(s.at)

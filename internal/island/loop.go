@@ -102,9 +102,9 @@ func (a *app) loop(ctx context.Context) error {
 			return fmt.Errorf("layer surface closed")
 		}
 		// the open card shows a progress bar: re-read the playhead now and then
-		if a.ui.lastView == vExpanded && a.track != nil && a.track.Playing && time.Since(lastPos) > 5*time.Second {
+		if a.ui.lastView == vExpanded && a.ui.track != nil && a.ui.track.Playing && time.Since(lastPos) > 5*time.Second {
 			lastPos = time.Now()
-			a.music.ReadPosition(a.track.Player)
+			a.music.ReadPosition(a.ui.track.Player)
 		}
 		if f.waiting && time.Since(f.waitingSince) > frameGrace {
 			f.waiting = false // niri skipped the callback (nothing on screen changed)
@@ -146,7 +146,7 @@ func (a *app) housekeep(saveDue *bool) {
 	a.ui.habits.save()
 	a.ui.bond.save()
 	a.ui.day.save()
-	if p := applyLook(a.cfg, loadPalette()); p != a.ui.pal { // the wallpaper palette changed
+	if p := applyLook(a.ui.cfg, loadPalette()); p != a.ui.pal { // the wallpaper palette changed
 		a.ui.pal = p
 		a.ui.Invalidate()
 	}

@@ -66,5 +66,4 @@ func (d *edgeDriver) say(raw []byte) {
 		return
 	}
 	edgeSays(d.a.ui, d.status, d.stats)
-	d.a.cfg = d.a.ui.cfg
 }
