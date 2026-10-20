@@ -154,6 +154,42 @@ func Check(path string) (warns, missing []string) {
 	return warns, missing
 }
 
+// Paste is the shipped lines for missing keys (as Check names them), each
+// under its section header, ready to paste into the file: the defaults with
+// their comments. Top-level keys come first, as they must.
+func Paste(missing []string) string {
+	var top, rest []string
+	section, header := "", ""
+	for _, raw := range strings.Split(DefaultText, "\n") {
+		ln := strings.TrimSpace(raw)
+		if strings.HasPrefix(ln, "[") {
+			section, header = strings.Trim(ln, "[]"), ln
+			continue
+		}
+		k, _, ok := strings.Cut(stripComment(ln), "=")
+		if !ok || strings.HasPrefix(ln, "#") {
+			continue
+		}
+		key := strings.TrimSpace(k)
+		if section != "" {
+			key = section + "." + key
+		}
+		if !slices.Contains(missing, key) {
+			continue
+		}
+		if section == "" {
+			top = append(top, raw)
+			continue
+		}
+		if header != "" {
+			rest = append(rest, header)
+			header = ""
+		}
+		rest = append(rest, raw)
+	}
+	return strings.Join(append(top, rest...), "\n")
+}
+
 var configSections = []string{"", "pill", "card", "moments", "claude", "look", "show", "plugins"}
 
 // parse reads the small part of TOML Ember needs: sections and

@@ -204,3 +204,20 @@ func TestPluginGrants(t *testing.T) {
 		t.Fatalf("%v %v %v", c.PluginGrants("edge"), c.PluginGrants("ci"), warns)
 	}
 }
+
+// Paste gives missing keys as the shipped lines, under their sections.
+func TestPaste(t *testing.T) {
+	got := Paste([]string{"clock", "card.others", "card.steps", "claude.wait_s"})
+	want := `clock        = "12h"  # 12h | 24h
+[card]
+steps          = 4    # timeline steps, at most (1-4; fewer when other rows need the room)
+others         = 3    # sessions listed besides the first; the rest fold into "N more" (0-3)
+[claude]
+wait_s          = 85    # how long a request waits on the island before the terminal asks (5-85)`
+	if got != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+	if Paste(nil) != "" {
+		t.Fatal("nothing missing, something to paste")
+	}
+}

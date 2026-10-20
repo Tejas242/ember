@@ -6,12 +6,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/Tejas242/ember/internal/config"
 	"github.com/Tejas242/ember/internal/ipc"
 	"github.com/Tejas242/ember/internal/plugin"
+	"github.com/Tejas242/ember/internal/wayland"
 )
 
 // doctor checks every piece Ember depends on and says what to do about
@@ -36,6 +38,20 @@ func doctor() {
 
 	exe, _ := executable() // the path install writes into the hooks
 	fmt.Printf("ember %s  %s\n\n", versionString(), exe)
+
+	layerShell := "use a compositor with layer-shell (niri, Hyprland, Sway, river…)"
+	if os.Getenv("WAYLAND_DISPLAY") == "" {
+		line(false, "wayland", "no WAYLAND_DISPLAY in this shell", "run ember doctor inside your Wayland session")
+	} else if gs, err := wayland.Globals(); err != nil {
+		line(false, "wayland", "can't reach the compositor at "+wayland.Socket(), "run ember doctor inside your Wayland session")
+	} else if !slices.Contains(gs, "zwlr_layer_shell_v1") {
+		line(false, "wayland", "the compositor has no zwlr_layer_shell_v1, so Ember can't show", layerShell)
+	} else {
+		line(true, "wayland", os.Getenv("WAYLAND_DISPLAY")+" · zwlr_layer_shell_v1", "")
+	}
+	if dir := filepath.Dir(exe); !onPath(dir, os.Getenv("PATH")) {
+		line(false, "path", tilde(dir)+" isn't on your PATH, so `ember allow` and friends aren't found", "add it to PATH, or run "+tilde(exe))
+	}
 
 	active := exec.Command("systemctl", "--user", "is-active", "--quiet", "ember.service").Run() == nil
 	enabled := exec.Command("systemctl", "--user", "is-enabled", "--quiet", "ember.service").Run() == nil
@@ -64,7 +80,7 @@ func doctor() {
 		line(st.Presence, "presence", map[bool]string{true: "ext-idle-notify-v1: knows when you're away",
 			false: "no ext-idle-notify-v1: no \"while you were away\""}[st.Presence], "")
 		line(st.Niri, "niri", map[bool]string{true: "event stream: focus, terminal titles, screen sharing",
-			false: why("niri", "no niri event stream: Done notes can't tell where you're looking")}[st.Niri], "")
+			false: why("niri", "no niri event stream: screen sharing isn't detected and Done notes can't tell where you're looking")}[st.Niri], "")
 		line(st.Music, "music", map[bool]string{true: "MPRIS on the session bus" + map[bool]string{true: " · " + st.Track, false: ""}[st.Track != ""],
 			false: why("music", "no session bus")}[st.Music], "")
 		line(st.Volume, "volume", map[bool]string{true: "wpctl / pactl", false: why("volume", "no PipeWire volume: no volume OSD")}[st.Volume], "install wireplumber and libpulse (pactl)")
@@ -89,19 +105,32 @@ func doctor() {
 	}
 
 	h, _ := os.UserHomeDir()
+	if p, err := exec.LookPath("claude"); err == nil {
+		line(true, "claude", "Claude Code at "+tilde(p), "")
+	} else if fileExists(filepath.Join(h, ".claude")) {
+		line(true, "claude", "Claude Code's settings in ~/.claude", "")
+	} else {
+		note("claude", "Claude Code not found (no claude on PATH, no ~/.claude); after installing it, run ember install")
+	}
 	settings := filepath.Join(h, ".claude", "settings.json")
 	n, stale := hookCount(settings, exe)
 	switch {
 	case n == 0:
 		line(false, "claude hooks", "none in "+settings, "ember install")
 	case stale > 0:
-		line(false, "claude hooks", fmt.Sprintf("%d point at another ember binary", stale), "ember install")
+		raw, _ := os.ReadFile(settings)
+		line(false, "claude hooks", fmt.Sprintf("%d run %s, not this binary", stale, strings.Join(staleBins(raw, exe), ", ")),
+			"ember install (it points them here)")
 	case n != len(emberHooks):
 		line(false, "claude hooks", fmt.Sprintf("%d of %d: from another Ember version", n, len(emberHooks)), "ember install, then restart Claude sessions")
 	default:
 		line(true, "claude hooks", fmt.Sprintf("%d hooks in %s", n, settings), "")
 	}
 
+	c, _ := config.Load(config.Path())
+	if c.BarHeight == 0 && !noctalia() {
+		note("bar", "guessing a 24 px bar (no Noctalia); set [look] bar_height in "+tilde(config.Path())+" to your bar's height")
+	}
 	if cfg := config.Path(); fileExists(cfg) {
 		line(true, "config", cfg, "")
 		warns, missing := config.Check(cfg)
@@ -109,11 +138,10 @@ func doctor() {
 			note("config", strings.TrimPrefix(w, "config: "))
 		}
 		if len(missing) > 0 { // install never overwrites the file, so new keys don't reach it
-			more := ""
-			if len(missing) > 6 {
-				missing, more = missing[:6], fmt.Sprintf(" and %d more", len(missing)-6)
+			note("config", "new settings your file doesn't have; to change one, copy it into "+tilde(cfg)+" under its section:")
+			for _, l := range strings.Split(config.Paste(missing), "\n") {
+				fmt.Printf("  %-14s   %s\n", "", l)
 			}
-			note("config", "new settings your file doesn't have: "+strings.Join(missing, ", ")+more+" (see docs/CONFIG.md)")
 		}
 	} else {
 		note("config", "defaults (ember install writes "+cfg+")")
@@ -138,10 +166,15 @@ func doctor() {
 			note(p.Name, "plugin: "+health(p, time.Now()))
 		}
 	}
-	if p := filepath.Join(h, ".config", "alacritty", "themes", "noctalia.toml"); fileExists(p) {
+	// the colours come from the theme Noctalia generates for alacritty
+	theme := filepath.Join(h, ".config", "alacritty", "themes", "noctalia.toml")
+	switch {
+	case noctalia() && fileExists(theme):
 		line(true, "palette", "follows Noctalia's wallpaper colours", "")
-	} else {
-		note("palette", "built-in colours (no Noctalia theme found)")
+	case noctalia():
+		note("palette", "Noctalia is here but its generated theme isn't ("+tilde(theme)+"): built-in colours")
+	default:
+		note("palette", "built-in colours (no Noctalia); [look] takes your own")
 	}
 	for _, t := range []string{"niri", "wpctl", "pactl", "xdg-open"} {
 		if _, err := exec.LookPath(t); err != nil {
@@ -169,6 +202,33 @@ func hookCount(settings, exe string) (n, stale int) {
 }
 
 func hookCountIn(raw []byte, exe string) (n, stale int) {
+	for _, bin := range hookBins(raw) {
+		n++
+		if bin != exe {
+			stale++
+		}
+	}
+	return n, stale
+}
+
+// staleBins names the other binaries Ember's hooks run, each once: an old
+// build's path, or the old Noctalia plugin's script.
+func staleBins(raw []byte, exe string) []string {
+	var out []string
+	for _, bin := range hookBins(raw) {
+		if bin == "" {
+			bin = "the old Noctalia plugin's script"
+		}
+		if bin != exe && !slices.Contains(out, bin) {
+			out = append(out, bin)
+		}
+	}
+	return out
+}
+
+// hookBins is the binary each of Ember's hooks runs ("" for the old
+// Noctalia script).
+func hookBins(raw []byte) []string {
 	var cfg struct {
 		Hooks map[string][]struct {
 			Hooks []struct {
@@ -177,21 +237,19 @@ func hookCountIn(raw []byte, exe string) (n, stale int) {
 		} `json:"hooks"`
 	}
 	if json.Unmarshal(raw, &cfg) != nil {
-		return 0, 0
+		return nil
 	}
+	var bins []string
 	for _, es := range cfg.Hooks {
 		for _, e := range es {
 			for _, h := range e.Hooks {
 				if bin, ok := emberHook(h.Command); ok {
-					n++
-					if bin != exe {
-						stale++
-					}
+					bins = append(bins, bin)
 				}
 			}
 		}
 	}
-	return n, stale
+	return bins
 }
 
 // sameVersion: the running island and this binary are one build. An island

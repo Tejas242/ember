@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -420,5 +421,18 @@ func TestNextStepsPath(t *testing.T) {
 	}
 	if strings.Contains(nextSteps("/home/x/.local/bin/ember", false, true, false, "/usr/bin:/home/x/.local/bin"), "path") {
 		t.Fatal("a path line with the directory on PATH")
+	}
+}
+
+// doctor names the binaries stale hooks run, each once.
+func TestStaleBins(t *testing.T) {
+	got := staleBins([]byte(settingsFixture), "/tmp/claude-1000/x/ember-pd")
+	want := []string{"/home/x/old ember/ember", "/tmp/go-build1/b001/exe/ember", "the old Noctalia plugin's script"}
+	slices.Sort(got)
+	if !slices.Equal(got, want) {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	if n, stale := hookCountIn([]byte(settingsFixture), "/tmp/claude-1000/x/ember-pd"); n != 4 || stale != 3 {
+		t.Fatalf("%d hooks, %d stale", n, stale)
 	}
 }

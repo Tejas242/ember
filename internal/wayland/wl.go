@@ -290,3 +290,29 @@ func newShmBuffer(c *conn, shm uint32, w, h int) (*shmBuffer, error) {
 }
 
 var errNoLayerShell = errors.New("compositor has no zwlr_layer_shell_v1")
+
+// Globals lists the interfaces the compositor offers (wl_compositor,
+// zwlr_layer_shell_v1, …), for doctor. It gives up after two seconds.
+func Globals() ([]string, error) {
+	c, err := dial()
+	if err != nil {
+		return nil, err
+	}
+	defer c.sock.Close()
+	c.sock.SetDeadline(time.Now().Add(2 * time.Second))
+	var out []string
+	reg := c.newID(func(op uint16, d *dec) {
+		if op == 0 { // global: name, interface, version
+			d.u32()
+			out = append(out, d.str())
+		}
+	})
+	c.send(1, 1, reg) // wl_display.get_registry
+	if err := c.roundtrip(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// Socket is the compositor's socket this process would connect to.
+func Socket() string { return waylandSocket() }
