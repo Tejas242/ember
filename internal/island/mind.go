@@ -327,7 +327,7 @@ func (h *habits) save() {
 	h.dirty = false
 	os.MkdirAll(filepath.Dir(habitsPath()), 0o755)
 	if b, err := json.Marshal(h); err == nil {
-		xdg.AtomicWrite(habitsPath(), b, 0o644)
+		save(habitsPath(), b, 0o644)
 	}
 }
 

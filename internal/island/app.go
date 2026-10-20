@@ -117,6 +117,9 @@ func (a *app) reloadConfig() bool {
 // SIGTERM or SIGINT, when it saves its state and stops cleanly. version is
 // what it tells `ember doctor` it is.
 func Run(version string) error {
+	if os.Getenv("JOURNAL_STREAM") != "" { // journald stamps every line already
+		log.SetFlags(0)
+	}
 	if err := wayland.WaitSocket(5 * time.Second); err != nil { // a session still starting gets a moment
 		return err
 	}
@@ -138,7 +141,7 @@ func Run(version string) error {
 	a.ui.audio = &source.Audio{}
 	a.ui.habits = loadHabits()
 	a.ui.bond = loadBond(a.ui.now())
-	if t := a.ui.bond.Active; !t.IsZero() && a.ui.now().Sub(t) > 4*time.Hour { // the machine was off: this is a return
+	if t := a.ui.bond.Active; !t.IsZero() && a.ui.now().Sub(t) > sleptGap { // the machine was off: this is a return
 		a.ui.returned(t, a.ui.now())
 	}
 	a.ui.day = loadDay(time.Now())

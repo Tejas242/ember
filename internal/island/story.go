@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/Tejas242/ember/internal/xdg"
 )
 
 // What the card tells: each session's story (the steps of the current turn,
@@ -190,7 +188,7 @@ func (d *Day) save() {
 	d.dirty = false
 	os.MkdirAll(filepath.Dir(dayPath()), 0o755)
 	if b, err := json.Marshal(d); err == nil {
-		xdg.AtomicWrite(dayPath(), b, 0o644)
+		save(dayPath(), b, 0o644)
 	}
 }
 

@@ -22,7 +22,7 @@ func (a *app) sweep() bool {
 	for id, s := range a.ui.sessions {
 		quiet := now.Sub(s.Seen)
 		switch {
-		case !slices.ContainsFunc(s.Pids, ipc.Alive) || (s.State == "idle" && quiet > 3*time.Hour):
+		case !slices.ContainsFunc(s.Pids, ipc.Alive) || (s.State == "idle" && quiet > forgetIdle):
 			a.forget(id)
 			changed = true
 		case s.State != "idle" && quiet > a.ui.cfg.Settle && !a.hasCard(id):
@@ -75,11 +75,16 @@ func (a *app) hasCard(session string) bool {
 	return false
 }
 
+// forgetIdle: an idle session silent this long is forgotten, its process or not.
+const forgetIdle = 3 * time.Hour
+
 // ---- Claude Code hooks ----
 
 func (a *app) hook(m ipc.Msg, answer chan<- json.RawMessage) string {
 	var in hookInput
-	json.Unmarshal(m.Payload, &in)
+	if err := json.Unmarshal(m.Payload, &in); err != nil && len(m.Payload) > 0 {
+		logOnce("hook:"+m.Event, "a %s hook Ember can't read: %v (this is said once)", m.Event, err)
+	}
 	now := a.ui.now()
 	s := a.ui.sessions[in.SessionID]
 	if m.Event == "SessionStart" {
@@ -109,7 +114,9 @@ func (a *app) hook(m ipc.Msg, answer chan<- json.RawMessage) string {
 		return ""
 	}
 	var tin map[string]any
-	json.Unmarshal(in.ToolInput, &tin)
+	if err := json.Unmarshal(in.ToolInput, &tin); err != nil && len(in.ToolInput) > 0 {
+		logOnce("tool_input:"+in.Tool, "%s's tool_input Ember can't read: %v (this is said once)", in.Tool, err)
+	}
 	if in.AgentID != "" && a.agentHook(s, m.Event, in, tin, now) {
 		return ""
 	}

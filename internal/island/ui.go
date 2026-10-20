@@ -481,6 +481,10 @@ func (u *UI) cycle(dir int) {
 	u.focus, u.focusAt = acts[i], u.now()
 }
 
+// leaveGrace: the open card stays this long after the pointer leaves it, so
+// a pointer that slips off its edge and back doesn't fold it.
+const leaveGrace = 200 * time.Millisecond
+
 func (u *UI) currentView() view {
 	if u.top() != nil {
 		return vCard
@@ -489,7 +493,7 @@ func (u *UI) currentView() view {
 		return vDash
 	}
 	if u.pinned || u.drag != "" || (u.hover && !u.suppress && u.now().Sub(u.hoverAt) >= u.cfg.HoverDelay) ||
-		(!u.hover && u.lastView == vExpanded && u.now().Sub(u.leftAt) < 200*time.Millisecond) {
+		(!u.hover && u.lastView == vExpanded && u.now().Sub(u.leftAt) < leaveGrace) {
 		return vExpanded
 	}
 	return vCompact

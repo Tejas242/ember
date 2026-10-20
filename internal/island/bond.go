@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"time"
-
-	"github.com/Tejas242/ember/internal/xdg"
 )
 
 // ---- Ember's character: what it remembers, and when it may play ----
@@ -67,7 +65,7 @@ func (b *bond) save() {
 	b.dirty = false
 	os.MkdirAll(filepath.Dir(bondPath()), 0o755)
 	if data, err := json.Marshal(b); err == nil {
-		xdg.AtomicWrite(bondPath(), data, 0o644)
+		save(bondPath(), data, 0o644)
 	}
 }
 
@@ -172,21 +170,30 @@ func circEMA(old, x, k float64) float64 {
 	return math.Mod(old+d*k+1440, 1440)
 }
 
+// sleptGap: the island was off or asleep this long (the machine was off, a
+// lid closed): when it comes back, you've come back. An absence this long
+// is also what teaches Ember your bedtime.
+const sleptGap = 4 * time.Hour
+
+// dayStarts: Ember's day turns at 4 am, so half past midnight is still the
+// evening before.
+const dayStarts = 4 * time.Hour
+
 // back: you returned after being away since. A long evening absence teaches
 // it your bedtime. It says whether this is the day's first real return (a
 // day starts at 4 am, so coming back at half past midnight isn't morning).
 func (b *bond) back(since, now time.Time) (firstToday bool) {
-	if now.Sub(since) >= 4*time.Hour {
+	if now.Sub(since) >= sleptGap {
 		if h := since.Hour(); h >= 20 || h < 5 {
 			b.Bedtime, b.dirty = circEMA(b.Bedtime, clockMin(since), 0.2), true
 		}
 	}
-	return b.Seen != now.Add(-4*time.Hour).Format("2006-01-02") && now.Sub(since) >= 2*time.Hour
+	return b.Seen != now.Add(-dayStarts).Format("2006-01-02") && now.Sub(since) >= 2*time.Hour
 }
 
 // greeted: the morning's stretch played; it learns when your mornings start.
 func (b *bond) greeted(now time.Time) {
-	b.Seen = now.Add(-4 * time.Hour).Format("2006-01-02")
+	b.Seen = now.Add(-dayStarts).Format("2006-01-02")
 	b.Wake, b.dirty = circEMA(b.Wake, clockMin(now), 0.2), true
 }
 

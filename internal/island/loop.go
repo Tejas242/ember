@@ -136,7 +136,7 @@ func (a *app) housekeep(saveDue *bool) {
 		a.saveSessions()
 		*saveDue = false
 	}
-	if gap := a.ui.now().Sub(a.lastHouse); !a.lastHouse.IsZero() && gap > 4*time.Hour { // it slept (a lid closed): you're back
+	if gap := a.ui.now().Sub(a.lastHouse); !a.lastHouse.IsZero() && gap > sleptGap { // it slept (a lid closed): you're back
 		a.ui.returned(a.lastHouse, a.ui.now())
 	}
 	a.lastHouse = a.ui.now()
@@ -197,8 +197,8 @@ func (a *app) nextWake(animating bool) time.Duration {
 	if u.hover && now.Sub(u.hoverAt) < u.cfg.HoverDelay {
 		next = minTime(next, u.hoverAt.Add(u.cfg.HoverDelay))
 	}
-	if !u.hover && now.Sub(u.leftAt) < 300*time.Millisecond {
-		next = minTime(next, u.leftAt.Add(210*time.Millisecond))
+	if !u.hover && now.Sub(u.leftAt) < leaveGrace+100*time.Millisecond { // wake just after the grace, to fold the card
+		next = minTime(next, u.leftAt.Add(leaveGrace+10*time.Millisecond))
 	}
 	return max(next.Sub(now), 5*time.Millisecond)
 }
