@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -93,7 +94,8 @@ func install(exe string) error {
 		return fmt.Errorf("won't install %s: %s, so it won't last.\n"+
 			"Install a lasting copy instead: make install (it puts ember in ~/.local/bin and runs ember install from there)", exe, why)
 	}
-	if err := installHooks(settingsPath(), exe); err != nil {
+	hooked, err := installHooks(settingsPath(), exe)
+	if err != nil {
 		return err
 	}
 
@@ -125,41 +127,91 @@ func install(exe string) error {
 			return fmt.Errorf("systemctl %v: %v: %s", args, err, o)
 		}
 	}
-	fmt.Println("service → ember.service (running). Restart running Claude sessions to pick up the hooks.")
+	fmt.Println("service → ember.service (running)")
+	c, _ := config.Load(config.Path())
+	fmt.Fprint(installOut, nextSteps(exe, hooked, c.BarHeight > 0, noctalia(), os.Getenv("PATH")))
 	return nil
+}
+
+// installOut is where install's closing words go; tests read them.
+var installOut io.Writer = os.Stdout
+
+// nextSteps is what install says last: where Ember is, and what's left to do,
+// each line only when it applies.
+func nextSteps(exe string, hooked, barSet, noctalia bool, path string) string {
+	var b strings.Builder
+	row := func(k, v string) { fmt.Fprintf(&b, "  %-5s %s\n", k, v) }
+	b.WriteString("\nEmber is at the top of your screen.\n")
+	row("next", "ember doctor")
+	if hooked {
+		row("", "restart open Claude Code sessions so they load the hooks")
+	}
+	if !barSet && !noctalia {
+		row("bar", "no Noctalia: the pill assumes a 24 px bar. Set [look] bar_height in "+tilde(config.Path()))
+	}
+	if dir := filepath.Dir(exe); !onPath(dir, path) {
+		row("path", tilde(dir)+" isn't on your PATH; add it, or run "+tilde(exe))
+	}
+	return b.String()
+}
+
+// noctalia: the Noctalia shell is here, so the island reads its bar's
+// height and palette from it (noctalia config export).
+func noctalia() bool { _, err := exec.LookPath("noctalia"); return err == nil }
+
+// onPath says whether dir is one of path's directories.
+func onPath(dir, path string) bool {
+	for _, d := range filepath.SplitList(path) {
+		if d != "" && filepath.Clean(d) == filepath.Clean(dir) {
+			return true
+		}
+	}
+	return false
+}
+
+// tilde writes a path under the home directory as ~/….
+func tilde(p string) string {
+	h, err := os.UserHomeDir()
+	if err != nil || h == "" || h == "/" {
+		return p
+	}
+	if rel, err := filepath.Rel(h, p); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+		return "~/" + rel
+	}
+	return p
 }
 
 // installHooks puts Ember's hooks in Claude Code's settings, creating the
 // file if Claude hasn't yet, and backs the first version it saw up once.
 // Without a ~/.claude at all there's no Claude Code to hook: it says so and
 // skips them.
-func installHooks(settings, exe string) error {
+func installHooks(settings, exe string) (bool, error) {
 	if _, err := os.Stat(filepath.Dir(settings)); os.IsNotExist(err) {
 		fmt.Println("hooks skipped: no", filepath.Dir(settings), "(no Claude Code yet). Run ember install again once it's set up.")
-		return nil
+		return false, nil
 	}
 	raw, err := os.ReadFile(settings)
 	switch {
 	case os.IsNotExist(err):
 		raw = []byte("{}")
 	case err != nil:
-		return err
+		return false, err
 	default:
 		if !fileExists(settings + ".pre-ember") {
 			if err := xdg.AtomicWrite(settings+".pre-ember", raw, 0o600); err != nil {
-				return err
+				return false, err
 			}
 		}
 	}
 	out, err := patchSettings(raw, exe, true)
 	if err != nil {
-		return fmt.Errorf("%s: %w (left as it was)", settings, err)
+		return false, fmt.Errorf("%s: %w (left as it was)", settings, err)
 	}
 	if err := xdg.AtomicWrite(settings, out, 0o644); err != nil {
-		return err
+		return false, err
 	}
 	fmt.Println("hooks →", settings, "(backup: settings.json.pre-ember)")
-	return nil
+	return true, nil
 }
 
 // uninstall removes Ember's hooks and its service; the config stays.

@@ -357,3 +357,68 @@ func TestInstallEdge(t *testing.T) {
 		t.Fatalf("%v %v", warns, cfg.PluginGrants("edge"))
 	}
 }
+
+// install ends with what to do next, each line only when it applies.
+func TestInstallNextSteps(t *testing.T) {
+	h := sandbox(t)
+	fakeSystemctl(t)
+	var buf strings.Builder
+	old := installOut
+	installOut = &buf
+	t.Cleanup(func() { installOut = old })
+	exe := "/opt/ember/bin/ember"
+
+	// no Claude, no Noctalia, ember's directory not on PATH
+	if err := install(exe); err != nil {
+		t.Fatal(err)
+	}
+	got := buf.String()
+	for _, want := range []string{"Ember is at the top of your screen.", "  next  ember doctor\n",
+		"  bar   no Noctalia: the pill assumes a 24 px bar. Set [look] bar_height in ~/.config/ember/config.toml\n",
+		"  path  /opt/ember/bin isn't on your PATH; add it, or run /opt/ember/bin/ember\n"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "restart open Claude Code sessions") {
+		t.Errorf("no hooks were installed, yet:\n%s", got)
+	}
+
+	// Claude, Noctalia and ember on PATH: only next and the restart
+	bin := filepath.Join(h, "bin")
+	os.MkdirAll(filepath.Join(h, ".claude"), 0o755)
+	os.MkdirAll(bin, 0o755)
+	os.WriteFile(filepath.Join(bin, "noctalia"), []byte("#!/bin/sh\n"), 0o755)
+	t.Setenv("PATH", bin+":/opt/ember/bin/")
+	buf.Reset()
+	if err := install(exe); err != nil {
+		t.Fatal(err)
+	}
+	want := "\nEmber is at the top of your screen.\n  next  ember doctor\n        restart open Claude Code sessions so they load the hooks\n"
+	if got := buf.String(); got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+
+	// a bar height in the config: no bar line, even without Noctalia
+	os.Remove(filepath.Join(bin, "noctalia"))
+	os.WriteFile(filepath.Join(h, ".config", "ember", "config.toml"), []byte("[look]\nbar_height = 30\n"), 0o644)
+	buf.Reset()
+	if err := install(exe); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buf.String(), "bar ") {
+		t.Errorf("bar line with bar_height set:\n%s", buf.String())
+	}
+}
+
+// The path line names ~/.local/bin as ~.
+func TestNextStepsPath(t *testing.T) {
+	t.Setenv("HOME", "/home/x")
+	got := nextSteps("/home/x/.local/bin/ember", false, true, false, "/usr/bin:/bin")
+	if !strings.Contains(got, "  path  ~/.local/bin isn't on your PATH; add it, or run ~/.local/bin/ember\n") {
+		t.Fatalf("got:\n%s", got)
+	}
+	if strings.Contains(nextSteps("/home/x/.local/bin/ember", false, true, false, "/usr/bin:/home/x/.local/bin"), "path") {
+		t.Fatal("a path line with the directory on PATH")
+	}
+}
