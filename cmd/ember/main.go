@@ -1,6 +1,6 @@
-// Ember: a dynamic island for the top of the screen. Claude Code sessions,
-// permission requests and questions, music, system moments (volume,
-// brightness, battery, devices, screenshots), the clock, and edge.
+// Ember: a dynamic island for Wayland, made for Claude Code. Claude Code
+// sessions, permission requests and questions, music, system moments
+// (volume, brightness, battery, devices, screenshots), the clock, and plugins.
 // `ember help` lists the commands.
 package main
 
@@ -28,7 +28,7 @@ type command struct {
 	need    string // what a missing argument is, for the error
 	min     int    // positional arguments
 	max     int
-	group   int // help's paragraphs
+	group   int // help's paragraph: groupSetup, groupControl, groupPlugins
 	hidden  bool
 	run     func(args []string) int
 	flags   []string                                     // --name value flags it takes
@@ -37,6 +37,15 @@ type command struct {
 }
 
 var commands []*command
+
+// help's paragraphs, in order.
+const (
+	groupSetup = iota
+	groupControl
+	groupPlugins
+)
+
+var groupNames = []string{"Setup", "Control", "Plugins"}
 
 func init() {
 	send := func(name string) func([]string) int {
@@ -52,42 +61,40 @@ func init() {
 		}
 	}
 	commands = []*command{
-		{name: "run", summary: "run the island (the service does this)", run: runIsland},
-		{name: "install", summary: "systemd service, Claude Code hooks, default config", run: runInstall},
-		{name: "uninstall", summary: "remove the hooks and the service (the config stays)", run: runUninstall},
+		{name: "install", summary: "set up the service, Claude Code's hooks and a config", run: runInstall},
 		{name: "doctor", summary: "check every piece and say what to fix", run: func([]string) int { doctor(); return 0 }},
+		{name: "uninstall", summary: "remove the hooks and the service (the config stays)", run: runUninstall},
 		{name: "version", aliases: []string{"--version", "-v"}, summary: "print Ember's version",
 			run: func([]string) int { fmt.Println("ember", versionString()); return 0 }},
 		{name: "help", aliases: []string{"--help", "-h"}, args: "[command]", max: 1, summary: "this list, or one command's help"},
+		{name: "run", summary: "run the island (the service does this)", run: runIsland},
+		{name: "hook", args: "<Event>", min: 1, max: 1, need: "a Claude Code hook event",
+			summary: "Claude Code's hook (install sets it up)", run: hook},
 
-		{group: 1, name: "open", args: "[page]", max: 1, summary: "open the card (on a page)", run: withArg("open")},
-		{group: 1, name: "close", summary: "fold the card", run: send("close")},
-		{group: 1, name: "toggle", summary: "open or fold the card", run: send("toggle")},
-		{group: 1, name: "next", summary: "switch what the pill shows", run: send("next")},
-		{group: 1, name: "prev", summary: "switch back", run: send("prev")},
-		{group: 1, name: "play", summary: "play / pause", run: send("play")},
-		{group: 1, name: "dash", args: "[name]", max: 1, summary: "open or close a plugin's dashboard", run: withArg("dash")},
-		{group: 1, name: "plugins", args: "[name]", max: 1, summary: "each plugin: its state, its health, its last error", run: runPlugins},
-
-		{group: 2, name: "allow", summary: "allow the oldest permission request", run: send("allow")},
-		{group: 2, name: "deny", summary: "deny it", run: send("deny")},
-		{group: 2, name: "always", summary: "allow it and don't ask again", run: send("always")},
-		{group: 2, name: "terminal", summary: "hand it back to Claude's own prompt", run: send("terminal")},
-		{group: 2, name: "answer", args: "opt:N | submit", min: 1, max: 1, need: "an answer: opt:N or submit",
+		{group: groupControl, name: "open", args: "[page]", max: 1, summary: "open the card", run: withArg("open")},
+		{group: groupControl, name: "close", summary: "fold the card", run: send("close")},
+		{group: groupControl, name: "toggle", summary: "open or fold the card", run: send("toggle")},
+		{group: groupControl, name: "next", summary: "switch what the pill shows", run: send("next")},
+		{group: groupControl, name: "prev", summary: "switch back", run: send("prev")},
+		{group: groupControl, name: "play", summary: "play / pause the music", run: send("play")},
+		{group: groupControl, name: "allow", summary: "allow the oldest permission request", run: send("allow")},
+		{group: groupControl, name: "deny", summary: "deny it", run: send("deny")},
+		{group: groupControl, name: "always", summary: "allow it, and what Claude suggests from now on", run: send("always")},
+		{group: groupControl, name: "terminal", summary: "hand it back to Claude's own prompt", run: send("terminal")},
+		{group: groupControl, name: "answer", args: "opt:N | submit", min: 1, max: 1, need: "an answer: opt:N or submit",
 			summary: "answer the oldest question", run: withArg("answer")},
 
-		{group: 3, name: "note", args: "TEXT [--sub S] [--icon I] [--mood M] [--ttl SECONDS] [--open URL]", min: 1, max: 1,
+		{group: groupPlugins, name: "plugins", args: "[name]", max: 1, summary: "each plugin: its state, its health, its last error", run: runPlugins},
+		{group: groupPlugins, name: "dash", args: "[name]", max: 1, summary: "open or close a plugin's dashboard", run: withArg("dash")},
+		{group: groupPlugins, name: "note", args: "TEXT [--sub S] [--icon I] [--mood M] [--ttl SECONDS] [--open URL]", min: 1, max: 1,
 			need: "the note's text", summary: "show a moment: a short note in the pill",
 			flags: []string{"sub", "icon", "mood", "ttl", "open"}, runf: runNote},
-		{group: 3, name: "status", args: "ID [TEXT] [--sub S] [--icon I] [--mood M] [--progress 0..1] [--since now|5m] [--urgency U] [--ttl 10m] [--clear]",
+		{group: groupPlugins, name: "status", args: "ID [TEXT] [--sub S] [--icon I] [--mood M] [--progress 0..1] [--since now|5m] [--urgency U] [--ttl 10m] [--clear]",
 			min: 1, max: 2, need: "the line's id", summary: "hold a line in the pill until --ttl or --clear",
 			flags: []string{"sub", "icon", "mood", "progress", "since", "urgency", "ttl"}, bools: []string{"clear"}, runf: runStatus},
-
-		{group: 4, name: "hook", args: "<Event>", min: 1, max: 1, need: "a Claude Code hook event",
-			summary: "Claude Code's hook (installed for you)", run: hook},
-		{group: 4, name: "plugin", args: "<name>", min: 1, max: 1, need: "a plugin's name", hidden: true,
+		{group: groupPlugins, name: "plugin", args: "<name>", min: 1, max: 1, need: "a plugin's name", hidden: true,
 			summary: "run one of the plugins built into this binary (Ember starts it)", run: runPlugin},
-		{group: 4, name: "edge", args: "'<json>'", min: 1, max: 1, need: "a JSON message",
+		{group: groupPlugins, name: "edge", args: "'<json>'", min: 1, max: 1, need: "a JSON message", hidden: true,
 			summary: "a message for the edge plugin", run: func(a []string) int { return cmdOrFail(ipc.Edge([]byte(a[0]))) }},
 	}
 	lookup("help").run = func(a []string) int { return help(a, os.Stdout, os.Stderr) }
@@ -144,7 +151,13 @@ func (c *command) usage() string {
 
 func overview() string {
 	var b strings.Builder
-	b.WriteString("ember: a dynamic island for the top of your screen\n")
+	b.WriteString("ember: a dynamic island for Wayland, made for Claude Code\n")
+	w := 0
+	for _, c := range commands {
+		if !c.hidden {
+			w = max(w, len(c.short()))
+		}
+	}
 	group := -1
 	for _, c := range commands {
 		if c.hidden {
@@ -152,13 +165,12 @@ func overview() string {
 		}
 		if c.group != group {
 			group = c.group
-			b.WriteString("\n")
+			fmt.Fprintf(&b, "\n%s\n", groupNames[group])
 		}
-		fmt.Fprintf(&b, "  %-28s %s\n", c.short(), c.summary)
+		fmt.Fprintf(&b, "  %-*s  %s\n", w, c.short(), c.summary)
 	}
 	b.WriteString("\nember help <command> says more about one.\n")
-	b.WriteString("\nPlugins: edge (on when edge is installed), and any in ~/.config/ember/plugins (docs/PLUGINS.md)\n")
-	b.WriteString("\nConfig: ~/.config/ember/config.toml (re-read on change)\n")
+	b.WriteString("Config ~/.config/ember/config.toml (applies within 10 s) · docs: github.com/Tejas242/ember\n")
 	return b.String()
 }
 

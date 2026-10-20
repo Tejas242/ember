@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"strings"
 	"testing"
 )
@@ -99,5 +100,27 @@ func TestHelpCommand(t *testing.T) {
 	}
 	if code := help(nil, &o, &e); code != 0 || !strings.Contains(o.String(), "ember install") {
 		t.Errorf("help: %d %q", code, o.String())
+	}
+}
+
+// help says what Ember is, groups the commands, hides edge's, and ends with
+// the config and the docs.
+func TestOverview(t *testing.T) {
+	ov := overview()
+	if !strings.HasPrefix(ov, "ember: a dynamic island for Wayland, made for Claude Code\n") {
+		t.Errorf("first line: %q", strings.SplitN(ov, "\n", 2)[0])
+	}
+	s, c, p := strings.Index(ov, "\nSetup\n"), strings.Index(ov, "\nControl\n"), strings.Index(ov, "\nPlugins\n")
+	if s < 0 || c < s || p < c {
+		t.Errorf("groups out of order:\n%s", ov)
+	}
+	if strings.Contains(ov, "ember edge") || strings.Contains(ov, "ember plugin <name>") {
+		t.Errorf("hidden commands listed:\n%s", ov)
+	}
+	if !strings.HasSuffix(ov, "Config ~/.config/ember/config.toml (applies within 10 s) · docs: github.com/Tejas242/ember\n") {
+		t.Errorf("footer:\n%s", ov)
+	}
+	if c, _, _, code := route([]string{"edge", "{}"}, io.Discard, io.Discard); c == nil || c.name != "edge" || code != 0 {
+		t.Error("ember edge stopped routing")
 	}
 }
