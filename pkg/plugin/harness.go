@@ -21,31 +21,33 @@ type Harness struct {
 	Name string
 	Caps []string
 
-	in  *io.PipeWriter // the plugin's stdin
-	mu  sync.Mutex
-	got []Message
-	bad []error
-	new chan struct{}
-	end chan error
+	in   *io.PipeWriter // the plugin's stdin
+	mu   sync.Mutex
+	got  []Message
+	bad  []error
+	new  chan struct{}
+	end  chan error
+	read chan struct{} // closed when the plugin's output has all been read
 }
 
 // NewHarness starts fn as plugin name, granted caps.
 func NewHarness(name string, caps []string, fn func(p *Plugin) error) *Harness {
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
-	h := &Harness{Name: name, Caps: caps, in: inW, new: make(chan struct{}, 1), end: make(chan error, 1)}
+	h := &Harness{Name: name, Caps: caps, in: inW, new: make(chan struct{}, 1), end: make(chan error, 1), read: make(chan struct{})}
 	go func() {
 		err := Serve(name, inR, outW, fn)
 		outW.Close()
 		h.end <- err
 	}()
-	go h.read(outR)
+	go h.readAll(outR)
 	b, _ := Line("hello", HelloEmber{V: Version, Ember: "test", Caps: caps})
 	go inW.Write(b)
 	return h
 }
 
-func (h *Harness) read(r io.Reader) {
+func (h *Harness) readAll(r io.Reader) {
+	defer close(h.read)
 	br := bufio.NewReaderSize(r, MaxLine+1)
 	said := false
 	for {
@@ -162,6 +164,7 @@ func (h *Harness) Stop() error {
 	}()
 	select {
 	case err := <-h.end:
+		<-h.read // everything it wrote before returning counts
 		return err
 	case <-time.After(2 * time.Second):
 		return errors.New("plugin: didn't stop within 2 seconds of being told to")
