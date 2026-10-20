@@ -1,0 +1,12 @@
+# edge, the practice coach (github.com/Tejas242/edge), on Ember's island.
+# ember install writes this into ~/.config/ember/plugins/edge when edge is
+# installed, running Ember's own binary as the plugin (ember plugin edge),
+# and grants it critical, badge and focus in the config (only if that key
+# isn't there yet).
+name         = "edge"
+description  = "Practice: the day's problem, contest rounds, and the record"
+command      = "ember"
+args         = ["plugin", "edge"]
+icon         = "chart"
+capabilities = ["pill", "row", "card", "dashboard", "cheer"]
+grants       = ["critical", "badge", "focus"]
