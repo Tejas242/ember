@@ -52,6 +52,11 @@ agent_quiet_min = 5
 opacity = 1
 green = "#00ff00"
 amber = '0x112233'
+[ember]
+motion = "calm"
+dance = false
+flourishes = false
+celebrate = false
 `)
 	if len(warns) > 0 {
 		t.Fatal(warns)
@@ -62,6 +67,7 @@ amber = '0x112233'
 	want.DoneFor, want.OSDFor = 2500*time.Millisecond, 900*time.Millisecond
 	want.Answer, want.Wait, want.Settle, want.AgentQuiet = false, 30*time.Second, 10*time.Minute, 5*time.Minute
 	want.Opacity, want.Green, want.Amber = 1, color.NRGBA{0, 255, 0, 255}, color.NRGBA{0x11, 0x22, 0x33, 255}
+	want.Calm, want.Dance, want.Flourishes, want.Celebrate = true, false, false, false
 	if !reflect.DeepEqual(c, want) {
 		t.Fatalf("\n got %+v\nwant %+v", c, want)
 	}
@@ -219,5 +225,13 @@ wait_s          = 85    # how long a request waits on the island before the term
 	}
 	if Paste(nil) != "" {
 		t.Fatal("nothing missing, something to paste")
+	}
+}
+
+// [ember] motion takes full or calm, nothing else.
+func TestMotion(t *testing.T) {
+	c, warns, _ := parse("[ember]\nmotion = \"slow\"\n")
+	if c.Calm || len(warns) != 1 || !strings.Contains(warns[0], `ember.motion must be "full" or "calm"`) {
+		t.Fatalf("%v %v", c.Calm, warns)
 	}
 }

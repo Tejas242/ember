@@ -239,6 +239,9 @@ func shimmerPassing(t float64) bool { return math.Mod(t, shimmerEvery) < shimmer
 // shimmerLive sweeps a soft band of light across text already drawn at
 // (x, base): the label looks lit from inside while work is going on.
 func (u *UI) shimmerLive(f fontFace, s string, x, base float32, col color.NRGBA) {
+	if u.cfg.Calm {
+		return
+	}
 	m := u.cv.mask(f, s)
 	px, py := int(math.Round(float64(x)))-1, int(math.Round(float64(base)))-m.asc
 	r := image.Rect(px, py, px+m.m.Rect.Dx(), py+m.m.Rect.Dy())

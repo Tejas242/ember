@@ -511,7 +511,7 @@ func (u *UI) drawCompact(x, w, h float32) {
 	if l.halo {
 		u.haloAt = now
 	}
-	if k := 1 - float64(now.Sub(u.haloAt))/float64(300*time.Millisecond); k > 0 { // and it fades when the wait is over
+	if k := 1 - float64(now.Sub(u.haloAt))/float64(300*time.Millisecond); k > 0 && !u.cfg.Calm { // and it fades when the wait is over
 		if !l.halo {
 			u.tweening = true
 		}
@@ -596,6 +596,9 @@ func (u *UI) haloLive(col color.NRGBA, out float64) {
 
 // sweepLive: one band of light crosses the pill when something succeeds.
 func (u *UI) sweepLive(at time.Time, col color.NRGBA) {
+	if u.cfg.Calm {
+		return
+	}
 	n := u.shape
 	u.tweening = true // a single pass at the full frame rate
 	u.lives = append(u.lives, live{r: n.interior(), draw: func(c *canvas, _ float64) {

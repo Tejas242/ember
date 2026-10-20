@@ -31,7 +31,7 @@ var actLen = map[string]float64{
 
 // a flourish is an act Ember plays on its own: it goes through the gate.
 func (u *UI) flourish(kind string, every time.Duration) bool {
-	if !u.may(kind, every) {
+	if !u.cfg.Flourishes || !u.may(kind, every) {
 		return false
 	}
 	u.play(kind, 0)
@@ -121,8 +121,18 @@ func (u *UI) actStep(now time.Time) {
 			h := 1.2 + 1.7*a
 			ant := 0.04 + 0.06*a
 			land := ant + hopFor(h)
-			beat(0, 0, func() { b.jump(h, ant); b.brighten(2 + 3*a) })
+			party := u.cfg.Celebrate // else a Done is only its colour and its face
+			beat(0, 0, func() {
+				if party {
+					b.jump(h, ant)
+				}
+				b.brighten(2 + 3*a)
+			})
 			beat(1, land, func() {
+				if !party {
+					u.flare = false
+					return
+				}
 				if a > 0.2 {
 					b.sparks(int(math.Round(2+4*a)), 36+10*a, tipFrom)
 				}
@@ -133,7 +143,7 @@ func (u *UI) actStep(now time.Time) {
 				}
 			})
 			beat(2, land+0.14, func() {
-				if a > 0.45 {
+				if party && a > 0.45 {
 					b.jump(0.5*h, 0.04)
 				}
 			})

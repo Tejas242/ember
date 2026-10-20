@@ -323,12 +323,14 @@ func (u *UI) Moment(m moment) {
 func (u *UI) momentAct(m moment) {
 	switch {
 	case m.key == "hello": // the first time ever: a hello
-		u.play("hello", 0)
-	case m.key == "away": // you're back: a stretch may be playing; otherwise a small hello
-		if u.act == nil || u.act.kind != "stretch" {
+		if u.cfg.Flourishes {
 			u.play("hello", 0)
 		}
-	case m.mood == moodHappy && m.cheer.roll && !u.casting && u.bond != nil && u.bond.cooled("eyeroll", 20*time.Hour, u.now()):
+	case m.key == "away": // you're back: a stretch may be playing; otherwise a small hello
+		if u.cfg.Flourishes && (u.act == nil || u.act.kind != "stretch") {
+			u.play("hello", 0)
+		}
+	case m.mood == moodHappy && m.cheer.roll && !u.casting && u.cfg.Flourishes && u.bond != nil && u.bond.cooled("eyeroll", 20*time.Hour, u.now()):
 		u.afterRoll = m.cheer
 		u.play("eyeroll", 0) // then the Done, when it's done rolling
 	case m.mood == moodHappy:
@@ -544,6 +546,7 @@ func (u *UI) stepEmber(dt float64, now time.Time) {
 	u.mind.step(now, u.senses())
 	u.actStep(now)
 	u.listen(now)
+	u.body.still = u.cfg.Calm
 	u.greet(now)
 	u.introduce(now)
 	if now.Sub(u.yawnCheck) > time.Minute { // around your bedtime, on the quiet clock, a yawn (twice a night at most)
@@ -566,7 +569,7 @@ func (u *UI) stepEmber(dt float64, now time.Time) {
 	// home). It jumps there: a ballistic hop as high as the trip is long,
 	// crossing at an even pace and landing on the slot (wherever the morphing
 	// pill has taken it by then), so it never skates after it lands.
-	if u.lastView == vCompact && abs32(rel-u.travelTo) > 14 && math.Abs(u.ey.x-float64(sp.y)) < 8 {
+	if u.lastView == vCompact && abs32(rel-u.travelTo) > 14 && math.Abs(u.ey.x-float64(sp.y)) < 8 && !u.cfg.Calm {
 		h := math.Max(1.6, math.Min(3.2, 1.2+math.Abs(float64(rel-u.travelTo))/40))
 		const ant = 0.04
 		u.travelling, u.tripFrom = true, u.ex.x
@@ -616,6 +619,9 @@ func (u *UI) nextBlink() time.Time { return u.mind.blinkAt }
 
 // shimmering: the pill's label is lit while Claude works.
 func (u *UI) shimmering() bool {
+	if u.cfg.Calm {
+		return false
+	}
 	if u.lastView != vCompact {
 		return u.lastView == vExpanded && u.senses().working
 	}

@@ -46,6 +46,7 @@ type phones struct {
 }
 
 type body struct {
+	still    bool    // [ember] motion = "calm": no hops, no sparks
 	y, vy    float64 // height above its floor, up
 	sq       osc     // squash, rest 1
 	lean     osc     // shear at the tip
@@ -87,6 +88,9 @@ func (b *body) rnd() float64 {
 // jump: crouch for ant seconds, then leave the ground for a hop h px high.
 // Another jump while in the air waits until it lands.
 func (b *body) jump(h, ant float64) {
+	if b.still {
+		return
+	}
 	if b.airborne() {
 		b.jumpH = math.Max(b.jumpH, h)
 		return
@@ -116,6 +120,9 @@ func (b *body) brighten(v float64) { b.core.v += v }
 // sparks: n embers off the tip, fanned from up-left to up-right. The pill's
 // top is the screen's edge, so they fly sideways more than up.
 func (b *body) sparks(n int, speed float64, from [2]float64) {
+	if b.still {
+		return
+	}
 	for i := 0; i < n; i++ {
 		f := (float64(i) + 0.5) / float64(n)
 		ang := math.Pi*(0.12+0.76*f) + (b.rnd()-0.5)*0.3

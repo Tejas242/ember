@@ -36,6 +36,11 @@ type Config struct {
 
 	Green, Blue, Red, Amber color.NRGBA // [look] colours; zero follows the Noctalia theme
 
+	Calm       bool // [ember] motion = "calm": no hops, sparks, light bands, breathing halo or dance
+	Dance      bool // [ember] dance: to your music, in headphones
+	Flourishes bool // [ember] flourishes: the stretch, the yawn, the eye-roll, hello
+	Celebrate  bool // [ember] celebrate: hops and sparks when a task is done
+
 	Claude      bool // [show] claude
 	Music       bool // [show] music
 	Edge        bool // [show] edge (also turns the edge plugin off)
@@ -62,6 +67,7 @@ func Default() Config {
 	return Config{AwayAfter: 2 * time.Minute, Pill: "clock", HoverDelay: 150 * time.Millisecond,
 		CardSteps: DefaultCardSteps, CardOthers: 3, DoneFor: 6 * time.Second, OSDFor: DefaultOSDFor,
 		Answer: true, Wait: ipc.AskTimeout - 5*time.Second, Settle: 30 * time.Minute, AgentQuiet: DefaultAgentQuiet, Opacity: 0.87,
+		Dance: true, Flourishes: true, Celebrate: true,
 		Claude: true, Music: true, Edge: true, Battery: true,
 		OSD: true, Devices: true, Screenshots: true, Privacy: true, Done: true}
 }
@@ -105,6 +111,12 @@ green   = ""    # working, done
 blue    = ""    # waiting on you
 red     = ""    # errors
 amber   = ""    # nudges, low battery
+
+[ember]
+motion     = "full"  # full | calm: calm keeps the colours but drops hops, sparks, bands of light, the breathing halo and the dance (reduced motion, and less CPU)
+dance      = true    # dance to your music, in headphones
+flourishes = true    # things it does on its own: the morning stretch, a yawn at bedtime, the eye-roll, hello
+celebrate  = true    # hops and sparks when a long task is done
 
 [show]
 claude      = true  # Claude Code sessions, permission requests, questions
@@ -190,7 +202,7 @@ func Paste(missing []string) string {
 	return strings.Join(append(top, rest...), "\n")
 }
 
-var configSections = []string{"", "pill", "card", "moments", "claude", "look", "show", "plugins"}
+var configSections = []string{"", "pill", "card", "moments", "claude", "look", "ember", "show", "plugins"}
 
 // parse reads the small part of TOML Ember needs: sections and
 // key = value lines. It never fails: an unknown key is skipped and a value
@@ -352,6 +364,19 @@ func parse(text string) (c Config, warns, keys []string) {
 			hex(&c.Red)
 		case "look.amber":
 			hex(&c.Amber)
+		case "ember.motion":
+			switch v {
+			case "full", "calm":
+				c.Calm = v == "calm"
+			default:
+				warn(`ember.motion must be "full" or "calm"`)
+			}
+		case "ember.dance":
+			flag(&c.Dance)
+		case "ember.flourishes":
+			flag(&c.Flourishes)
+		case "ember.celebrate":
+			flag(&c.Celebrate)
 		case "show.claude":
 			flag(&c.Claude)
 		case "show.music":

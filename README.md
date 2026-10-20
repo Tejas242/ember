@@ -185,8 +185,9 @@ and `ember doctor` says which line it couldn't use and why. The ones people chan
 | `[look] bar_height` | `0` | your bar's thickness in px; `0` asks Noctalia, else 24 |
 | `[look] opacity` | `0.87` | the island's body: 1 is solid, lower lets the blur through |
 
-`[show]` turns any part off (music, the volume popups, battery, …), and `[look]` takes your own colours. The whole file, with
-every default, is in [docs/CONFIG.md](docs/CONFIG.md).
+`[show]` turns any part off (music, the volume popups, battery, …), `[look]` takes your own colours, and `[ember]
+motion = "calm"` is reduced motion: no hops, sparks or dancing. The whole file, with every default, is in
+[docs/CONFIG.md](docs/CONFIG.md).
 
 ## Ember, the character
 

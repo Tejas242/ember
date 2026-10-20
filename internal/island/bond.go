@@ -103,7 +103,7 @@ func (u *UI) calm() bool {
 // wrong, or someone is watching your screen. Claude working doesn't stop it:
 // it works to music too.
 func (u *UI) danceable() bool {
-	if u.casting || len(u.cards) > 0 || u.mind.valence < -0.2 {
+	if !u.cfg.Dance || u.cfg.Calm || u.casting || len(u.cards) > 0 || u.mind.valence < -0.2 {
 		return false
 	}
 	if m := u.moment; m != nil && m.mood == moodError {
@@ -293,7 +293,7 @@ func (u *UI) returned(since, now time.Time) {
 		b.greeted(now)
 	case first:
 		u.greetAt = now
-	case now.Sub(since) >= 10*time.Minute && len(u.mind.missed) == 0 && !u.extFocus() && b.cooled("hello", 30*time.Minute, now):
+	case u.cfg.Flourishes && now.Sub(since) >= 10*time.Minute && len(u.mind.missed) == 0 && !u.extFocus() && b.cooled("hello", 30*time.Minute, now):
 		u.play("hello", 0)
 	}
 }

@@ -37,6 +37,12 @@ blue    = ""    # waiting on you
 red     = ""    # errors
 amber   = ""    # nudges, low battery
 
+[ember]
+motion     = "full"  # full | calm: calm keeps the colours but drops hops, sparks, bands of light, the breathing halo and the dance (reduced motion, and less CPU)
+dance      = true    # dance to your music, in headphones
+flourishes = true    # things it does on its own: the morning stretch, a yawn at bedtime, the eye-roll, hello
+celebrate  = true    # hops and sparks when a long task is done
+
 [show]
 claude      = true  # Claude Code sessions, permission requests, questions
 done        = true  # "Done · project" when a session finishes and you're elsewhere
@@ -61,6 +67,12 @@ A value Ember can't use, an unknown key or a stray line never stops it: that lin
 lists settings newer than your file, so you can copy them from here. `hover_delay_ms` at the top of the file, where
 it lived before `[card]`, still works. `EMBER_AWAY_AFTER` (a Go duration, like `20s`) overrides `away_after_s` for
 testing.
+
+`[ember]` is about the flame. `motion = "calm"` is reduced motion: Ember keeps its colours and its face but no
+longer hops or throws sparks, bands of light don't cross the pill, a request waiting on you doesn't breathe a halo,
+and it doesn't dance. It also costs less CPU, since fewer frames are drawn. `dance`, `flourishes` (what it does on
+its own: the morning stretch, a yawn near your bedtime, the eye-roll, hello) and `celebrate` (the hops and sparks
+of a Done) turn just those off.
 
 `[plugins] enabled` says which plugins may run at all: `"all"` (the default), `"none"`, or a list of names.
 `[plugins.<name>]` tables belong to plugins. `enabled = "auto"` runs a plugin when its tool is installed (a plugin in
