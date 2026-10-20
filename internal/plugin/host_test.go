@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -277,5 +278,54 @@ func TestScanStates(t *testing.T) {
 	want := map[string]string{"broken": Broken, "misfit": Broken, "edge": Broken, "quiet": Off}
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("got %v want %v", got, want)
+	}
+}
+
+// The pomodoro example, built and run by the real host from its own manifest.
+func TestPomodoroUnderTheHost(t *testing.T) {
+	gobin, err := exec.LookPath("go")
+	if err != nil || testing.Short() {
+		t.Skip("no go to build the example, or -short")
+	}
+	root := t.TempDir()
+	dir := filepath.Join(root, "pomodoro")
+	os.Mkdir(dir, 0o755)
+	build := exec.Command(gobin, "build", "-o", filepath.Join(dir, "pomodoro"), "../../plugins/pomodoro")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	toml, _ := os.ReadFile("../../plugins/pomodoro/plugin.toml")
+	os.WriteFile(filepath.Join(dir, "plugin.toml"), toml, 0o644)
+	s := &sink{}
+	h := NewHost(root, "v", s)
+	ctx, cancel := context.WithCancel(context.Background())
+	h.Start(ctx)
+	eventually(t, "its row", func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		for _, m := range s.msgs {
+			if m.Type == "row" && m.Row.Title == "Pomodoro" {
+				return true
+			}
+		}
+		return false
+	})
+	h.Click("pomodoro", "")
+	eventually(t, "a focus session", func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		for _, m := range s.msgs {
+			if m.Type == "status" && m.Status.Text == "Focus" && m.Status.UntilMs > 0 {
+				return true
+			}
+		}
+		return false
+	})
+	cancel()
+	h.Stop()
+	for _, i := range h.Info() {
+		if i.State != Stopped || i.Violations != 0 {
+			t.Fatalf("%+v", i)
+		}
 	}
 }
