@@ -214,6 +214,33 @@ Click Ember and it takes you where the pill would (a waiting session, a Done); o
 and looks at you, the third puffs it up, the sixth sends it into its coal for a moment. Rest the pointer on it in
 the card and it closes its eyes, pleased.
 
+## Its mind
+
+Ember has a small mind. None of it is scripted animation. It is a handful of models running on real time:
+
+- **Affect.** Ember has an energy and a mood that relax toward a baseline, set by the time of day (peaking
+  mid-afternoon, lowest around 3 am), by what's running, and by whether you're at the machine. Events nudge them:
+  a tool call a little, a finished task brightens the mood, an error darkens it for a while. Energy sets how hard the
+  flame flickers, how fast it breathes and how open its eyes are. Mood tints its colour. It casts a soft light on the
+  island, brighter when it's lively.
+- **Life.** Blinks come at random, about fifteen a minute, sometimes doubled. Glances are random too, and the eyes are
+  never perfectly still. Ember looks at things as they appear: a note, the satellite at the pill's end. When the desk has
+  been quiet for a while it gets drowsy, then falls asleep (eyes shut, z's rising), and wakes when something happens
+  or your pointer comes near.
+- **Presence.** Through the compositor's idle notifications it knows when you've stepped away. Sessions that finish or
+  ask for you meanwhile aren't shown to an empty room. When you come back, one line tells you what happened:
+  *While you were away: kinvault done · ember asked you*.
+- **Attention.** What the pill shows is scored, not hard-coded. A running session scores high. A new track scores
+  high and then fades as you get used to it. If you're already looking at that session's terminal, the pill shows
+  something else and Claude moves to the satellite. A choice holds until a rival clearly beats it, so the pill never
+  flickers between close calls. A request waiting on you, and anything you just pressed, always come first.
+- **Habits.** It learns which row you reach for in each situation (music while Claude works, say) and puts it
+  higher. Older evidence fades, so a new habit takes over within a few uses.
+- **Judgement.** "Done" quotes the most informative sentence of Claude's reply (outcomes and numbers win over
+  preamble). Notes that arrive together merge ("Done · edge, ember"). A volume change hands a pending note back when
+  it's finished. A step running long shows its minutes. A session that went silent for half an hour (a killed Claude
+  never says Stop) settles to idle.
+
 ## Cost
 
 All drawing is in software. Steady frames repaint only the live rectangles (Ember, shimmer, equaliser, halo,

@@ -113,7 +113,7 @@ func doctor() {
 			if len(missing) > 6 {
 				missing, more = missing[:6], fmt.Sprintf(" and %d more", len(missing)-6)
 			}
-			note("config", "new settings your file doesn't have: "+strings.Join(missing, ", ")+more+" (see the README's Config)")
+			note("config", "new settings your file doesn't have: "+strings.Join(missing, ", ")+more+" (see docs/CONFIG.md)")
 		}
 	} else {
 		note("config", "defaults (ember install writes "+cfg+")")

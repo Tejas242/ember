@@ -114,14 +114,14 @@ func TestPatchSettingsFixture(t *testing.T) {
 	}
 }
 
-// The README shows the config file exactly as install writes it.
-func TestReadmeConfig(t *testing.T) {
-	b, err := os.ReadFile("../../README.md")
+// docs/CONFIG.md shows the config file exactly as install writes it.
+func TestConfigDoc(t *testing.T) {
+	b, err := os.ReadFile("../../docs/CONFIG.md")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(b), "```toml\n"+config.DefaultText+"```") {
-		t.Fatal("README's Config section differs from config.DefaultText")
+		t.Fatal("docs/CONFIG.md's config differs from config.DefaultText")
 	}
 }
 

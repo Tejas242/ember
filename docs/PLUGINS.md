@@ -50,7 +50,7 @@ again = ["pomodoro-cli", "restart"]       # an array is a command, run without a
 
 Ember starts every plugin it finds when it starts (and one that appears, within a minute), in the plugin's directory, with `EMBER_VERSION` and
 `EMBER_PLUGIN_DIR` in its environment, and stops it when the island stops. `[plugins.<name>] enabled = false`
-in Ember's config turns one off (see the README's Config). `ember plugins` lists them, and `ember doctor` says
+in Ember's config turns one off (see [CONFIG.md](CONFIG.md)). `ember plugins` lists them, and `ember doctor` says
 how each is doing.
 
 A plugin that exits is started again after 1 s, then 2, 4, 8… up to 5 minutes; a plugin that ran for a minute
