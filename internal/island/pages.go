@@ -474,7 +474,7 @@ func (u *UI) drawCard(c *Card, x, w float32) {
 	// the eyebrow: who wants what; the meta and, for edge's notes, a close
 	u.item("c:eyebrow", i, x, w, 0, cardTitleTop, func(y float32) {
 		r := right
-		if c.Kind == "edge" { // edge's notes can be closed
+		if c.Kind == "edge" || c.Kind == "plugin" { // edge's notes and plugins' cards can be closed
 			cx, cy := r-5, y+15
 			key := "close:" + c.ID
 			h := u.hl(key)

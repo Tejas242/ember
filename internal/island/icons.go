@@ -123,6 +123,10 @@ func (c *canvas) icon(name string, cx, cy, s float32, col color.NRGBA) {
 		c.roundRect(cx-4.4*u, cy-3.6*u, 8.8*u, 5.4*u, 1.6*u, col)
 		c.line(P(8, 9.8), P(8, 12), 1.4*u, col)
 		c.arc(cx+2.2*u, cy+4*u, 2.2*u, 1.4*u, math.Pi, math.Pi*1.5, col)
+	case "timer": // a stopwatch: a ring, its hand, the button on top
+		c.frame(cx-5.8*u, cy-4.6*u, 11.6*u, 11.6*u, 5.8*u, 1.6*u, col)
+		c.line(P(8, 9.2), P(8, 6), 1.6*u, col)
+		c.roundRect(cx-2*u, cy-7.6*u, 4*u, 1.8*u, 0.9*u, col)
 	case "chart": // three bars: a dashboard
 		c.roundRect(cx-6*u, cy+1*u, 3*u, 6*u, 1*u, col)
 		c.roundRect(cx-1.5*u, cy-6*u, 3*u, 13*u, 1*u, col)

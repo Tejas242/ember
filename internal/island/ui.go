@@ -24,7 +24,7 @@ type Option struct{ Label, Desc string }
 // question, an actionable edge nudge.
 type Card struct {
 	ID       string
-	Kind     string // perm | ask | edge
+	Kind     string // perm | ask | edge | plugin
 	Mood     mood
 	Eyebrow  string // who wants what, in small capitals: "kinvault wants to run"
 	Title    string
@@ -92,6 +92,7 @@ type moment struct {
 	osd   bool        // you just pressed a key: shows over everything but a card
 	at    time.Time   // when it appeared
 	cheer cheer       // a Done's celebration: how big, earned, an eye-roll first
+	ext   string      // a plugin's: "<name>\x00<target>", for a click
 }
 
 type view int
@@ -159,6 +160,7 @@ type UI struct {
 	cards      []*Card
 	edge       *EdgeStatus // set by the edge plugin while it runs
 	edgeStats  *EdgeStats
+	ext        map[string]*extPlugin // external plugins, by name: what each shows
 	second     time.Time
 	opened     map[string]bool      // agents you opened or closed in the card: a:<session>:<agent>
 	shownOpen  map[string]bool      // how the card last drew them (the room it had may have closed one)
@@ -489,7 +491,7 @@ func (u *UI) acts() []string {
 	if e := u.edge; e != nil && (e.Task != "" || e.Closed || e.Need > 0 || e.Round != nil) {
 		out = append(out, "edge")
 	}
-	return out
+	return append(out, u.extActs()...)
 }
 
 func (u *UI) has(act string) bool {

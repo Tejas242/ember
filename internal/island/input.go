@@ -129,7 +129,7 @@ func (u *UI) press(k string, button int) {
 			u.moment = nil
 		case u.currentView() == vExpanded:
 			u.pinned, u.suppress = false, true
-		case u.top() != nil && u.top().Kind == "edge":
+		case u.top() != nil && (u.top().Kind == "edge" || u.top().Kind == "plugin"):
 			c := u.top()
 			u.RemoveCard(c.ID)
 			if c.OnPick != nil {
@@ -151,6 +151,10 @@ func (u *UI) press(k string, button int) {
 			switch {
 			case m.focus != "":
 				u.key("focus:" + m.focus)
+				u.moment = nil
+				return
+			case m.ext != "": // a plugin's: what its manifest says a click does
+				u.key("x:click:" + m.ext)
 				u.moment = nil
 				return
 			case m.open != "":
@@ -203,6 +207,9 @@ func (u *UI) press(k string, button int) {
 		if c.OnPick != nil {
 			c.OnPick("option", []int{i})
 		}
+	case strings.HasPrefix(k, "x:click:"): // a plugin's row
+		u.key(k)
+		u.used(strings.SplitN(strings.TrimPrefix(k, "x:click:"), "\x00", 2)[0])
 	case strings.HasPrefix(k, "btn:edge:"), strings.HasPrefix(k, "music:"), strings.HasPrefix(k, "focus:"):
 		u.key(k)
 		if strings.HasPrefix(k, "music:") {

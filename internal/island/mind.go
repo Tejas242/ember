@@ -246,6 +246,9 @@ func (u *UI) salience(act string, now time.Time) float64 {
 		}
 		return 0
 	}
+	if strings.HasPrefix(act, "x:") {
+		return u.extSalience(act)
+	}
 	switch act {
 	case "claude":
 		ss := u.sessionList()
@@ -282,7 +285,7 @@ func (u *UI) salience(act string, now time.Time) float64 {
 // flickers between two near-equals.
 func (u *UI) attend(now time.Time) string {
 	best, bestS := "clock", u.salience("clock", now)
-	for _, a := range []string{"claude", "music", "edge"} {
+	for _, a := range append([]string{"claude", "music", "edge"}, u.extActs()...) {
 		if !u.cfg.Enabled(a) {
 			continue
 		}

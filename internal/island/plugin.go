@@ -1,9 +1,14 @@
 package island
 
 import (
+	"context"
 	"encoding/json"
 	"log"
+	"path/filepath"
 	"time"
+
+	"github.com/Tejas242/ember/internal/plugin"
+	"github.com/Tejas242/ember/internal/xdg"
 )
 
 // Plugins are the parts of Ember that belong to a tool not everyone has
@@ -67,6 +72,9 @@ func (a *app) reconcile() {
 			}
 		}
 	}
+	if a.host != nil {
+		a.host.Scan()
+	}
 	a.detectedAt = a.ui.now()
 }
 
@@ -75,4 +83,21 @@ func (a *app) toPlugin(name string, payload json.RawMessage) {
 	if p := a.plugins[name]; p != nil {
 		p.Message(a, payload)
 	}
+}
+
+// startPlugins runs the external plugins in ~/.config/ember/plugins until
+// ctx ends (stop ends it).
+func (a *app) startPlugins(ctx context.Context, stop func()) {
+	a.host = plugin.NewHost(filepath.Join(xdg.ConfigHome(), "ember", "plugins"), a.version, extSink{posts: a.posts, ctx: ctx})
+	a.host.Enabled = func(name string) bool { return a.cfg.PluginOn(name, true) } // Scan runs on the loop
+	a.host.Reserved = func(name string) bool {
+		for _, p := range plugins() {
+			if p.Name() == name {
+				return true
+			}
+		}
+		return false
+	}
+	a.stopAll = stop
+	a.host.Start(ctx)
 }

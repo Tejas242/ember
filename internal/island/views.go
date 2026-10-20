@@ -70,6 +70,8 @@ type line struct {
 	trail    string        // the second activity, as a satellite at the pill's end
 	m        *moment       // a system moment: icon, meter, value, battery
 	letters  []EdgeProblem // a contest round's problems, as chips
+	prog     float64       // a plugin's progress, 0..1, when hasProg
+	hasProg  bool
 }
 
 // tick is the part of the line that changes with time alone.
@@ -89,7 +91,8 @@ const trailW = 8 + 1 + 7 + 18
 func (u *UI) mainLine() line {
 	p, now := u.pal, u.now()
 	ss := u.sessionList()
-	switch u.primary() {
+	primary := u.primary()
+	switch primary {
 	case "moment":
 		m := u.moment
 		l := line{key: "moment:" + m.key, mood: m.mood, verb: m.verb, text: m.text, sub: m.sub, textCol: p.fg}
@@ -159,6 +162,9 @@ func (u *UI) mainLine() line {
 			}
 			return l
 		}
+	}
+	if l, ok := u.extLine(primary); ok {
+		return l
 	}
 	l := line{key: "clock", mood: moodIdle, text: now.Format(u.cfg.PillFormat()), textCol: mix(p.fg, p.muted, 0.7*u.sleepK)}
 	if e := u.edge; e != nil && e.Closed {
@@ -325,6 +331,14 @@ func (u *UI) pillLayout(l line, h float32) (left, right []seg, w float32) {
 	}
 	if l.lock {
 		right = append(right, seg{w: 11, gap: 8, draw: func(x float32) { u.dc.lock(x, cy-6, 11, p.yellow) }})
+	}
+	if l.hasProg { // a plugin's progress: a short bar in its mood's colour
+		right = append(right, seg{w: 44, gap: 10, draw: func(x float32) {
+			u.dc.roundRect(x, cy-2, 44, 4, 2, alpha(p.fg, 0.14))
+			if l.prog > 0 {
+				u.dc.roundRect(x, cy-2, max(44*float32(l.prog), 4), 4, 2, p.moodColor(l.mood))
+			}
+		}})
 	}
 	if m != nil && m.meter {
 		right = append(right, seg{w: meterW, gap: 10, draw: func(x float32) {

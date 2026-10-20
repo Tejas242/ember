@@ -81,6 +81,7 @@ func (u *UI) footerH() float32 {
 	if u.edgeRowShown() {
 		h += divH + edgeH
 	}
+	h += float32(len(u.extRows())) * (divH + extH)
 	return h
 }
 
@@ -320,6 +321,15 @@ func (u *UI) drawExpanded(x, w float32) {
 		u.divider(x, w, y)
 		y += divH
 		u.item("edge", i, x, w, y, edgeH, func(y float32) { u.edgeRow(x, w, y) })
+		y += edgeH
+		i++
+	}
+	for _, xp := range u.extRows() { // the plugins' rows, by name
+		u.divider(x, w, y)
+		y += divH
+		u.item("x:"+xp.name, i, x, w, y, extH, func(y float32) { u.extRow(xp, x, w, y) })
+		y += extH
+		i++
 	}
 }
 

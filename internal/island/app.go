@@ -20,6 +20,7 @@ import (
 
 	"github.com/Tejas242/ember/internal/config"
 	"github.com/Tejas242/ember/internal/ipc"
+	"github.com/Tejas242/ember/internal/plugin"
 	"github.com/Tejas242/ember/internal/source"
 	"github.com/Tejas242/ember/internal/wayland"
 	"github.com/Tejas242/ember/internal/xdg"
@@ -39,6 +40,9 @@ type app struct {
 	win       *wayland.Window
 	music     *source.MPRIS
 	sup       *source.Supervisor // runs the sources; knows how each is doing
+	host      *plugin.Host       // runs the external plugins
+	stopAll   func()             // ends the sources and the plugins
+	lastDash  string             // the dashboard open last time we looked: plugins hear of a change
 	version   string
 	track     *Track
 	posts     chan func(*app)
@@ -205,6 +209,7 @@ func Run(version string) error {
 	a.loadSessions()
 	a.music, a.sup = source.NewMPRIS(), source.NewSupervisor()
 	a.startSources(ctx, emitter(posts))
+	a.startPlugins(ctx, stop)
 	defer a.shutdown()
 	frameDue := false
 	win.OnPointer = func(e wayland.PointerEvent) {
@@ -320,6 +325,7 @@ func Run(version string) error {
 			draw()
 		}
 		tick = false
+		a.extDashChanged()
 		nWake++
 		if debug && time.Since(statAt) > 5*time.Second {
 			log.Printf("5s: wakes %d, full %d, fast %d, failed %d, posts %d, view %v, cont %v", nWake, nFull, nFast, nFail, nPost, a.ui.lastView, a.ui.continuous())
@@ -333,6 +339,10 @@ func Run(version string) error {
 // shutdown saves everything that outlives the island and stops the song's
 // listener.
 func (a *app) shutdown() {
+	if a.stopAll != nil { // the plugins first: they have two seconds to go
+		a.stopAll()
+		a.host.Stop()
+	}
 	a.saveSessions()
 	a.ui.habits.save()
 	a.ui.bond.save()
@@ -513,6 +523,8 @@ func (a *app) key(k string) {
 	case strings.HasPrefix(k, "sys:light:"):
 		f, _ := strconv.ParseFloat(strings.TrimPrefix(k, "sys:light:"), 64)
 		go source.SetBrightness(f)
+	case strings.HasPrefix(k, "x:click:"):
+		a.extKey(k)
 	case strings.HasPrefix(k, "open:"):
 		go exec.Command("xdg-open", strings.TrimPrefix(k, "open:")).Run()
 	case strings.HasPrefix(k, "music:seek:") && a.track != nil:
