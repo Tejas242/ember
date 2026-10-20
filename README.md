@@ -100,7 +100,7 @@ soft. It appears on whichever output the compositor gives it. The screen-sharing
 </p>
 
 <p align="center">
-  <img src="docs/requests.png" alt="Requests: a command, an edit with two more waiting, a question, several answers, a practice nudge" width="840">
+  <img src="docs/requests.png" alt="Requests: a command, an edit with two more waiting, a question, several answers" width="840">
 </p>
 
 ### Music
@@ -132,15 +132,6 @@ They appear for a moment, then step aside:
 <p align="center">
   <img src="docs/pills.png" alt="Every state of the pill" width="840">
 </p>
-
-### Plugins: edge's dashboard
-
-<p align="center">
-  <img src="docs/demo/dash.webp" alt="edge's dashboard opening: the day's ring, the problem in progress, the week, the rating, the year, four numbers" width="760">
-</p>
-
-Anyone can add to the island with a plugin, in any language: Ember draws what it says in its own style. The first is
-**edge**, a practice coach: its day in the pill, its nudges on the island, and a dashboard. See [Plugins](#plugins).
 
 ## Alive
 
@@ -252,7 +243,7 @@ layer-rule {
 | Scroll on the music row | Changes the player's volume |
 | Middle-click | Play / pause |
 | Right-click | Dismisses a moment, the card or a dashboard |
-| Click edge's row in the card | Opens edge's dashboard. Leave it, click it or right-click to close |
+| Click a plugin's row in the card | Opens its dashboard, if it has one. Leave it, click it or right-click to close |
 
 Commands, for keybindings or scripts:
 
@@ -264,7 +255,7 @@ ember play                              play / pause
 ember allow | deny | always             answer the oldest permission request
 ember terminal                          hand it back to Claude's own prompt
 ember answer opt:N | submit             answer the oldest question
-ember dash [name]                       open or close a plugin's dashboard (edge)
+ember dash [name]                       open or close a plugin's dashboard
 ```
 
 For example, in niri:
@@ -280,33 +271,12 @@ binds {
 ## Plugins
 
 Anything can show on the island through a plugin: any program, in any language, that tells Ember what to show in
-plain JSON lines. Ember draws it in its own style and decides when it shows; a plugin can't draw pixels, hold the
-pill against Ember's judgement, or touch Claude's requests. They live in `~/.config/ember/plugins/<name>/`, start
-with the island, and `ember plugins` says how each is doing. Scripts need no plugin at all:
-`ember note "Build passed" --icon check --mood done` and `ember status deploy "Deploying" --progress 0.4`.
-The protocol, the manifest, the Go SDK and the examples (a pomodoro timer, a build notifier) are in
-[docs/PLUGINS.md](docs/PLUGINS.md).
-
-**edge** (a practice coach for competitive programming; not public yet) is a plugin too, built into Ember's binary
-(`ember plugin edge`); `ember install` sets it up when edge is installed. Its day sits in the pill and the card, its
-notes and buttons on the island, and it has a dashboard (`ember dash edge`, or click its row in the card), stacked
-by the questions you ask of it:
-
-- **today**: Ember in the day's ring, where Claude stands, and the next step with its button
-- **this week and what's coming**: bars against each day's need; held rounds, upsolves about to lapse, cold re-solves
-- **progress**: your Codeforces rating over the band edge picks from; solo rate, retention, focus, rounds held
-- **the record**: six months as a heatmap, and the last few problems, honestly
-- what isn't needed now (in a live round, late at night) folds to a line
-
-<p align="center">
-  <img src="docs/demo/edge.webp" alt="An evening with edge on the island: a problem offered and started, a wrong answer, the accept, then a contest round counting down, filling in its letters and settling into upsolves" width="760">
-</p>
-
-During a contest round edge holds you to, the pill is the round: its name, a letter per problem filled in as verdicts
-land, the time left and the lock (edge keeps Claude off while it runs). Before it, a countdown; after, what's owed.
-That needs three powers a plugin only has when you grant them, and `ember install` grants edge:
-`[plugins.edge] grants = ["critical", "badge", "focus"]` (outranking Claude at work, the padlock on the clock, Ember's
-game face).
+plain JSON lines on its stdin and stdout. Ember draws it in its own style and decides when it shows; a plugin can't
+draw pixels, hold the pill against Ember's judgement, or touch Claude's requests. Scripts need no plugin at all:
+`ember note "Build passed" --icon check` shows a moment and `ember status deploy "Deploying" --progress 0.4` holds a
+pill line. The protocol, the Go SDK and the examples (a pomodoro timer, a build notifier) are in
+[docs/PLUGINS.md](docs/PLUGINS.md), with **edge**, a practice coach with its own row, nudges and dashboard, as the
+worked example of a bigger one.
 
 ## Config
 

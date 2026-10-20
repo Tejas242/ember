@@ -330,6 +330,12 @@ err = h.Stop()
   `cp plugins/pomodoro/plugin.toml ~/.config/ember/plugins/pomodoro/`.
 - `plugins/notify-build` (shell, no plugin needed): `notify-build make test` holds a pill line while the build
   runs and leaves a note saying how it went. It is `ember status` and `ember note`, and nothing else.
+- `plugins/edge` (Go, shipped in Ember's binary as `ember plugin edge`): the worked example of a bigger plugin.
+  It adapts edge, a practice coach for competitive programming (not public yet): edge's status becomes the pill's
+  line and a row, its nudges become cards with buttons, and its stats become a dashboard built from the widgets
+  above (a hero ring, column bars, a banded line, a heatmap, an agenda, folding). During a contest round it uses
+  all three grants: its line outranks Claude at work, a padlock sits on the clock, and Ember wears its game face.
+  `ember install` sets it up, and grants those three, only when edge is installed.
 
 ## The schema
 

@@ -164,6 +164,10 @@ func single(t *testing.T, name string, img *image.RGBA) {
 	f.Close()
 }
 
+// noPlugins: EMBER_PLUGINS=off renders the island without plugins, as most
+// people run it: the README's pictures (make docs).
+func noPlugins() bool { return os.Getenv("EMBER_PLUGINS") == "off" }
+
 func TestGallery(t *testing.T) {
 	if os.Getenv("EMBER_PREVIEW") == "" {
 		t.Skip("set EMBER_PREVIEW")
@@ -351,6 +355,9 @@ func TestGallery(t *testing.T) {
 		req("edge's nudge", &Card{ID: "x:edge:1", Kind: "plugin", Mood: moodNudge, Eyebrow: "edge", Title: "Today's problem is waiting",
 			Body: "1360E · Polygon, rated 1400. Claude unlocks when it's solved.", Buttons: []Button{{Key: "later", Label: "Later"}, {Key: "start", Label: "Start", Primary: true}}}, nil),
 	}
+	if noPlugins() {
+		reqs = reqs[:len(reqs)-1] // edge's nudge
+	}
 	sheet(t, "gallery-requests", reqs, 2)
 	single(t, "gallery-request", reqs[0].img)
 	if os.Getenv("EMBER_GROUND") == "site" {
@@ -420,6 +427,9 @@ func TestGallery(t *testing.T) {
 		g.a.ui.pinned = true
 	}, func(g *galleryScene) { g.a.ui.press("s:e", 1); g.a.ui.Invalidate() }, open, cardCrop)
 
+	if noPlugins() {
+		return
+	}
 	// edge's dashboard: the sample behind on its day, and today's real stats
 	// when EMBER_EDGE_STATS names edge's stats.json (make gallery passes it;
 	// tests never read it)
@@ -461,6 +471,9 @@ func (g *galleryScene) agent(id, project, aid, desc string, steps int) {
 
 // edge: edge's plugin on, its day half done, with a dashboard behind its row.
 func (g *galleryScene) edge() {
+	if noPlugins() {
+		return
+	}
 	st := edgeFixture()
 	edgeSays(g.a.ui, &adapter.Status{Today: 1, Need: 2, Streak: 4}, st)
 	g.a.cfg = g.a.ui.cfg

@@ -71,18 +71,21 @@ gallery:
 	mkdir -p preview
 	EMBER_PREVIEW=$(CURDIR)/preview EMBER_EDGE_STATS=$(XDG_RUNTIME_DIR)/edge/stats.json go test -tags render -count=1 -run TestGallery ./internal/island
 
-# the README's pictures: stills, animated demos (needs ffmpeg with libwebp) and the banner
-docs: gallery
-	cp preview/gallery-pills.png docs/pills.png
-	cp preview/gallery-cards.png docs/cards.png
-	cp preview/gallery-requests.png docs/requests.png
-	cp preview/gallery-card.png docs/card.png
-	cp preview/gallery-request.png docs/request.png
+# the README's pictures: stills, animated demos (needs ffmpeg with libwebp) and the banner,
+# drawn without plugins (EMBER_PLUGINS=off), as most people run Ember
+docs:
+	rm -rf preview/docs && mkdir -p preview/docs
+	EMBER_PLUGINS=off EMBER_PREVIEW=$(CURDIR)/preview/docs go test -tags render -count=1 -run TestGallery ./internal/island
+	cp preview/docs/gallery-pills.png docs/pills.png
+	cp preview/docs/gallery-cards.png docs/cards.png
+	cp preview/docs/gallery-requests.png docs/requests.png
+	cp preview/docs/gallery-card.png docs/card.png
+	cp preview/docs/gallery-request.png docs/request.png
 	$(MAKE) demo
 
 demo:
 	mkdir -p docs/demo
-	EMBER_DEMO=$(CURDIR)/docs/demo go test -tags render -count=1 -run 'TestDemo$$|TestBanner' -timeout 30m ./internal/island
+	EMBER_PLUGINS=off EMBER_DEMO=$(CURDIR)/docs/demo go test -tags render -count=1 -run 'TestDemo$$|TestBanner' -timeout 30m ./internal/island
 
 # the landing page's frames: the same scenes on the page's own dark ground, in docs/site
 site-media:

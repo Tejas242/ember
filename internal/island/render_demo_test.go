@@ -400,6 +400,9 @@ func TestDemo(t *testing.T) {
 
 	// 4. edge's dashboard opening.
 	t.Run("dash", func(t *testing.T) {
+		if noPlugins() {
+			t.Skip("EMBER_PLUGINS=off")
+		}
 		d := newDemo(t, "dash", demoW, 380)
 		d.g.clock = time.Date(2026, 10, 20, 21, 40, 0, 0, time.Local)
 		st := edgeFixture()
