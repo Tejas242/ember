@@ -23,6 +23,7 @@
 
 <p align="center">
   <a href="https://tejas242.github.io/ember/"><b>Website</b></a> ·
+  <a href="#trust">Trust</a> ·
   <a href="#what-it-shows">What it shows</a> ·
   <a href="#alive">Alive</a> ·
   <a href="#install">Install</a> ·
@@ -41,6 +42,37 @@ instead of hunting for the terminal. When nothing's going on it's a clock with a
 around and falls asleep at night.
 
 The name is two things: Ember, the app, and Ember, the flame who lives in it.
+
+## Trust
+
+Ember sits next to Claude's permission prompts, so here is exactly what it does and doesn't do.
+
+- **It approves nothing on its own.** A request is allowed only when you click Allow or Always on the island, or run
+  `ember allow` / `ember always`. *Always* applies the rule Claude itself suggested, and the card says what it would
+  allow. A request goes back to the terminal after `[claude] wait_s` (85 s by default), and at once if Ember isn't
+  running. `[claude] answer = false` leaves every answer to the terminal.
+- **The socket** is `$XDG_RUNTIME_DIR/ember.sock`, mode 0600: only your user can talk to it (that's how
+  `ember allow` works, so anything running as you can too).
+- **What it reads.** Claude Code's hook events (the session, its folder, each tool call and its input, your prompt,
+  Claude's last message) and the process tree above a hook, to find its terminal. Your player over MPRIS. While a
+  song plays, the output's audio levels (`parec`, 8 kHz mono), turned into three numbers 25 times a second: nothing
+  is recorded or stored, and it stops when the music does. Volume, brightness, battery, Bluetooth, the screenshots
+  folder, and niri's window and screencast events.
+- **What it writes.** `ember install` writes Ember's hooks into `~/.claude/settings.json` (your other hooks stay,
+  and the file as it was is kept once as `settings.json.pre-ember`), `~/.config/ember/config.toml` if there isn't
+  one, and `~/.config/systemd/user/ember.service`. While it runs it keeps what it has learned (habits, your usual
+  hours, today's tally) in `~/.local/state/ember`, and the sessions on show in
+  `$XDG_RUNTIME_DIR/ember-sessions.json` (0600) so a restart doesn't lose them. `ember uninstall` takes out the
+  hooks and the service; your config and state stay.
+- **Network.** Only album art, when your player gives the cover as an `http(s)` URL (8 s timeout, 4 MiB at most,
+  kept in memory). No telemetry, no updates, nothing else.
+- **Plugins** are programs you put in `~/.config/ember/plugins`, and they run as your user, like anything else you
+  install. They tell Ember what to show and never see or answer Claude's requests; their buttons can only do what
+  their manifest declares. The three powers that reach past their own line (outranking Claude at work, a badge on
+  the clock, Ember's game face) need a grant in your config.
+
+**Display limits.** Ember draws at 1×, so on a HiDPI output with scaling it's upscaled by the compositor and looks
+soft. It appears on whichever output the compositor gives it. The screen-sharing dot needs niri.
 
 ## What it shows
 
