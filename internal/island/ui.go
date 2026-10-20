@@ -50,28 +50,27 @@ const (
 
 // UI owns all state; only the main loop touches it.
 type UI struct {
-	W, H       int
-	BarH       float32
-	TimeFmt    string
-	cv         *canvas // the frame
-	dc         *canvas // where views draw: the content layer
-	content    *canvas
-	prev       *image.RGBA // content of the view we're leaving
-	pal        palette
-	cfg        config.Config
+	W, H    int
+	BarH    float32
+	TimeFmt string
+	pal     palette
+	cfg     config.Config
+	now     func() time.Time
+
+	worldState
+	pointerState
+	motionState
+	emberState
+	frameState
+}
+
+// worldState is what the island knows: Claude's sessions and requests, the
+// plugins, the music, the system, and what Ember remembers.
+type worldState struct {
 	sessions   map[string]*Session
 	cards      []*Card
 	ext        map[string]*extPlugin // external plugins, by name: what each shows
-	unfolded   map[string]bool       // dashboard sections you unfolded: "<plugin>:<index>"
-	second     time.Time
-	opened     map[string]bool      // agents you opened or closed in the card: a:<session>:<agent>
-	shownOpen  map[string]bool      // how the card last drew them (the room it had may have closed one)
-	allRows    bool                 // the card shows every session, one line each ("Show all"), until it closes
-	hero       string               // the session you made the card's hero, until it closes
-	dash       string               // the open dashboard's plugin, if any
-	dashAt     time.Time            // when it opened: its entrance plays from here
-	dashIn     bool                 // the pointer has been on it: leaving closes it
-	dashboards map[string]Dashboard // by plugin, while the plugin runs
+	dashboards map[string]Dashboard  // by plugin, while the plugin runs
 	track      *Track
 	art        *albumArt
 	moment     *moment
@@ -80,8 +79,28 @@ type UI struct {
 	casting    bool    // the screen is being shared
 	vol        level   // the default output
 	light      float64 // screen brightness 0..1, -1 if there's no backlight
+	bond       *bond   // what Ember remembers about you
+	mind       *mind
+	day        *Day
+	watching   map[string]bool // sessions whose terminal has your focus
+	habits     *habits
+	lastDone   struct {
+		project string
+		at      time.Time
+	}
+}
 
-	// interaction
+// pointerState is where the pointer is and what you've done with it: hover,
+// presses and drags, and what you opened or picked in the card.
+type pointerState struct {
+	unfolded                map[string]bool // dashboard sections you unfolded: "<plugin>:<index>"
+	opened                  map[string]bool // agents you opened or closed in the card: a:<session>:<agent>
+	shownOpen               map[string]bool // how the card last drew them (the room it had may have closed one)
+	allRows                 bool            // the card shows every session, one line each ("Show all"), until it closes
+	hero                    string          // the session you made the card's hero, until it closes
+	dash                    string          // the open dashboard's plugin, if any
+	dashAt                  time.Time       // when it opened: its entrance plays from here
+	dashIn                  bool            // the pointer has been on it: leaving closes it
 	hover, pinned, suppress bool
 	hoverAt, leftAt         time.Time
 	mx, my                  float64
@@ -99,92 +118,100 @@ type UI struct {
 	drag                    string                     // the control being dragged: sys:vol, sys:light, music:seek
 	dragSent                time.Time                  // when the system last heard about the drag
 	sliders                 map[string]image.Rectangle // System page: sys:vol, sys:light
+	openCtx                 string                     // the desk when the card opened
+	openAt                  time.Time
+}
 
-	// animation
+// motionState is the island's own motion: its shape's springs, tweens and
+// the cross-fade between views.
+type motionState struct {
 	sw, sh, bub spring
 	swell       spring  // the pill's anticipation under the pointer, 0..1
 	prevK       float64 // how visible the view we're leaving was when we left it
 	prevAt      time.Time
-	haloAt      time.Time     // the last frame something waited on you (the halo fades after)
-	meterBump   time.Time     // a key pressed past the meter's end
-	audio       *source.Audio // the song's levels, while one plays
-	eqShown     bool          // an equaliser is on screen (it listens, so frames come quicker)
-	eqLevel     [3]float64    // its bars, smoothed
-	washImg     *image.RGBA   // the cover's haze, scaled to the music section
-	washKey     string
-	body        *body   // Ember's physical self
-	act         *act    // what it's acting out, if anything
-	dancing     bool    // it has caught the song's beat
-	groove      groove  // its sense of rhythm
-	travelTo    float32 // where its slot last was: a jump in it is a trip, taken with a hop
-	travelling  bool
-	tripFrom    float64   // where the trip left from
-	tripAt      time.Time // when it left the ground (after its crouch)
-	tripAir     float64   // how long it's in the air
-	flare       bool      // the Done playing now was earned: a long or hard-won turn
-	afterRoll   cheer     // the Done that follows the eye-roll
-	gulpAt      time.Time
-	greetAt     time.Time // a return found at startup or after a sleep: greet once it's calm
-	bond        *bond     // what Ember remembers about you
-	pokes       int
-	pokeAt      time.Time
-	petSince    time.Time // the pointer has rested on Ember (in the card) since
-	yawnCheck   time.Time
-	sleepK      float64 // how asleep the pill looks, 0..1
-	wasAsleep   bool
-	meter       spring // a moment's level bar
+	haloAt      time.Time // the last frame something waited on you (the halo fades after)
+	meterBump   time.Time // a key pressed past the meter's end
+	meter       spring    // a moment's level bar
 	meterKey    string
 	tweens      map[string]*tween
 	enterAt     map[string]time.Time // when each element of the current view began to arrive
 	rolls       map[string]*roll
-	frame       int     // full frames drawn: tweens step once per frame
-	dt          float64 // this frame's time step
 	tweening    bool    // a tween or roll is still moving
 	fadeK       float64 // how far the content has faded in (panels fade with it)
 	rowK        float64 // how far the element being drawn has arrived
-	lastFull    bool    // the last frame was a full repaint (for EMBER_DEBUG)
-	lastPage    string
-	mind        *mind
-	day         *Day
-	watching    map[string]bool // sessions whose terminal has your focus
-	habits      *habits
-	openCtx     string // the desk when the card opened
-	openAt      time.Time
-	lastChip    string
-	trailOn     bool
-	lastDone    struct {
-		project string
-		at      time.Time
-	}
-	ex, ey, es         spring // Ember's position and size, shared by every view
-	look               spring
-	emberCol           [3][3]float64 // its fire: hot, body, tip
-	spot               emberSpot
-	lastView           view
-	lastKey            string
-	trAt               time.Time
-	prevAlive          bool
-	lineKey, lineText  string
-	slideOld           string
-	slideAt            time.Time
-	start, lastBlink   time.Time
-	bounceAt, lastTick time.Time
-	glanceAt           time.Time
-	minute             time.Time
-	dirty              bool
-	base               *image.RGBA
-	lives              []live
-	shape              notch
-	bubble             image.Rectangle
-	lastBounds         image.Rectangle
-	lastEmber          image.Rectangle
-	now                func() time.Time
+	trAt        time.Time
+	prevAlive   bool
+	slideOld    string
+	slideAt     time.Time
+}
+
+// emberState is Ember's body, its acts and its character.
+type emberState struct {
+	audio            *source.Audio // the song's levels, while one plays
+	eqShown          bool          // an equaliser is on screen (it listens, so frames come quicker)
+	eqLevel          [3]float64    // its bars, smoothed
+	body             *body         // Ember's physical self
+	act              *act          // what it's acting out, if anything
+	dancing          bool          // it has caught the song's beat
+	groove           groove        // its sense of rhythm
+	travelTo         float32       // where its slot last was: a jump in it is a trip, taken with a hop
+	travelling       bool
+	tripFrom         float64   // where the trip left from
+	tripAt           time.Time // when it left the ground (after its crouch)
+	tripAir          float64   // how long it's in the air
+	flare            bool      // the Done playing now was earned: a long or hard-won turn
+	afterRoll        cheer     // the Done that follows the eye-roll
+	gulpAt           time.Time
+	greetAt          time.Time // a return found at startup or after a sleep: greet once it's calm
+	pokes            int
+	pokeAt           time.Time
+	petSince         time.Time // the pointer has rested on Ember (in the card) since
+	yawnCheck        time.Time
+	sleepK           float64 // how asleep the pill looks, 0..1
+	wasAsleep        bool
+	ex, ey, es       spring // Ember's position and size, shared by every view
+	look             spring
+	emberCol         [3][3]float64 // its fire: hot, body, tip
+	spot             emberSpot
+	start, lastBlink time.Time
+	bounceAt         time.Time
+	glanceAt         time.Time
+}
+
+// frameState is drawing: the canvases, what the last frame drew and where,
+// and what changed since.
+type frameState struct {
+	cv                *canvas // the frame
+	dc                *canvas // where views draw: the content layer
+	content           *canvas
+	prev              *image.RGBA // content of the view we're leaving
+	second            time.Time
+	washImg           *image.RGBA // the cover's haze, scaled to the music section
+	washKey           string
+	frame             int     // full frames drawn: tweens step once per frame
+	dt                float64 // this frame's time step
+	lastFull          bool    // the last frame was a full repaint (for EMBER_DEBUG)
+	lastPage          string
+	lastChip          string
+	trailOn           bool
+	lastView          view
+	lastKey           string
+	lineKey, lineText string
+	lastTick          time.Time
+	minute            time.Time
+	dirty             bool
+	base              *image.RGBA
+	lives             []live
+	shape             notch
+	bubble            image.Rectangle
+	lastBounds        image.Rectangle
+	lastEmber         image.Rectangle
 }
 
 func NewUI(w, h int, barH float32) *UI {
-	u := &UI{W: w, H: h, BarH: barH, TimeFmt: "3:04 PM", cv: newCanvas(w, h), content: newCanvas(w, h),
-		prev: image.NewRGBA(image.Rect(0, 0, w, h)), pal: loadPalette(), cfg: config.Default(), sessions: map[string]*Session{}, dashboards: map[string]Dashboard{}, opened: map[string]bool{},
-		now: time.Now, dirty: true, base: image.NewRGBA(image.Rect(0, 0, w, h))}
+	u := &UI{W: w, H: h, BarH: barH, TimeFmt: "3:04 PM", pal: loadPalette(), cfg: config.Default(), now: time.Now}
+	u.cv, u.content, u.prev, u.base = newCanvas(w, h), newCanvas(w, h), image.NewRGBA(image.Rect(0, 0, w, h)), image.NewRGBA(image.Rect(0, 0, w, h))
+	u.sessions, u.dashboards, u.opened, u.dirty = map[string]*Session{}, map[string]Dashboard{}, map[string]bool{}, true
 	u.dc = u.content
 	u.light, u.rowK = -1, 1
 	u.shownOpen = map[string]bool{}
