@@ -21,6 +21,7 @@ type Manifest struct {
 	Args        []string
 	Icon        string
 	Caps        []string            // the capabilities it declared that Ember knows
+	Asks        []string            // the grants it asks for (only the user's config grants them)
 	Targets     map[string][]string // a click's targets: a URL (one element) or a command
 	Dir         string
 	Mod         time.Time // the manifest's mtime: a change wakes a suspended plugin
@@ -107,6 +108,12 @@ func parseManifest(text string) (*Manifest, error) {
 			m.Icon, err = one()
 		case "args":
 			m.Args = vals
+		case "grants":
+			for _, g := range vals {
+				if slices.Contains([]string{proto.GrantCritical, proto.GrantBadge, proto.GrantFocus}, g) && !slices.Contains(m.Asks, g) {
+					m.Asks = append(m.Asks, g)
+				}
+			}
 		case "capabilities":
 			for _, c := range vals {
 				if slices.Contains(proto.Caps, c) && !slices.Contains(m.Caps, c) {

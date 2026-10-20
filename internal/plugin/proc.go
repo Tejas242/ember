@@ -36,7 +36,8 @@ var (
 // coalesced (the latest wins), the rest are dropped.
 var interval = map[string]time.Duration{
 	"status": 100 * time.Millisecond, "row": 100 * time.Millisecond, "dashboard": 250 * time.Millisecond,
-	"moment": 10 * time.Second, "card": time.Second, "cheer": time.Minute,
+	"moment": 10 * time.Second, "card": time.Second,
+	"cheer:hop": 5 * time.Second, "cheer:celebrate": time.Hour, // hop and nod share theirs: reactions
 }
 
 const logRate = 5 // log lines a second
@@ -68,7 +69,7 @@ type proc struct {
 
 func newProc(h *Host, m *Manifest, cancel context.CancelFunc) *proc {
 	return &proc{h: h, m: m, cancel: cancel, out: make(chan []byte, 32),
-		info: Info{Name: m.Name, Description: m.Description, Icon: m.Icon, Caps: m.Caps, State: Starting, Since: time.Now(), Dir: m.Dir}}
+		info: Info{Name: m.Name, Description: m.Description, Icon: m.Icon, Caps: m.Caps, Asks: m.Asks, State: Starting, Since: time.Now(), Dir: m.Dir}}
 }
 
 func (p *proc) snapshot() Info {
@@ -458,7 +459,17 @@ func (p *proc) offer(m proto.Message, now time.Time) {
 			}
 		}
 		p.cards[m.Card.ID] = now.Add(time.Duration(m.Card.TTLs * float64(time.Second)))
-	default: // moment, cheer
+	case "cheer":
+		key := "cheer:hop" // hop and nod: reactions
+		if m.Cheer.Kind == "celebrate" {
+			key = "cheer:celebrate"
+		}
+		if t, ok := p.last[key]; ok && now.Sub(t) < interval[key] {
+			p.info.Dropped++
+			return
+		}
+		p.last[key] = now
+	default: // moment
 		if now.Sub(p.last[m.Type]) < interval[m.Type] {
 			p.info.Dropped++
 			return

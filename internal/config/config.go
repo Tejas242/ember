@@ -210,6 +210,9 @@ func parse(text string) (c Config, warns, keys []string) {
 			if _, err := strconv.ParseBool(v); k == "enabled" && v != "auto" && err != nil {
 				warn("plugins.%s.enabled must be auto, true or false", name)
 			}
+			if g, ok := pluginList(v); k == "grants" && (!ok || g == nil) {
+				warn(`plugins.%s.grants must be a list: ["critical", "badge", "focus"]`, name)
+			}
 			continue
 		}
 		if !known {
@@ -354,6 +357,13 @@ func stripComment(ln string) string {
 		}
 	}
 	return ln
+}
+
+// PluginGrants is what the user granted a plugin: [plugins.<name>] grants =
+// ["critical", "badge", "focus"].
+func (c Config) PluginGrants(name string) []string {
+	g, _ := pluginList(c.Plugins[name]["grants"])
+	return g
 }
 
 // pluginList reads [plugins] enabled: "all" (nil), "none" (empty), or a

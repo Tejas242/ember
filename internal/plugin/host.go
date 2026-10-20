@@ -43,6 +43,8 @@ type Info struct {
 	Icon        string    `json:"icon,omitempty"`
 	State       string    `json:"state"`
 	Caps        []string  `json:"caps,omitempty"`
+	Grants      []string  `json:"grants,omitempty"` // what the user's config grants it
+	Asks        []string  `json:"asks,omitempty"`   // what its manifest asks for
 	Since       time.Time `json:"since"`
 	Restarts    int       `json:"restarts"`
 	Dropped     int       `json:"dropped"`    // over a rate limit, quietly
@@ -57,8 +59,9 @@ type Host struct {
 	Dir      string
 	Version  string // Ember's, for the hello
 	Sink     Sink
-	Enabled  func(name string) bool // the config's say; nil: all on
-	Reserved func(name string) bool // a name a built-in plugin has; nil: none
+	Enabled  func(name string) bool     // the config's say; nil: all on
+	Reserved func(name string) bool     // a name a built-in plugin has; nil: none
+	Grants   func(name string) []string // the config's grants, for Info; nil: none
 
 	mu     sync.Mutex
 	ctx    context.Context
@@ -212,7 +215,11 @@ func (h *Host) Info() []Info {
 	h.mu.Lock()
 	var out []Info
 	for _, p := range h.ps {
-		out = append(out, p.snapshot())
+		i := p.snapshot()
+		if h.Grants != nil {
+			i.Grants = h.Grants(i.Name)
+		}
+		out = append(out, i)
 	}
 	for _, b := range h.broken {
 		out = append(out, b)

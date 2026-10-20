@@ -64,6 +64,10 @@ func fakePlugin(mode string) {
 		}
 		say(`{"type":"moment","text":"one"}`)
 		say(`{"type":"moment","text":"two"}`) // within 10 s: dropped
+	case "cheers":
+		for _, k := range []string{"hop", "nod", "hop", "celebrate", "celebrate"} {
+			say(`{"type":"cheer","kind":"` + k + `"}`)
+		}
 	case "flood": // as fast as it can, for as long as it's let
 		for i := 0; ; i++ {
 			fmt.Printf("{\"type\":\"status\",\"text\":\"%d\"}\n", i)
@@ -370,4 +374,37 @@ func TestViolationsSuspend(t *testing.T) {
 	if i := info(h); !strings.Contains(i.LastError, "bad messages within a minute") || len(s.types()) != 0 {
 		t.Fatalf("%+v %v", i, s.types())
 	}
+}
+
+// Reactions (hop, nod) one every 5 s, a celebration one an hour, per plugin.
+func TestCheerLimits(t *testing.T) {
+	h, s, _ := fakeHost(t, "cheers", "cheer")
+	eventually(t, "two cheers", func() bool { return len(s.types()) == 2 })
+	time.Sleep(100 * time.Millisecond)
+	s.mu.Lock()
+	got := []string{s.msgs[0].Cheer.Kind, s.msgs[1].Cheer.Kind}
+	n := len(s.msgs)
+	s.mu.Unlock()
+	if n != 2 || got[0] != "hop" || got[1] != "celebrate" {
+		t.Fatalf("%d cheers: %v", n, got)
+	}
+	if i := info(h); i.Dropped != 3 {
+		t.Fatalf("dropped %d", i.Dropped)
+	}
+}
+
+// Grants come from the user's config, never the manifest: Info shows both.
+func TestGrantsInInfo(t *testing.T) {
+	h, _, _ := fakeHost(t, "good")
+	p := filepath.Join(info(h).Dir, "plugin.toml")
+	b, _ := os.ReadFile(p)
+	os.WriteFile(p, []byte("grants = [\"critical\", \"teleport\"]\n"+string(b)), 0o644)
+	later := time.Now().Add(time.Second)
+	os.Chtimes(p, later, later)
+	h.Grants = func(name string) []string { return []string{"focus"} }
+	h.Scan()
+	eventually(t, "asks and grants", func() bool {
+		i := info(h)
+		return fmt.Sprint(i.Asks) == "[critical]" && fmt.Sprint(i.Grants) == "[focus]"
+	})
 }

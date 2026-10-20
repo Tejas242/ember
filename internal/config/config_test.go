@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"image/color"
 	"os"
 	"reflect"
@@ -194,5 +195,12 @@ func TestPluginsEnabled(t *testing.T) {
 	}
 	if _, warns, _ := parse("[plugins]\nenabled = \"some\"\ncolour = 1"); len(warns) != 2 {
 		t.Fatalf("%v", warns)
+	}
+}
+
+func TestPluginGrants(t *testing.T) {
+	c, warns, _ := parse("[plugins.edge]\ngrants = [\"critical\", \"focus\"]\n[plugins.ci]\ngrants = \"all\"")
+	if fmt.Sprint(c.PluginGrants("edge")) != "[critical focus]" || c.PluginGrants("ci") != nil || c.PluginGrants("x") != nil || len(warns) != 1 {
+		t.Fatalf("%v %v %v", c.PluginGrants("edge"), c.PluginGrants("ci"), warns)
 	}
 }
