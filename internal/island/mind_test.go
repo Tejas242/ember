@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Tejas242/ember/internal/config"
+	"github.com/Tejas242/ember/plugins/edge/adapter"
 )
 
 func TestAffectSettlesAndSleeps(t *testing.T) {
@@ -91,9 +92,9 @@ func TestAttentionHysteresis(t *testing.T) {
 	u := NewUI(440, 280, 22)
 	u.now = func() time.Time { return clock }
 	u.mind = newMind(clock)
-	u.edge = &EdgeStatus{StartedMs: clock.UnixMilli(), Task: "x"}
+	edgeSays(u, &adapter.Status{StartedMs: clock.UnixMilli(), Task: "x"}, nil)
 	u.track = &Track{Player: "p", Title: "T", Playing: true, PosAt: clock}
-	if u.primary() != "edge" { // 0.55 vs 0.40
+	if u.primary() != "x:edge" { // 0.55 vs 0.40
 		t.Fatalf("got %s", u.primary())
 	}
 	u.mind.novel["music"] = clock // a new track: music 0.9, a clear win

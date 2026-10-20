@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Tejas242/ember/plugins/edge/adapter"
 	xdraw "golang.org/x/image/draw"
 )
 
@@ -347,7 +348,7 @@ func TestGallery(t *testing.T) {
 		req("several answers, the last seconds", &Card{ID: "m", Kind: "ask", Mood: moodWait, Eyebrow: "edge asks", Title: "Which topics should the ladder cover?", Multi: true,
 			Options: []Option{{"Graphs", ""}, {"Dynamic programming", ""}, {"Binary search", ""}}, Buttons: []Button{{Key: "submit", Label: "Submit", Primary: true}}, Footer: "Answer in terminal",
 			picked: map[int]bool{0: true, 2: true}, Expires: time.Date(2026, 10, 15, 17, 24, 12, 0, time.Local)}, nil),
-		req("edge's nudge", &Card{ID: "edge:1", Kind: "edge", Mood: moodNudge, Eyebrow: "edge", Title: "Today's problem is waiting",
+		req("edge's nudge", &Card{ID: "x:edge:1", Kind: "plugin", Mood: moodNudge, Eyebrow: "edge", Title: "Today's problem is waiting",
 			Body: "1360E · Polygon, rated 1400. Claude unlocks when it's solved.", Buttons: []Button{{Key: "later", Label: "Later"}, {Key: "start", Label: "Start", Primary: true}}}, nil),
 	}
 	sheet(t, "gallery-requests", reqs, 2)
@@ -419,24 +420,28 @@ func TestGallery(t *testing.T) {
 		g.a.ui.pinned = true
 	}, func(g *galleryScene) { g.a.ui.press("s:e", 1); g.a.ui.Invalidate() }, open, cardCrop)
 
-	// edge's dashboard: the sample, and today's real stats when EMBER_EDGE_STATS
-	// names edge's stats.json (make gallery passes it; tests never read it)
+	// edge's dashboard: the sample behind on its day, and today's real stats
+	// when EMBER_EDGE_STATS names edge's stats.json (make gallery passes it;
+	// tests never read it)
 	var dash []galleryShot
-	dashShot := func(label string, st *EdgeStats) {
+	dashShot := func(label string, st *adapter.Stats, at time.Time) {
 		g := newScene()
-		g.a.ui.edgeStats = st
-		g.a.ui.dashboards["edge"] = edgeDash{}
+		g.clock = at
+		edgeSays(g.a.ui, nil, st)
+		g.a.cfg = g.a.ui.cfg
 		g.run(500 * time.Millisecond)
 		g.a.ui.openDash("edge")
 		g.run(2500 * time.Millisecond)
-		_, h := edgeDash{}.Size(g.a.ui)
+		_, h := extDash{name: "edge"}.Size(g.a.ui)
 		dash = append(dash, galleryShot{label, onDesktop(g.a.ui, image.Rect(surfW/2-290, 0, surfW/2+290, min(surfH, int(h)+20)))})
 	}
-	dashShot("edge's dashboard, mid-problem", sampleStats(time.Date(2026, 10, 15, 17, 24, 0, 0, time.Local)))
+	behind := edgeFixture()
+	behind.Today.Gate, behind.Today.GateWhy = "closed", ""
+	dashShot("edge's dashboard, behind", behind, time.Date(2026, 10, 20, 21, 40, 0, 0, time.Local))
 	if b, err := os.ReadFile(os.Getenv("EMBER_EDGE_STATS")); err == nil {
-		var st EdgeStats
+		var st adapter.Stats
 		if json.Unmarshal(b, &st) == nil && st.Version >= 1 {
-			dashShot("edge's dashboard, today", &st)
+			dashShot("edge's dashboard, today", &st, time.Date(2026, 10, 20, 10, 26, 0, 0, time.Local))
 		}
 	}
 	sheet(t, "gallery-dash", dash, 2)
@@ -454,7 +459,9 @@ func (g *galleryScene) agent(id, project, aid, desc string, steps int) {
 	}
 }
 
+// edge: edge's plugin on, its day half done, with a dashboard behind its row.
 func (g *galleryScene) edge() {
-	g.a.ui.edge = &EdgeStatus{Today: 1, Need: 2, Streak: 4}
-	g.a.ui.dashboards["edge"] = edgeDash{}
+	st := edgeFixture()
+	edgeSays(g.a.ui, &adapter.Status{Today: 1, Need: 2, Streak: 4}, st)
+	g.a.cfg = g.a.ui.cfg
 }

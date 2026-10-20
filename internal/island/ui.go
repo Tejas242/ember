@@ -21,10 +21,10 @@ type Button struct {
 type Option struct{ Label, Desc string }
 
 // Card is something that needs a decision: a permission request, a
-// question, an actionable edge nudge.
+// question, a plugin's offer.
 type Card struct {
 	ID       string
-	Kind     string // perm | ask | edge | plugin
+	Kind     string // perm | ask | plugin
 	Mood     mood
 	Eyebrow  string // who wants what, in small capitals: "kinvault wants to run"
 	Title    string
@@ -158,8 +158,6 @@ type UI struct {
 	cfg        config.Config
 	sessions   map[string]*Session
 	cards      []*Card
-	edge       *EdgeStatus // set by the edge plugin while it runs
-	edgeStats  *EdgeStats
 	ext        map[string]*extPlugin // external plugins, by name: what each shows
 	unfolded   map[string]bool       // dashboard sections you unfolded: "<plugin>:<index>"
 	second     time.Time
@@ -305,7 +303,7 @@ func (u *UI) Invalidate() { u.dirty = true }
 // allow, shakes its head when you deny, winces when a step fails.
 func (u *UI) React(g string) { u.play(g, 0) }
 
-// Bounce: a small happy hop (edge's good news).
+// Bounce: a small happy hop (good news).
 func (u *UI) Bounce() { u.play("hop", 0) }
 
 // ---- cards ----
@@ -489,9 +487,6 @@ func (u *UI) acts() []string {
 	if u.track != nil && u.cfg.Music {
 		out = append(out, "music")
 	}
-	if e := u.edge; e != nil && (e.Task != "" || e.Closed || e.Need > 0 || e.Round != nil) {
-		out = append(out, "edge")
-	}
 	return append(out, u.extActs()...)
 }
 
@@ -535,12 +530,8 @@ func (u *UI) secondary(primary string) string {
 		return "music"
 	case primary != "claude" && working:
 		return "claude"
-	case primary != "edge" && u.edge != nil && u.edge.Round != nil && u.edge.Round.phase(u.now()) == "live" && u.edge.Round.Locked:
-		return "edge" // in a round: its clock stays in sight
-	case primary != "edge" && u.edge != nil && u.edge.StartedMs > 0:
-		return "edge"
 	}
-	return u.extSatellite(primary)
+	return u.extSatellite(primary) // a plugin's clock (edge's round, its practice)
 }
 
 // cycle moves the pill's focus to the next / previous activity.
@@ -812,7 +803,7 @@ func (u *UI) transition(v view, key string, now time.Time) {
 // used: you did something with a row in the open card; in this situation
 // that row is the one you reach for.
 func (u *UI) used(kind string) {
-	if u.lastView == vExpanded && u.openCtx != "" && (kind == "music" || kind == "edge") {
+	if u.lastView == vExpanded && u.openCtx != "" && (kind == "music" || u.ext[kind] != nil) {
 		u.habits.learn(u.openCtx, kind)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Tejas242/ember/internal/ipc"
+	"github.com/Tejas242/ember/plugins/edge/adapter"
 )
 
 // Several Claude Code sessions at once: each keeps its own story, requests
@@ -351,7 +352,7 @@ func TestShowAllSessions(t *testing.T) {
 		}
 	}
 	a.ui.track = &Track{Player: "p", Title: "T", Playing: true, PosAt: clock}
-	a.ui.edge = &EdgeStatus{Today: 1, Need: 1}
+	edgeSays(a.ui, &adapter.Status{Today: 1, Need: 1}, nil)
 	if _, hidden := a.ui.board(a.ui.brief()); hidden == 0 {
 		t.Fatal("expected the card to fold some sessions away at this size")
 	}

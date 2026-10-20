@@ -1,5 +1,3 @@
-//go:build render
-
 package island
 
 import (
@@ -42,15 +40,4 @@ func edgeSays(u *UI, e *adapter.Status, st *adapter.Stats) {
 		x.dash = decode("dashboard", adapter.Dashboard(st, now)).Dashboard
 		u.dashboards["edge"] = extDash{name: "edge"}
 	}
-}
-
-// edgeCard shows one of edge's cards the way the adapter and the host would.
-func (a *app) edgeCard(c *adapter.Card) {
-	pc, _ := adapter.Cardify(c)
-	b, _ := proto.Line("card", pc)
-	m, err := proto.Decode(b)
-	if err != nil {
-		panic(err)
-	}
-	a.applyExt("edge", m)
 }

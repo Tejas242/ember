@@ -26,7 +26,6 @@ const (
 var (
 	fTitle   = func() fontFace { return face(fSemiBold, 14) }
 	fBody    = func() fontFace { return face(fMedium, 12.5) }
-	fBodyReg = func() fontFace { return face(fRegular, 12.5) }
 	fSecond  = func() fontFace { return face(fRegular, 12) }
 	fCaption = func() fontFace { return face(fRegular, 11) }
 	fMonoS   = func() fontFace { return face(fMono, 11.5) }

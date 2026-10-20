@@ -389,7 +389,7 @@ func (u *UI) extLine(act string) (line, bool) {
 
 // ---- in the card ----
 
-const extH = edgeH
+const extH = 34
 
 // extRows are the plugins with a row in the card.
 func (u *UI) extRows() []*extPlugin {
@@ -426,7 +426,9 @@ func (u *UI) extRow(x *extPlugin, rx, w, y float32) {
 		frac, k := 0.0, 1.0
 		if g.Value != nil {
 			frac = *g.Value
-			k = u.tw("ring:"+x.name, frac, 0)
+			if g.Sweep == nil || *g.Sweep { // progress sweeps in; a state (a round's) just is
+				k = u.tw("ring:"+x.name, frac, 0)
+			}
 		} else if span := time.UnixMilli(g.EndMs).Sub(time.UnixMilli(g.StartMs)); span > 0 {
 			frac = math.Max(0, math.Min(1, float64(time.UnixMilli(g.EndMs).Sub(now))/float64(span)))
 		}
@@ -497,17 +499,16 @@ func (u *UI) extRow(x *extPlugin, rx, w, y float32) {
 	}
 }
 
-// chipLetters speaks the protocol's chip states in the letters' own.
-func chipLetters(cs []proto.Chip) []EdgeProblem {
+// chipLetters are the protocol's chips, to draw.
+func chipLetters(cs []proto.Chip) []chip {
 	if len(cs) == 0 {
 		return nil
 	}
-	state := map[string]string{"done": "solved", "tried": "tried", "owed": "upsolve", "fixed": "upsolved", "gone": "lapsed"}
-	ps := make([]EdgeProblem, len(cs))
+	out := make([]chip, len(cs))
 	for i, c := range cs {
-		ps[i] = EdgeProblem{Index: c.Label, State: state[c.State]}
+		out[i] = chip{label: c.Label, state: c.State}
 	}
-	return ps
+	return out
 }
 
 var _ plugin.Sink = extSink{}

@@ -10,15 +10,14 @@ import (
 	"time"
 )
 
-// Rows of the open card (music, edge), buttons, and the decision cards:
-// permission requests, questions, edge's nudges. The card's brief (headline
+// Rows of the open card (music, the plugins), buttons, and the decision cards:
+// permission requests, questions, plugins' offers. The card's brief (headline
 // and story) is in brief.go.
 
 const (
 	cardW   = 380
 	expW    = 380
 	musicH  = 70
-	edgeH   = 34
 	rowGapX = 6
 	btnH    = 26
 	optH    = 32
@@ -201,90 +200,6 @@ func (u *UI) washInside(a *albumArt, r image.Rectangle, strength float64) {
 	}
 }
 
-// ---- edge ----
-
-// edgeRowShown: edge's row is there whenever the plugin runs: it's the way
-// to its dashboard.
-func (u *UI) edgeRowShown() bool {
-	return u.cfg.Edge && (u.edge != nil || u.edgeStats != nil || u.dashboards["edge"] != nil)
-}
-
-// edgeRow: edge on one line: its target on the rail, the task or the day,
-// and its button when it has one. The line opens edge's dashboard.
-func (u *UI) edgeRow(x, w, y float32) {
-	p, now, e := u.pal, u.now(), u.edge
-	if e == nil { // before edge's first status: what its stats say
-		e = &EdgeStatus{}
-		if st := u.edgeStats; st != nil {
-			e.Today, e.Need, e.Streak, e.Closed = st.Today.Got, st.Today.Need, st.Streak.Current, st.Today.Gate == "closed"
-		}
-	}
-	on := u.rowHot("edge", x, w, y, edgeH)
-	if u.dashboards["edge"] != nil { // the line opens edge's dashboard; its button still acts
-		if on > 0.01 {
-			u.panel(x+pad-8, y+2, w-2*pad+16, edgeH-4, radRow, alpha(p.fg, 0.05*on))
-		}
-		u.hits = append(u.hits, hit{image.Rect(int(x+pad-8), int(y), int(x+w-pad+8), int(y+edgeH)), "dash:edge"})
-	}
-	if e.Round != nil { // a round outranks the day's task
-		u.roundRow(e.Round, x, w, y)
-		return
-	}
-	cy := y + edgeH/2
-	gx := x + railX
-	// today's goal as a ring, filled as far as you've got
-	goal := 0.0
-	if e.Need > 0 {
-		goal = math.Min(1, float64(e.Today)/float64(e.Need))
-	}
-	rc := p.yellow
-	if goal >= 1 {
-		rc = p.green
-	}
-	u.dc.arc(gx, cy, 6, 1.8, 0, 2*math.Pi, alpha(p.fg, 0.12))
-	if g := goal * u.tw("goal", goal, 0); g > 0.01 {
-		ringArc(u.dc, gx, cy, 6, 1.8, -math.Pi/2, -math.Pi/2+2*math.Pi*g, rc)
-	}
-	tx, right := x+textX, x+w-pad
-	var btn Button
-	sub := fmt.Sprintf("%d/%d today · %d-day streak", e.Today, e.Need, e.Streak)
-	switch {
-	case e.StartedMs > 0 && !e.Pending:
-		sub = "Practising · " + mins(now.Sub(time.UnixMilli(e.StartedMs)))
-		btn = Button{Key: "hint", Label: "Hint", Primary: true}
-	case e.Task != "":
-		btn = Button{Key: "start", Label: "Start", Primary: true}
-		if e.Closed {
-			sub = "Claude is locked until you practise"
-		}
-	}
-	if btn.Key != "" {
-		bw := u.pillButton(btn, "btn:edge:"+btn.Key, right, cy-btnH/2, btnH, p.yellow)
-		right -= bw + 10
-	} else if u.dashboards["edge"] != nil { // the line opens the dashboard: say so
-		u.chevron(right-3, cy, 0, mix(p.faint, p.fg, 0.4*on))
-		right -= 16
-	}
-	task := e.Task
-	if task == "" {
-		task = "Practice"
-	}
-	base := cy + 4.5
-	nw := u.dc.text(fBody(), ellipsize(fBody(), task, (right-tx)*0.55), tx, base, p.fg)
-	sx := tx + nw + 8
-	if day, streak, ok := strings.Cut(sub, " · "); ok && strings.HasSuffix(streak, "-day streak") && e.Streak > 0 {
-		// the streak gets its little flame
-		sx += u.dc.text(fSecond(), day+" · ", sx, base, p.muted)
-		fx, fy, hot := sx+4, cy+1, true
-		u.lives = append(u.lives, live{r: image.Rect(int(fx-6), int(fy-10), int(fx+7), int(fy+6)), draw: func(c *canvas, t float64) {
-			flame(c, fx, fy, 4.6, t, hot, p)
-		}})
-		sx += 11
-		sub = streak
-	}
-	u.dc.text(fSecond(), ellipsize(fSecond(), sub, right-sx), sx, base, p.muted)
-}
-
 // pillButton draws a small round button right-aligned at right, and
 // reports its width.
 func (u *UI) pillButton(b Button, key string, right, y, h float32, tint color.NRGBA) float32 {
@@ -370,7 +285,7 @@ func (u *UI) cardMeta(c *Card) string {
 	return meta
 }
 
-// eyebrowOf says who wants what: "kinvault wants to run", "edge".
+// eyebrowOf says who wants what: "kinvault wants to run", "Practice".
 func eyebrowOf(c *Card) string {
 	if c.Eyebrow != "" {
 		return c.Eyebrow
@@ -378,8 +293,6 @@ func eyebrowOf(c *Card) string {
 	switch c.Kind {
 	case "ask":
 		return "Question"
-	case "edge":
-		return "Practice"
 	}
 	return "Permission"
 }
@@ -471,10 +384,10 @@ func (u *UI) drawCard(c *Card, x, w float32) {
 	right := x + w - pad
 	tx := x + textX
 	i := 0
-	// the eyebrow: who wants what; the meta and, for edge's notes, a close
+	// the eyebrow: who wants what; the meta and, for a plugin's card, a close
 	u.item("c:eyebrow", i, x, w, 0, cardTitleTop, func(y float32) {
 		r := right
-		if c.Kind == "edge" || c.Kind == "plugin" { // edge's notes and plugins' cards can be closed
+		if c.Kind == "plugin" { // a plugin's cards can be closed
 			cx, cy := r-5, y+15
 			key := "close:" + c.ID
 			h := u.hl(key)

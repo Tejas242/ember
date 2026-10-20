@@ -916,13 +916,13 @@ func (u *UI) noteW(wd *proto.Widget) wbox {
 	}}
 }
 
-// chipsAsLetters speaks the chips widget's states in the letters' own.
-func chipsAsLetters(items []proto.Item) []EdgeProblem {
-	cs := make([]proto.Chip, len(items))
+// chipsAsLetters are a chips widget's items, to draw.
+func chipsAsLetters(items []proto.Item) []chip {
+	out := make([]chip, len(items))
 	for i, it := range items {
-		cs[i] = proto.Chip{Label: it.Label, State: it.State}
+		out[i] = chip{label: it.Label, state: it.State}
 	}
-	return chipLetters(cs)
+	return out
 }
 
 func trimNum(v float64) string {

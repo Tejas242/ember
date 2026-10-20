@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Tejas242/ember/internal/source"
+	"github.com/Tejas242/ember/plugins/edge/adapter"
 	xdraw "golang.org/x/image/draw"
 )
 
@@ -67,8 +68,8 @@ func mascotScenes() []mascotScene {
 		}, 2500 * time.Millisecond},
 		{"edge round live", func(g *galleryScene) {
 			now := g.clock
-			g.a.ui.edge = &EdgeStatus{Today: 1, Need: 2, Streak: 4, Round: &EdgeRound{ID: "r", Short: "CF 1128", StartMs: now.Add(-30 * time.Minute).UnixMilli(),
-				EndMs: now.Add(90 * time.Minute).UnixMilli(), Joined: "live", Locked: true, Problems: []EdgeProblem{{Index: "A", State: "solved"}, {Index: "B", State: "tried"}, {Index: "C"}}}}
+			edgeSays(g.a.ui, &adapter.Status{Today: 1, Need: 2, Streak: 4, Round: &adapter.Round{ID: "r", Short: "CF 1128", StartMs: now.Add(-30 * time.Minute).UnixMilli(),
+				EndMs: now.Add(90 * time.Minute).UnixMilli(), Joined: "live", Locked: true, Problems: []adapter.Problem{{Index: "A", State: "solved"}, {Index: "B", State: "tried"}, {Index: "C"}}}}, nil)
 		}, 2500 * time.Millisecond},
 	}
 }

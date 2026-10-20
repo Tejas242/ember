@@ -104,9 +104,8 @@ They appear for a moment, then step aside:
   <img src="docs/demo/dash.webp" alt="edge's dashboard opening: the day's ring, the problem in progress, the week, the rating, the year, four numbers" width="760">
 </p>
 
-Parts that belong to tools not everyone has are plugins, asleep until their tool is installed. The first is
-**edge**, a practice coach: its day in the pill, its nudges on the island, and a dashboard that opens with a short
-choreography. See [Plugins](#plugins).
+Anyone can add to the island with a plugin, in any language: Ember draws what it says in its own style. The first is
+**edge**, a practice coach: its day in the pill, its nudges on the island, and a dashboard. See [Plugins](#plugins).
 
 ## Alive
 
@@ -245,19 +244,24 @@ binds {
 
 ## Plugins
 
-Some of what Ember shows belongs to tools not everyone has. Those parts are plugins: compiled in, but asleep
-(no watchers, no rows, no pages) until their tool is installed, and they wake within a minute of it appearing.
-`[plugins.<name>] enabled = "auto" | true | false` in the config decides otherwise, and `ember doctor` says which are on.
+Anything can show on the island through a plugin: any program, in any language, that tells Ember what to show in
+plain JSON lines. Ember draws it in its own style and decides when it shows; a plugin can't draw pixels, hold the
+pill against Ember's judgement, or touch Claude's requests. They live in `~/.config/ember/plugins/<name>/`, start
+with the island, and `ember plugins` says how each is doing. Scripts need no plugin at all:
+`ember note "Build passed" --icon check --mood done` and `ember status deploy "Deploying" --progress 0.4`.
+The protocol, the manifest, the Go SDK and the examples (a pomodoro timer, a build notifier) are in
+[docs/PLUGINS.md](docs/PLUGINS.md).
 
-**edge** (a practice coach for competitive programming; not public yet). Its day sits in the pill and the card, its
-notes and buttons on the island, and it has a dashboard (`ember dash edge`, or click its row in the card):
+**edge** (a practice coach for competitive programming; not public yet) is a plugin too, built into Ember's binary
+(`ember plugin edge`); `ember install` sets it up when edge is installed. Its day sits in the pill and the card, its
+notes and buttons on the island, and it has a dashboard (`ember dash edge`, or click its row in the card), stacked
+by the questions you ask of it:
 
-- **the day**: a ring for today's tasks, whether Claude is locked, the streak's flame
-- **the problem in progress**: how long you've worked on it, when the next hint unlocks
-- **the week** as bars against each day's need, and your **Codeforces rating** over the band edge picks from
-- **the year** as a heatmap. Hover a day for what happened
-- **solo rate, retention, focus and your weakest focus topic**
-- **contest rounds**: the one you're in or held to next, the last three as rows of problem letters, the week streak
+- **today**: Ember in the day's ring, where Claude stands, and the next step with its button
+- **this week and what's coming**: bars against each day's need; held rounds, upsolves about to lapse, cold re-solves
+- **progress**: your Codeforces rating over the band edge picks from; solo rate, retention, focus, rounds held
+- **the record**: six months as a heatmap, and the last few problems, honestly
+- what isn't needed now (in a live round, late at night) folds to a line
 
 <p align="center">
   <img src="docs/demo/edge.webp" alt="An evening with edge on the island: a problem offered and started, a wrong answer, the accept, then a contest round counting down, filling in its letters and settling into upsolves" width="760">
@@ -265,14 +269,9 @@ notes and buttons on the island, and it has a dashboard (`ember dash edge`, or c
 
 During a contest round edge holds you to, the pill is the round: its name, a letter per problem filled in as verdicts
 land, the time left and the lock (edge keeps Claude off while it runs). Before it, a countdown; after, what's owed.
-
-It reads edge's live stats file (`$XDG_RUNTIME_DIR/edge/stats.json`) and edge's pushes over the socket. It opens with
-a short choreography: the ring sweeps, the bars grow in turn, the rating line draws itself, the year ripples in and
-the numbers count up. After that only the flame and the pulses move.
-
-A tool reaches its plugin over the same socket with `{"type":"plugin","name":"<name>","payload":…}`. A new plugin
-implements `Plugin` in `internal/island/plugin.go` (detect, start, stop, messages, an optional `Dashboard`) and is listed in
-`plugins()`.
+That needs three powers a plugin only has when you grant them, and `ember install` grants edge:
+`[plugins.edge] grants = ["critical", "badge", "focus"]` (outranking Claude at work, the padlock on the clock, Ember's
+game face).
 
 ## Config
 

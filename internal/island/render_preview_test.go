@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Tejas242/ember/plugins/edge/adapter"
 	xdraw "golang.org/x/image/draw"
 )
 
@@ -65,7 +66,7 @@ func TestPreview(t *testing.T) {
 	save("1-clock", mk())
 
 	u := mk()
-	u.edge = &EdgeStatus{Today: 0, Need: 1, Streak: 3, Closed: true, Task: "1360E · Polygon", Pending: true}
+	edgeSays(u, &adapter.Status{Today: 0, Need: 1, Streak: 3, Closed: true, Task: "1360E · Polygon", Pending: true}, nil)
 	save("2-clock-locked", u)
 
 	u = mk()
@@ -91,12 +92,13 @@ func TestPreview(t *testing.T) {
 	u.lastDone.project, u.lastDone.at = "airspace", clock.Add(-12*time.Minute)
 	u.pinned = true
 	save("6-expanded", u)
-	u.edge = &EdgeStatus{Today: 0, Need: 1, Streak: 3, Closed: true, Task: "1360E · Polygon", Pending: true}
+	e := &adapter.Status{Today: 0, Need: 1, Streak: 3, Closed: true, Task: "1360E · Polygon", Pending: true}
+	edgeSays(u, e, nil)
 
 	save("6b-expanded-claude", u)
 
-	u.edge.StartedMs = clock.Add(-23 * time.Minute).UnixMilli()
-	u.edge.Pending = false
+	e.StartedMs, e.Pending = clock.Add(-23*time.Minute).UnixMilli(), false
+	edgeSays(u, e, nil)
 	save("6c-expanded-edge", u)
 
 	u = mk()

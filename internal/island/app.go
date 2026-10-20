@@ -54,9 +54,7 @@ type app struct {
 	quiet     bool                 // the current post changed nothing on screen
 	ended     map[string]time.Time // sessions that ended: a late async hook mustn't bring one back
 
-	allPlugins []Plugin
-	plugins    map[string]Plugin // the running ones, by name
-	detectedAt time.Time         // when dormant plugins last looked for their tools
+	detectedAt time.Time // when dormant plugins last looked for their tools
 }
 
 func (a *app) status() ipc.Status {
@@ -69,16 +67,6 @@ func (a *app) status() ipc.Status {
 	}
 	if !mtime(config.Path()).IsZero() {
 		st.Config = config.Path()
-	}
-	for _, p := range a.allPlugins {
-		switch q := a.plugins[p.Name()]; {
-		case q == nil:
-			st.Plugins = append(st.Plugins, p.Name()+": off (its tool isn't installed, or the config turns it off)")
-		case p.Name() == "edge" && a.ui.edgeStats == nil:
-			st.Plugins = append(st.Plugins, "edge: on, waiting for edge's stats (is its daemon running?)")
-		default:
-			st.Plugins = append(st.Plugins, p.Name()+": on")
-		}
 	}
 	if a.sup != nil {
 		for _, h := range a.sup.Health() {
@@ -548,8 +536,6 @@ func (a *app) key(k string) {
 				a.track.PosAt = a.ui.now()
 			}
 		}
-	case strings.HasPrefix(k, "btn:edge:"):
-		edgeAction(strings.TrimPrefix(k, "btn:edge:"))
 	}
 }
 

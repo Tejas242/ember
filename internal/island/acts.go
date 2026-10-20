@@ -438,7 +438,7 @@ func (u *UI) posture(p *pose, now time.Time, t float64) {
 		p.eyes = eyeShut
 		p.core *= float32(1 + 0.3*(0.5-0.5*math.Cos(2*math.Pi*t/4.2))) // its light breathes
 	}
-	if r := u.edgeLive() || u.extFocus(); r { // a contest round is on: game face, eyes front
+	if u.extFocus() { // a plugin asks for focus (edge's contest round): game face, eyes front
 		p.slant, p.lid, p.lookX = 0.35, max(p.lid, 0.15), 0
 	}
 	if u.worried() {
@@ -484,11 +484,6 @@ func (u *UI) compacting() bool {
 		}
 	}
 	return false
-}
-
-func (u *UI) edgeLive() bool {
-	e := u.edge
-	return e != nil && e.Round != nil && e.Round.phase(u.now()) == "live" && (e.Round.Joined != "" || e.Round.Locked)
 }
 
 // worried: steps keep failing in the turn Ember is watching.

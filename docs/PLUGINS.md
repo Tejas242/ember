@@ -152,7 +152,7 @@ A new `status` replaces the last. `{"type":"remove","what":"status"}` takes it b
 | `mood` | mood | default `quiet` |
 | `progress` | number 0..1 | a thin bar under the row |
 | `target` | string | a `[targets]` name for a click on the row |
-| `ring` | `{value 0..1, mood}` or `{start_ms, end_ms, mood}` | a ring on the card's rail instead of the icon: filled to `value`, or emptying from `start_ms` to `end_ms` |
+| `ring` | `{value 0..1, mood, sweep}` or `{start_ms, end_ms, mood}` | a ring on the card's rail instead of the icon: filled to `value` (sweeping in, unless `sweep` is false: a state, not progress), or emptying from `start_ms` to `end_ms` |
 | `buttons` | ≤ 2 × `{key ≤ 32, label ≤ 24, primary bool}` | small buttons at the row's end; a press sends `button` with `"card":"row"` |
 | `chips` | ≤ 9 × `{label ≤ 4, state}` | letters in chips after the title |
 | `badge` | icon | a small amber icon after the title (`lock`) |

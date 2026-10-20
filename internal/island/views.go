@@ -15,13 +15,6 @@ import (
 
 const maxComp = 400
 
-func short(task string) string {
-	if i := strings.Index(task, " · "); i > 0 {
-		return task[:i]
-	}
-	return task
-}
-
 func mins(d time.Duration) string {
 	m := int(d.Minutes())
 	if m < 60 {
@@ -61,17 +54,17 @@ type line struct {
 	timerCol color.NRGBA
 	subCol   color.NRGBA // the secondary words' colour, if not the usual
 	agents   int         // subagents running: an amber spark and a count
-	chip     string      // a quiet value at the right end (edge's minutes, its task)
+	chip     string      // a quiet value at the right end (a plugin's: edge's task)
 	chipCol  color.NRGBA
 	lock     bool
 	music    bool
-	work     bool          // Claude is working: the label shimmers
-	halo     bool          // waiting on you: a blue light breathes around the pill
-	trail    string        // the second activity, as a satellite at the pill's end
-	m        *moment       // a system moment: icon, meter, value, battery
-	letters  []EdgeProblem // a contest round's problems, as chips
-	flag     string        // a plugin's badge, an amber icon at the right end (the padlock is lock)
-	prog     float64       // a plugin's progress, 0..1, when hasProg
+	work     bool    // Claude is working: the label shimmers
+	halo     bool    // waiting on you: a blue light breathes around the pill
+	trail    string  // the second activity, as a satellite at the pill's end
+	m        *moment // a system moment: icon, meter, value, battery
+	letters  []chip  // letters in chips: a contest round's problems
+	flag     string  // a plugin's badge, an amber icon at the right end (the padlock is lock)
+	prog     float64 // a plugin's progress, 0..1, when hasProg
 	hasProg  bool
 }
 
@@ -148,29 +141,11 @@ func (u *UI) mainLine() line {
 			}
 			return line{key: "music", mood: moodIdle, text: t.Title, sub: t.Artist, textCol: col, music: true}
 		}
-	case "edge":
-		if e := u.edge; e != nil {
-			if e.Round != nil {
-				return u.roundLine(e.Round)
-			}
-			if e.StartedMs > 0 && !e.Pending {
-				return line{key: "edge", mood: moodWork, text: short(e.Task), textCol: p.fg,
-					timer: mins(now.Sub(time.UnixMilli(e.StartedMs)))}
-			}
-			l := line{key: "edge", mood: moodNudge, text: fmt.Sprintf("Today %d/%d", e.Today, e.Need), textCol: p.fg, lock: e.Closed}
-			if e.Task != "" {
-				l.chip, l.chipCol = short(e.Task), p.muted
-			}
-			return l
-		}
 	}
 	if l, ok := u.extLine(primary); ok {
 		return l
 	}
 	l := line{key: "clock", mood: moodIdle, text: now.Format(u.cfg.PillFormat()), textCol: mix(p.fg, p.muted, 0.7*u.sleepK)}
-	if e := u.edge; e != nil && e.Closed {
-		l.lock = true
-	}
 	switch b := u.extClockBadge(); b {
 	case "":
 	case "lock":
@@ -691,15 +666,6 @@ func (u *UI) drawTrail(act string, x, cy, h float32) {
 			a := float32(math.Mod(t*2*math.Pi/(2*beat), 2*math.Pi))
 			c.arc(x+9, cy, 4.6+0.4*k, 1.4, a, a+2.1, col)
 		}})
-	case "edge":
-		if e := u.edge; e != nil {
-			txt := mins(u.now().Sub(time.UnixMilli(e.StartedMs)))
-			if r := e.Round; r != nil && r.phase(u.now()) == "live" {
-				txt = left(u.now(), r.end())
-			}
-			f := face(fSemiBold, 10)
-			u.dc.text(f, txt, x+9-measure(f, txt)/2, cy+3.5, p.green)
-		}
 	default: // a plugin's timer, in its mood's colour
 		if s := u.extStatus(strings.TrimPrefix(act, "x:")); s != nil && strings.HasPrefix(act, "x:") {
 			txt := extTimer(s, u.now())

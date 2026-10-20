@@ -368,6 +368,9 @@
             },
             "mood": {
               "$ref": "#/$defs/mood"
+            },
+            "sweep": {
+              "type": "boolean"
             }
           }
         },

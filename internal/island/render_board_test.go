@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/Tejas242/ember/plugins/edge/adapter"
 )
 
 // EMBER_PREVIEW=dir go test -tags render -count=1 -run PreviewBoard ./island: the card with
@@ -100,8 +102,7 @@ func TestPreviewBoard(t *testing.T) {
 		a.ui = u
 		sh.set(a, &clock)
 		a.ui.track = &Track{Player: "p", Title: "Veridis Quo", Artist: "Daft Punk", Playing: true, Length: 5 * time.Minute, Position: time.Minute, PosAt: clock}
-		a.ui.edge = &EdgeStatus{Today: 1, Need: 1, Streak: 4}
-		a.ui.dashboards["edge"] = edgeDash{}
+		edgeSays(a.ui, &adapter.Status{Today: 1, Need: 1, Streak: 4}, edgeFixture())
 		all := a.ui.allRows
 		a.ui.pinned = true
 		settle(a.ui, &clock)

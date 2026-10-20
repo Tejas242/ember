@@ -83,7 +83,7 @@ func (b *bond) cooled(name string, every time.Duration, now time.Time) bool {
 // calm: nothing needs you, nothing failed unseen, no card is open, nobody
 // is watching your screen. Only then may Ember play on its own.
 func (u *UI) calm() bool {
-	if u.casting || u.lastView != vCompact || len(u.cards) > 0 || u.mind.valence < -0.2 || (u.edgeLive() || u.extFocus()) {
+	if u.casting || u.lastView != vCompact || len(u.cards) > 0 || u.mind.valence < -0.2 || u.extFocus() {
 		return false
 	}
 	if u.moment != nil || u.spot.s < 2 || u.act != nil { // busy saying something, tucked away, or already acting
@@ -258,7 +258,7 @@ func (u *UI) returned(since, now time.Time) {
 		b.greeted(now)
 	case first:
 		u.greetAt = now
-	case now.Sub(since) >= 10*time.Minute && len(u.mind.missed) == 0 && !(u.edgeLive() || u.extFocus()) && b.cooled("hello", 30*time.Minute, now):
+	case now.Sub(since) >= 10*time.Minute && len(u.mind.missed) == 0 && !u.extFocus() && b.cooled("hello", 30*time.Minute, now):
 		u.play("hello", 0)
 	}
 }

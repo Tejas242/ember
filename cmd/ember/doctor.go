@@ -85,9 +85,6 @@ func doctor() {
 				note(s.Name, s.Detail)
 			}
 		}
-		for _, p := range st.Plugins {
-			note("plugin", p)
-		}
 		note("now", fmt.Sprintf("%d Claude session(s), %d request(s) waiting", st.Sessions, st.Pending))
 	}
 

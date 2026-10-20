@@ -10,7 +10,7 @@ import (
 )
 
 // The card's layout: the hero (headline, and its timeline or recap), the
-// other sessions a line each, then music and edge, divided by hairlines.
+// other sessions a line each, then music and the plugins' rows, divided by hairlines.
 // Layout first (what fits), then drawing. Every element arrives (rising and
 // fading in, one after another) and glides when it moves.
 
@@ -69,7 +69,7 @@ func (l *sessLayout) height() float32 {
 	return h
 }
 
-// footerH is what music and edge take. Showing every session, they step aside.
+// footerH is what music and the plugins' rows take. Showing every session, they step aside.
 func (u *UI) footerH() float32 {
 	h := float32(0)
 	if u.allRows {
@@ -77,9 +77,6 @@ func (u *UI) footerH() float32 {
 	}
 	if u.musicShown() {
 		h += divH + musicH
-	}
-	if u.edgeRowShown() {
-		h += divH + edgeH
 	}
 	h += float32(len(u.extRows())) * (divH + extH)
 	return h
@@ -315,13 +312,6 @@ func (u *UI) drawExpanded(x, w float32) {
 		y += divH
 		u.item("music", i, x, w, y, musicH, func(y float32) { u.musicRow(x, w, y) })
 		y += musicH
-		i++
-	}
-	if u.edgeRowShown() {
-		u.divider(x, w, y)
-		y += divH
-		u.item("edge", i, x, w, y, edgeH, func(y float32) { u.edgeRow(x, w, y) })
-		y += edgeH
 		i++
 	}
 	for _, xp := range u.extRows() { // the plugins' rows, by name

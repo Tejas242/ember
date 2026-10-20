@@ -171,8 +171,6 @@ echo '{"type":"status","text":"Hello from sh","mood":"done"}'
 while read line; do case "$line" in *stop*) exit 0;; esac; done
 `), 0o755)
 	os.WriteFile(filepath.Join(dir, "plugin.toml"), []byte("name = \"hi\"\ncommand = \"./run.sh\"\ncapabilities = [\"pill\"]\n"), 0o644)
-	os.MkdirAll(filepath.Join(xdg.ConfigHome(), "ember", "plugins", "edge"), 0o755) // a built-in's name: refused
-	os.WriteFile(filepath.Join(xdg.ConfigHome(), "ember", "plugins", "edge", "plugin.toml"), []byte("name = \"edge\"\ncommand = \"true\"\n"), 0o644)
 
 	clock := time.Now()
 	a := newTestApp(&clock)
@@ -201,7 +199,7 @@ while read line; do case "$line" in *stop*) exit 0;; esac; done
 	for _, i := range a.host.Info() {
 		states[i.Name] = i.State
 	}
-	if states["hi"] != "running" || states["edge"] != "broken" {
+	if states["hi"] != "running" {
 		t.Fatalf("%v", states)
 	}
 	go func() {
@@ -333,7 +331,7 @@ func TestExtGrants(t *testing.T) {
 		t.Fatalf("granted: %v %v %q", s, g.a.ui.extFocus(), g.a.ui.extClockBadge())
 	}
 	l, _ := g.a.ui.extLine("x:edge")
-	if l.timer != "1:10" || !l.lock || len(l.letters) != 2 || l.letters[0].State != "solved" || l.timerCol != g.a.ui.pal.fg {
+	if l.timer != "1:10" || !l.lock || len(l.letters) != 2 || l.letters[0].state != "done" || l.timerCol != g.a.ui.pal.fg {
 		t.Fatalf("%+v", l)
 	}
 	g.clock = end.Add(-9 * time.Minute) // its last ten minutes

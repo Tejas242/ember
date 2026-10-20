@@ -120,6 +120,7 @@ type Ring struct {
 	StartMs int64    `json:"start_ms,omitempty"`
 	EndMs   int64    `json:"end_ms,omitempty"`
 	Mood    string   `json:"mood,omitempty"`
+	Sweep   *bool    `json:"sweep,omitempty"` // a value ring sweeps in as it shows (the default); false: it just is
 }
 
 // Row is the plugin's row in the open card.

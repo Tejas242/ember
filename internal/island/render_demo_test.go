@@ -401,8 +401,10 @@ func TestDemo(t *testing.T) {
 	// 4. edge's dashboard opening.
 	t.Run("dash", func(t *testing.T) {
 		d := newDemo(t, "dash", demoW, 380)
-		d.g.a.ui.edgeStats = sampleStats(d.g.clock)
-		d.g.a.ui.dashboards["edge"] = edgeDash{}
+		d.g.clock = time.Date(2026, 10, 20, 21, 40, 0, 0, time.Local)
+		st := edgeFixture()
+		st.Today.Gate, st.Today.GateWhy = "closed", ""
+		edgeSays(d.g.a.ui, nil, st)
 		d.run(600 * time.Millisecond)
 		d.event(func(g *galleryScene) { g.a.ui.openDash("edge") })
 		d.run(2400 * time.Millisecond)

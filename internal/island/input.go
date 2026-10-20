@@ -121,7 +121,7 @@ func (u *UI) press(k string, button int) {
 		u.key("music:toggle")
 		return
 	}
-	if button == 3 { // right: dismiss — a moment, the open card, an edge note
+	if button == 3 { // right: dismiss — a moment, the open card, a plugin's card
 		switch {
 		case u.currentView() == vDash:
 			u.closeDash()
@@ -129,7 +129,7 @@ func (u *UI) press(k string, button int) {
 			u.moment = nil
 		case u.currentView() == vExpanded:
 			u.pinned, u.suppress = false, true
-		case u.top() != nil && (u.top().Kind == "edge" || u.top().Kind == "plugin"):
+		case u.top() != nil && u.top().Kind == "plugin":
 			c := u.top()
 			u.RemoveCard(c.ID)
 			if c.OnPick != nil {
@@ -217,12 +217,10 @@ func (u *UI) press(k string, button int) {
 	case strings.HasPrefix(k, "x:click:"), strings.HasPrefix(k, "x:btn:"): // a plugin's row, or a button on it
 		u.key(k)
 		u.used(strings.SplitN(strings.TrimPrefix(strings.TrimPrefix(k, "x:click:"), "x:btn:"), "\x00", 2)[0])
-	case strings.HasPrefix(k, "btn:edge:"), strings.HasPrefix(k, "music:"), strings.HasPrefix(k, "focus:"):
+	case strings.HasPrefix(k, "music:"), strings.HasPrefix(k, "focus:"):
 		u.key(k)
 		if strings.HasPrefix(k, "music:") {
 			u.used("music")
-		} else if strings.HasPrefix(k, "btn:edge:") {
-			u.used("edge")
 		}
 	case strings.HasPrefix(k, "btn:") && c != nil:
 		switch strings.TrimPrefix(k, "btn:") {

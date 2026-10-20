@@ -54,7 +54,6 @@ type Status struct {
 	Sessions    int      `json:"sessions"`
 	Pending     int      `json:"pending"`
 	Config      string   `json:"config"`
-	Plugins     []string `json:"plugins"` // running, with a word on each
 	Sources     []Source `json:"sources"` // each watcher: running, or why not
 	Extern      []Plugin `json:"extern"`  // the plugins in ~/.config/ember/plugins
 }

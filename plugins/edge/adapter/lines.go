@@ -161,12 +161,15 @@ func Row(e *Status, now time.Time) plugin.Row {
 	return row
 }
 
+// still: a round's ring is its state, not progress: it doesn't sweep in.
+var still = new(bool)
+
 func roundRow(r *Round, now time.Time) plugin.Row {
 	row := plugin.Row{Title: r.Short}
 	open := []plugin.Button{{Key: "skipround:" + r.ID, Label: "Can't make it"}, {Key: "openround:" + r.ID, Label: "Open", Primary: true}}
 	switch r.phase(now) {
 	case "soon":
-		row.Ring = &plugin.Ring{Value: plugin.Float(1), Mood: plugin.Nudge}
+		row.Ring = &plugin.Ring{Value: plugin.Float(1), Mood: plugin.Nudge, Sweep: still}
 		row.Sub = until(now, r.start())
 		if r.Plan == "in" {
 			row.Sub += " · you're in"
@@ -184,7 +187,7 @@ func roundRow(r *Round, now time.Time) plugin.Row {
 			row.Buttons = open
 		}
 	default:
-		row.Ring = &plugin.Ring{Value: plugin.Float(1), Mood: plugin.Done}
+		row.Ring = &plugin.Ring{Value: plugin.Float(1), Mood: plugin.Done, Sweep: still}
 		if r.Joined == "" {
 			row.Ring.Mood = plugin.Quiet
 		}

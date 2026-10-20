@@ -265,14 +265,6 @@ func (u *UI) salience(act string, now time.Time) float64 {
 			return 0
 		}
 		return 0.4 + 0.5*nov()
-	case "edge":
-		if e := u.edge; e != nil && e.Round != nil {
-			return roundSalience(e.Round, now)
-		}
-		if e := u.edge; e != nil && (e.StartedMs > 0 || e.Closed) {
-			return 0.55
-		}
-		return 0
 	case "clock":
 		return 0.25
 	}
@@ -285,7 +277,7 @@ func (u *UI) salience(act string, now time.Time) float64 {
 // flickers between two near-equals.
 func (u *UI) attend(now time.Time) string {
 	best, bestS := "clock", u.salience("clock", now)
-	for _, a := range append([]string{"claude", "music", "edge"}, u.extActs()...) {
+	for _, a := range append([]string{"claude", "music"}, u.extActs()...) {
 		if !u.cfg.Enabled(a) {
 			continue
 		}

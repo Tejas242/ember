@@ -15,7 +15,7 @@ import (
 // task in words, and its timeline hangs from Ember on a thin rail (its latest
 // steps, its subagents on a branch), or, once it's done, Claude's most
 // informative sentence. Every other session is one line; click one and it
-// becomes the hero. Music and edge come last. With no session at all, the
+// becomes the hero. Music and the plugins come last. With no session at all, the
 // hero is the day, hour by hour.
 
 const (
