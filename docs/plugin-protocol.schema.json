@@ -1,0 +1,663 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Tejas242/ember/docs/plugin-protocol.schema.json",
+  "title": "Ember plugin protocol v1",
+  "description": "One JSON object per line, at most 64 KiB, both ways. Unknown types and fields are ignored. Text over its maxLength is cut, lists over maxItems are cut, numbers are clamped: those are not errors. See docs/PLUGINS.md.",
+  "$defs": {
+    "mood": {
+      "enum": [
+        "work",
+        "wait",
+        "done",
+        "fail",
+        "quiet"
+      ],
+      "description": "An unknown value reads as the default."
+    },
+    "icon": {
+      "type": "string",
+      "maxLength": 32,
+      "description": "An Ember icon name; an unknown one shows no icon."
+    },
+    "hello_ember": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "hello"
+        },
+        "v": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ember": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "caps": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "pill",
+              "moment",
+              "row",
+              "card",
+              "dashboard",
+              "cheer"
+            ]
+          }
+        }
+      },
+      "required": [
+        "type",
+        "v",
+        "ember",
+        "caps"
+      ],
+      "description": "Ember's first line."
+    },
+    "click": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "click"
+        },
+        "target": {
+          "type": "string",
+          "maxLength": 32
+        }
+      },
+      "required": [
+        "type",
+        "target"
+      ],
+      "description": "A click on the plugin's moment or row."
+    },
+    "button": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "button"
+        },
+        "card": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "key": {
+          "type": "string",
+          "maxLength": 32
+        }
+      },
+      "required": [
+        "type",
+        "card",
+        "key"
+      ],
+      "description": "A button picked on the plugin's card."
+    },
+    "dash": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "dash"
+        },
+        "state": {
+          "enum": [
+            "open",
+            "close"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "state"
+      ]
+    },
+    "stop": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "stop"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "description": "Exit within 2 seconds."
+    },
+    "hello_plugin": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "hello"
+        },
+        "v": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]{1,32}$"
+        }
+      },
+      "required": [
+        "type",
+        "v",
+        "name"
+      ],
+      "description": "The plugin's answer, within 5 seconds."
+    },
+    "status": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "status"
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "sub": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "icon": {
+          "$ref": "#/$defs/icon"
+        },
+        "mood": {
+          "$ref": "#/$defs/mood"
+        },
+        "since_ms": {
+          "type": "integer",
+          "description": "Unix milliseconds"
+        },
+        "until_ms": {
+          "type": "integer",
+          "description": "Unix milliseconds"
+        },
+        "progress": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "urgency": {
+          "enum": [
+            "low",
+            "normal",
+            "high"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "maxLength": 32,
+          "description": "ember status only: the line's name"
+        },
+        "ttl_s": {
+          "type": "number",
+          "description": "ember status only: seconds until it expires, ≤ 86400"
+        }
+      },
+      "required": [
+        "type",
+        "text"
+      ],
+      "description": "The pill line (capability pill). 10/s, coalesced."
+    },
+    "moment": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "moment"
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "sub": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "icon": {
+          "$ref": "#/$defs/icon"
+        },
+        "mood": {
+          "$ref": "#/$defs/mood"
+        },
+        "ttl_s": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "target": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "url": {
+          "type": "string",
+          "maxLength": 2048,
+          "description": "ember note --open only"
+        }
+      },
+      "required": [
+        "type",
+        "text"
+      ],
+      "description": "A short note (capability moment). 1 every 10 s."
+    },
+    "row": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "row"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "sub": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "icon": {
+          "$ref": "#/$defs/icon"
+        },
+        "mood": {
+          "$ref": "#/$defs/mood"
+        },
+        "progress": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "target": {
+          "type": "string",
+          "maxLength": 32
+        }
+      },
+      "required": [
+        "type",
+        "title"
+      ],
+      "description": "The row in the open card (capability row). 10/s, coalesced."
+    },
+    "card": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "card"
+        },
+        "id": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "eyebrow": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "body": {
+          "type": "string",
+          "maxLength": 280
+        },
+        "mood": {
+          "$ref": "#/$defs/mood"
+        },
+        "ttl_s": {
+          "type": "number",
+          "minimum": 5,
+          "maximum": 600
+        },
+        "buttons": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "maxLength": 32
+              },
+              "label": {
+                "type": "string",
+                "maxLength": 24
+              },
+              "primary": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "key",
+              "label"
+            ]
+          }
+        }
+      },
+      "required": [
+        "type",
+        "id",
+        "title"
+      ],
+      "description": "A question or an offer (capability card). 3 open, 1 new a second."
+    },
+    "widget": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "stats",
+            "sparkline",
+            "bars",
+            "chips",
+            "list"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 32
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "stats"
+            },
+            "items": {
+              "type": "array",
+              "maxItems": 4,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "maxLength": 20
+                  },
+                  "value": {
+                    "type": "string",
+                    "maxLength": 12
+                  },
+                  "caption": {
+                    "type": "string",
+                    "maxLength": 24
+                  }
+                },
+                "required": [
+                  "label",
+                  "value"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "sparkline"
+            },
+            "values": {
+              "type": "array",
+              "maxItems": 120,
+              "items": {
+                "type": "number"
+              }
+            },
+            "caption": {
+              "type": "string",
+              "maxLength": 40
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "bars"
+            },
+            "items": {
+              "type": "array",
+              "maxItems": 12,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "maxLength": 20
+                  },
+                  "value": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "caption": {
+                    "type": "string",
+                    "maxLength": 12
+                  }
+                },
+                "required": [
+                  "label",
+                  "value"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "chips"
+            },
+            "items": {
+              "type": "array",
+              "maxItems": 12,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "maxLength": 4
+                  },
+                  "state": {
+                    "enum": [
+                      "done",
+                      "tried",
+                      "owed",
+                      "fixed",
+                      "gone",
+                      "todo"
+                    ]
+                  }
+                },
+                "required": [
+                  "label"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "list"
+            },
+            "items": {
+              "type": "array",
+              "maxItems": 8,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "sub": {
+                    "type": "string",
+                    "maxLength": 60
+                  },
+                  "icon": {
+                    "$ref": "#/$defs/icon"
+                  },
+                  "mood": {
+                    "$ref": "#/$defs/mood"
+                  }
+                },
+                "required": [
+                  "title"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "dashboard": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "dashboard"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "widgets": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/widget"
+          }
+        }
+      },
+      "required": [
+        "type",
+        "widgets"
+      ],
+      "description": "The plugin's page (capability dashboard). 4/s, coalesced."
+    },
+    "cheer": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "cheer"
+        },
+        "kind": {
+          "enum": [
+            "hop",
+            "nod",
+            "celebrate"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "kind"
+      ],
+      "description": "Ask Ember to react (capability cheer). Gated, 1 a minute."
+    },
+    "log": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "log"
+        },
+        "level": {
+          "enum": [
+            "info",
+            "warn",
+            "error"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "type",
+        "text"
+      ],
+      "description": "A log line. 5/s."
+    },
+    "remove": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "remove"
+        },
+        "what": {
+          "enum": [
+            "status",
+            "row",
+            "card",
+            "dashboard"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "type",
+        "what"
+      ],
+      "description": "Take something back; a card needs its id."
+    }
+  },
+  "oneOf": [
+    {
+      "title": "Ember to plugin",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/hello_ember"
+        },
+        {
+          "$ref": "#/$defs/click"
+        },
+        {
+          "$ref": "#/$defs/button"
+        },
+        {
+          "$ref": "#/$defs/dash"
+        },
+        {
+          "$ref": "#/$defs/stop"
+        }
+      ]
+    },
+    {
+      "title": "plugin to Ember",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/hello_plugin"
+        },
+        {
+          "$ref": "#/$defs/status"
+        },
+        {
+          "$ref": "#/$defs/moment"
+        },
+        {
+          "$ref": "#/$defs/row"
+        },
+        {
+          "$ref": "#/$defs/card"
+        },
+        {
+          "$ref": "#/$defs/dashboard"
+        },
+        {
+          "$ref": "#/$defs/cheer"
+        },
+        {
+          "$ref": "#/$defs/log"
+        },
+        {
+          "$ref": "#/$defs/remove"
+        }
+      ]
+    }
+  ]
+}
