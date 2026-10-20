@@ -2,7 +2,6 @@ package island
 
 import (
 	"context"
-	"fmt"
 	"image"
 	"log"
 	"math"
@@ -30,6 +29,7 @@ type extPlugin struct {
 	statusEnd time.Time // `ember status --ttl`: it goes then
 	row       *proto.Row
 	dash      *proto.Dashboard
+	reacted   time.Time // the dashboard opening its hero last reacted to
 }
 
 // extAct is a plugin's activity name in the pill's competition.
@@ -497,163 +497,6 @@ func (u *UI) extRow(x *extPlugin, rx, w, y float32) {
 	}
 }
 
-// ---- the dashboard ----
-
-// extDash draws a plugin's declared widgets in the dashboard's language:
-// a title, then sections under small capitals, divided by hairlines.
-type extDash struct{ name string }
-
-const extDashW = dashW
-
-type block struct {
-	h    float32
-	draw func(y float32, age time.Duration)
-}
-
-func (d extDash) blocks(u *UI, x, w float32) []block {
-	xp := u.ext[d.name]
-	if xp == nil || xp.dash == nil {
-		return nil
-	}
-	p := u.pal
-	db := xp.dash
-	title := db.Title
-	if title == "" {
-		title = d.name
-	}
-	inner, lx := w-2*dashP, x+dashP
-	out := []block{{h: 46, draw: func(y float32, age time.Duration) {
-		u.dc.text(fTitle(), ellipsize(fTitle(), title, inner), lx, y+30, alpha(p.fg, phase(age, 0, 300*time.Millisecond)))
-	}}}
-	for i, wd := range db.Widgets {
-		wd, delay := wd, time.Duration(80+60*i)*time.Millisecond
-		head := func(y float32, k float64) {
-			if wd.Title != "" {
-				u.dc.eyebrow(wd.Title, lx, y+14, alpha(p.faint, k))
-			}
-		}
-		top := float32(0)
-		if wd.Title != "" {
-			top = 20
-		}
-		out = append(out, block{h: dashDiv, draw: func(y float32, age time.Duration) {
-			dashDivider(u, x, w, y, phase(age, delay, 400*time.Millisecond))
-		}})
-		switch wd.Kind {
-		case "stats":
-			out = append(out, block{h: top + 52, draw: func(y float32, age time.Duration) {
-				k := phase(age, delay, 500*time.Millisecond)
-				head(y, k)
-				n := max(len(wd.Items), 1)
-				col := inner / float32(n)
-				for j, it := range wd.Items {
-					cx := lx + float32(j)*col
-					u.dc.eyebrow(it.Label, cx, y+top+12, alpha(p.faint, k))
-					f := face(fSemiBold, 20)
-					vw := u.dc.text(f, ellipsize(f, it.Text, col-8), cx, y+top+36, alpha(p.fg, k))
-					if it.Caption != "" {
-						u.dc.text(fCaption(), ellipsize(fCaption(), it.Caption, col-vw-14), cx+vw+6, y+top+36, alpha(p.muted, k))
-					}
-				}
-			}})
-		case "sparkline":
-			out = append(out, block{h: top + 62, draw: func(y float32, age time.Duration) {
-				k := phase(age, delay, 700*time.Millisecond)
-				head(y, k)
-				vs := wd.Values
-				gy, gh := y+top+6, float32(36)
-				if len(vs) >= 2 {
-					lo, hi := vs[0], vs[0]
-					for _, v := range vs {
-						lo, hi = math.Min(lo, v), math.Max(hi, v)
-					}
-					if hi-lo < 1e-9 {
-						hi = lo + 1
-					}
-					n := float32(len(vs) - 1)
-					shown := 1 + int(float64(len(vs)-1)*k) // the line draws itself in
-					pts := []pt{{lx, gy + gh}}
-					for j, v := range vs[:shown] {
-						pts = append(pts, pt{lx + inner*float32(j)/n, gy + gh - gh*float32((v-lo)/(hi-lo))})
-					}
-					last := pts[len(pts)-1]
-					pts = append(pts, pt{last.x, gy + gh})
-					u.dc.poly(alpha(p.green, 0.16), pts...)
-					for j := 1; j < len(pts)-2; j++ {
-						u.dc.line(pts[j], pts[j+1], 1.4, p.green)
-					}
-					u.dc.circle(last.x, last.y, 2.4, p.green)
-				}
-				if wd.Caption != "" {
-					u.dc.text(fCaption(), ellipsize(fCaption(), wd.Caption, inner), lx, y+top+56, alpha(p.muted, k))
-				}
-			}})
-		case "bars":
-			rows := float32(len(wd.Items))
-			out = append(out, block{h: top + rows*20 + 4, draw: func(y float32, age time.Duration) {
-				head(y, phase(age, delay, 400*time.Millisecond))
-				top0 := 0.0
-				for _, it := range wd.Items {
-					top0 = math.Max(top0, it.Num)
-				}
-				if top0 == 0 {
-					top0 = 1
-				}
-				labelW, valueW := inner*0.32, float32(56)
-				for j, it := range wd.Items {
-					k := float32(phase(age, delay+time.Duration(50*j)*time.Millisecond, 600*time.Millisecond))
-					ry := y + top + float32(j)*20
-					u.dc.text(fSecond(), ellipsize(fSecond(), it.Label, labelW-8), lx, ry+14, p.muted)
-					bx, bw := lx+labelW, inner-labelW-valueW
-					u.dc.roundRect(bx, ry+7, bw, 6, 3, alpha(p.fg, 0.06))
-					if fw := bw * float32(it.Num/top0) * k; fw > 0.5 {
-						u.dc.roundRect(bx, ry+7, max(fw, 6), 6, 3, p.green)
-					}
-					v := it.Caption
-					if v == "" {
-						v = trimNum(it.Num)
-					}
-					f := face(fSemiBold, 11)
-					u.dc.text(f, v, lx+inner-measure(f, v), ry+14, p.fg)
-				}
-			}})
-		case "chips":
-			out = append(out, block{h: top + 30, draw: func(y float32, age time.Duration) {
-				k := phase(age, delay, 400*time.Millisecond)
-				head(y, k)
-				u.letters(chipsAsLetters(wd.Items), lx, y+top+13, 18, k)
-				if wd.Caption != "" {
-					cx := lx + lettersW(chipsAsLetters(wd.Items), 18) + 12
-					u.dc.text(fCaption(), ellipsize(fCaption(), wd.Caption, lx+inner-cx), cx, y+top+17, alpha(p.muted, k))
-				}
-			}})
-		case "list":
-			out = append(out, block{h: top + float32(len(wd.Items))*24 + 2, draw: func(y float32, age time.Duration) {
-				head(y, phase(age, delay, 400*time.Millisecond))
-				for j, it := range wd.Items {
-					k := phase(age, delay+time.Duration(40*j)*time.Millisecond, 400*time.Millisecond)
-					ry := y + top + float32(j)*24
-					md := extMood(it.Mood)
-					tint := p.moodColor(md)
-					if md == moodIdle {
-						tint = p.muted
-					}
-					if it.Icon != "" {
-						u.dc.icon(it.Icon, lx+6, ry+11, 11, alpha(tint, k))
-					} else {
-						u.dc.circle(lx+6, ry+11, 2.2, alpha(tint, k))
-					}
-					tw := u.dc.text(fBody(), ellipsize(fBody(), it.Title, inner*0.55), lx+20, ry+16, alpha(p.fg, k))
-					if it.Sub != "" {
-						u.dc.text(fSecond(), ellipsize(fSecond(), it.Sub, inner-tw-28), lx+28+tw, ry+16, alpha(p.muted, k))
-					}
-				}
-			}})
-		}
-	}
-	return append(out, block{h: 8})
-}
-
 // chipLetters speaks the protocol's chip states in the letters' own.
 func chipLetters(cs []proto.Chip) []EdgeProblem {
 	if len(cs) == 0 {
@@ -665,43 +508,6 @@ func chipLetters(cs []proto.Chip) []EdgeProblem {
 		ps[i] = EdgeProblem{Index: c.Label, State: state[c.State]}
 	}
 	return ps
-}
-
-// chipsAsLetters speaks the round chips' states: the dashboard draws a
-// plugin's chips the way it draws edge's letters.
-func chipsAsLetters(items []proto.Item) []EdgeProblem {
-	state := map[string]string{"done": "solved", "tried": "tried", "owed": "upsolve", "fixed": "upsolved", "gone": "lapsed"}
-	ps := make([]EdgeProblem, len(items))
-	for i, it := range items {
-		ps[i] = EdgeProblem{Index: it.Label, State: state[it.State]}
-	}
-	return ps
-}
-
-func trimNum(v float64) string {
-	if v == math.Trunc(v) && math.Abs(v) < 1e9 {
-		return fmt.Sprintf("%d", int64(v))
-	}
-	return fmt.Sprintf("%.1f", v)
-}
-
-func (d extDash) Size(u *UI) (float64, float64) {
-	h := float32(0)
-	for _, b := range d.blocks(u, 0, extDashW) {
-		h += b.h
-	}
-	return extDashW, float64(max(h, 96))
-}
-
-func (d extDash) Draw(u *UI, x, w float32, age time.Duration) bool {
-	y := float32(0)
-	for _, b := range d.blocks(u, x, w) {
-		if b.draw != nil {
-			b.draw(y, age)
-		}
-		y += b.h
-	}
-	return age < 1500*time.Millisecond
 }
 
 var _ plugin.Sink = extSink{}

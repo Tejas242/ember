@@ -161,6 +161,7 @@ type UI struct {
 	edge       *EdgeStatus // set by the edge plugin while it runs
 	edgeStats  *EdgeStats
 	ext        map[string]*extPlugin // external plugins, by name: what each shows
+	unfolded   map[string]bool       // dashboard sections you unfolded: "<plugin>:<index>"
 	second     time.Time
 	opened     map[string]bool      // agents you opened or closed in the card: a:<session>:<agent>
 	shownOpen  map[string]bool      // how the card last drew them (the room it had may have closed one)

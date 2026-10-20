@@ -207,6 +207,13 @@ func (u *UI) press(k string, button int) {
 		if c.OnPick != nil {
 			c.OnPick("option", []int{i})
 		}
+	case strings.HasPrefix(k, "x:unfold:"): // a folded section of a plugin's dashboard
+		if u.unfolded == nil {
+			u.unfolded = map[string]bool{}
+		}
+		u.unfolded[strings.TrimPrefix(k, "x:unfold:")] = true
+	case strings.HasPrefix(k, "x:dbtn:"): // a button on a plugin's dashboard
+		u.key(k)
 	case strings.HasPrefix(k, "x:click:"), strings.HasPrefix(k, "x:btn:"): // a plugin's row, or a button on it
 		u.key(k)
 		u.used(strings.SplitN(strings.TrimPrefix(strings.TrimPrefix(k, "x:click:"), "x:btn:"), "\x00", 2)[0])

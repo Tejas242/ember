@@ -450,6 +450,7 @@ func (u *UI) posture(p *pose, now time.Time, t float64) {
 	}
 	b.phones.want = u.wantPhones()
 	u.danceFace(p)
+	u.heroPose(p) // a plugin's dashboard: how its hero asks Ember to stand
 	// petted: the pointer resting on it in the card
 	if u.hoverKey == "ember" && u.lastView != vCompact {
 		if u.petSince.IsZero() {
