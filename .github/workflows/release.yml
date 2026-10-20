@@ -1,0 +1,41 @@
+name: release
+
+# A tag v* (git tag v1.0.0 && git push --tags) builds static binaries for
+# amd64 and arm64, and publishes them with their checksums and the tag's
+# section of CHANGELOG.md as the notes.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./...
+      - name: build
+        run: |
+          mkdir dist
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath \
+              -ldflags="-s -w -X main.version=${GITHUB_REF_NAME}" -o dist/ember-linux-$arch ./cmd/ember
+            file dist/ember-linux-$arch | grep -q 'statically linked' || { file dist/ember-linux-$arch; exit 1; }
+          done
+          ./dist/ember-linux-amd64 --version
+          (cd dist && sha256sum ember-linux-* > sha256sums.txt)
+      - name: notes
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          awk -v v="$v" 'index($0, "## " v) == 1 { on = 1; next } on && /^## / { exit } on' CHANGELOG.md > notes.md
+          grep -q '[^[:space:]]' notes.md || { echo "CHANGELOG.md has no '## $v' section"; exit 1; }
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "Ember $GITHUB_REF_NAME" --notes-file notes.md

@@ -77,13 +77,21 @@ make install    # the binary in ~/.local/bin, a user service, Claude Code's hook
 ember doctor    # says what's missing, and how to get it
 ```
 
-You need a Wayland compositor with `zwlr_layer_shell_v1`, systemd, and Go 1.27+ to build. Ember is made on **niri**
-with the **Noctalia** shell, where it gets the most (focus, terminal titles, screen sharing, the bar's height and
-palette); Hyprland, Sway and river should work but are less tested, and reports are welcome. Music needs an MPRIS
-player; volume and the listening equaliser PipeWire (`wpctl`, `pactl`, `parec`); the battery UPower; headphones
-BlueZ. Restart open Claude sessions after installing. With another bar, tell Ember its height
-(`[look] bar_height`); [docs/CONFIG.md](docs/CONFIG.md#fitting-it-to-your-desktop) has that, Noctalia's popups and
-niri's blur. `ember uninstall` takes out the hooks and the service and leaves your config.
+Without Go, take a static binary (amd64 or arm64) from [Releases](https://github.com/Tejas242/ember/releases):
+
+```sh
+curl -LO https://github.com/Tejas242/ember/releases/latest/download/ember-linux-amd64
+install -Dm755 ember-linux-amd64 ~/.local/bin/ember && ~/.local/bin/ember install
+```
+
+Each release lists its `sha256sums.txt`. You need a Wayland compositor with `zwlr_layer_shell_v1` and systemd, and
+Go 1.27+ only to build. Ember is made on **niri** with the **Noctalia** shell, where it gets the most (focus,
+terminal titles, screen sharing, the bar's height and palette); Hyprland, Sway and river should work but are less
+tested, and reports are welcome. Music needs an MPRIS player; volume and the listening equaliser PipeWire (`wpctl`,
+`pactl`, `parec`); the battery UPower; headphones BlueZ. Restart open Claude sessions after installing. With another
+bar, tell Ember its height (`[look] bar_height`); [docs/CONFIG.md](docs/CONFIG.md#fitting-it-to-your-desktop) has
+that, Noctalia's popups and niri's blur. `ember uninstall` takes out the hooks and the service and leaves your
+config.
 
 ## What it shows
 
@@ -224,6 +232,7 @@ socket protocol, the config file and the directories.
 - [docs/DESIGN.md](docs/DESIGN.md): the design, every token and timing, and Ember's mind
 - [docs/CONFIG.md](docs/CONFIG.md): the whole config file
 - [docs/PLUGINS.md](docs/PLUGINS.md): the plugin protocol, the Go SDK and the examples
+- [CHANGELOG.md](CHANGELOG.md): what each release brought
 
 ## Credits
 
