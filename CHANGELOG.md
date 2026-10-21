@@ -5,6 +5,15 @@ file, the commands and the plugin protocol are the public surface.
 
 ## Unreleased
 
+**Ember, more natural**
+- It dances on the beat: its knees bend into each beat (it used to land about 80 ms late), its weight steps from foot
+  to foot, the first beat of a bar lands hardest, and its flame tip and headphones trail its head. It picks a sway,
+  a groove, a head-bob or a bounce from how hard this part of the song goes, and blends between them.
+- Its face moves like a face: a change of expression happens behind a blink, the eyes jump and hold, blinks land on
+  beats and new lines, and each phrase of a song gets its own face (lost in it, grooving, beaming, now and then a
+  wink). On the stage its mouth follows the voice and the vowel.
+- Its idle breath no longer jumps when its mood changes.
+
 **Vibe**
 - Click Ember in the card while a song plays (or the headphones in the music row, or `ember dash vibe`) and the card
   becomes a stage: Ember dances big on a floor of the cover's light, on its own beat, and sings along with the song's
