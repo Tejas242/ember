@@ -4,7 +4,7 @@ BIN    := $(PREFIX)/bin/ember
 .PHONY: build install uninstall test check fmt vet lint race vuln cover preview gallery demo docs site-media
 
 # pinned tools, run through go run (nothing to install)
-STATICCHECK := honnef.co/go/tools/cmd/staticcheck@v0.8.1
+STATICCHECK := honnef.co/go/tools/cmd/staticcheck@v0.8.2
 GOVULNCHECK := golang.org/x/vuln/cmd/govulncheck@v1.4.0
 
 # a static binary (no libc to drift under it), stamped with its version

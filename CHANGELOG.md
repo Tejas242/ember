@@ -3,6 +3,12 @@
 Each release's section here becomes its notes on GitHub. Versions follow [semver](https://semver.org): the config
 file, the commands and the plugin protocol are the public surface.
 
+## 1.0.1
+
+Built with Go 1.27.3: 1.0.0's binaries were built with Go 1.27.1, whose standard library has known vulnerabilities in
+`net/http` (HTTP/2) and `crypto/x509` that Ember's album-art download could reach. Nothing else changes.
+staticcheck moves to v0.8.2, which reads the newer toolchain.
+
 ## 1.0.0
 
 The first release: everything Ember does today, in one static binary for Linux on amd64 and arm64.
