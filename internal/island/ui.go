@@ -94,14 +94,18 @@ type worldState struct {
 // pointerState is where the pointer is and what you've done with it: hover,
 // presses and drags, and what you opened or picked in the card.
 type pointerState struct {
-	unfolded                map[string]bool // dashboard sections you unfolded: "<plugin>:<index>"
-	opened                  map[string]bool // agents you opened or closed in the card: a:<session>:<agent>
-	shownOpen               map[string]bool // how the card last drew them (the room it had may have closed one)
-	allRows                 bool            // the card shows every session, one line each ("Show all"), until it closes
-	hero                    string          // the session you made the card's hero, until it closes
-	dash                    string          // the open dashboard's plugin, if any
-	dashAt                  time.Time       // when it opened: its entrance plays from here
-	dashIn                  bool            // the pointer has been on it: leaving closes it
+	unfolded                map[string]bool                          // dashboard sections you unfolded: "<plugin>:<index>"
+	opened                  map[string]bool                          // agents you opened or closed in the card: a:<session>:<agent>
+	shownOpen               map[string]bool                          // how the card last drew them (the room it had may have closed one)
+	allRows                 bool                                     // the card shows every session, one line each ("Show all"), until it closes
+	hero                    string                                   // the session you made the card's hero, until it closes
+	dash                    string                                   // the open dashboard's plugin, if any
+	dashAt                  time.Time                                // when it opened: its entrance plays from here
+	dashIn                  bool                                     // the pointer has been on it: leaving closes it
+	dashWhy                 string                                   // why the last page closed, until its plugin hears it
+	idleSince               time.Time                                // the open page's music has been paused (or gone) since
+	finishedSong            string                                   // Claude finished while the page was open, during this song (its media key)
+	openers                 func(context string) (name, hint string) // the plugin a click on Ember opens in a context
 	hover, pinned, suppress bool
 	hoverAt, leftAt         time.Time
 	mx, my                  float64

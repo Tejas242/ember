@@ -135,7 +135,7 @@ func (a *app) applyExt(name string, m proto.Message) {
 			x.dash = nil
 			delete(u.dashboards, name)
 			if u.dash == name {
-				u.closeDash()
+				u.closeDash(proto.CloseOther)
 			}
 		case "card":
 			u.RemoveCard("x:" + name + ":" + m.Remove.ID)
@@ -182,7 +182,7 @@ func (a *app) extGone(name string) {
 	delete(u.ext, name)
 	delete(u.dashboards, name)
 	if u.dash == name {
-		u.closeDash()
+		u.closeDash(proto.CloseOther)
 	}
 	for _, c := range append([]*Card(nil), u.cards...) {
 		if strings.HasPrefix(c.ID, "x:"+name+":") {
@@ -213,20 +213,24 @@ func (a *app) extKey(k string) {
 	}
 }
 
-// extDashChanged tells plugins their dashboard opened or closed.
+// extDashChanged tells plugins their dashboard opened or closed, and why it closed.
 func (a *app) extDashChanged() {
 	if a.ui.dash == a.lastDash {
 		return
 	}
 	if a.host != nil {
 		if was := a.lastDash; a.ui.ext[was] != nil {
-			a.host.Send(was, proto.Event{Type: "dash", State: "close"})
+			why := a.ui.dashWhy
+			if why == "" {
+				why = proto.CloseOther
+			}
+			a.host.Send(was, proto.Event{Type: "dash", State: "close", Reason: why})
 		}
 		if now := a.ui.dash; a.ui.ext[now] != nil {
 			a.host.Send(now, proto.Event{Type: "dash", State: "open"})
 		}
 	}
-	a.lastDash = a.ui.dash
+	a.lastDash, a.ui.dashWhy = a.ui.dash, ""
 }
 
 // ---- in the pill ----

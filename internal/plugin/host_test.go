@@ -77,6 +77,10 @@ func fakePlugin(mode string) {
 			say(`{"type":"status"}`)
 			time.Sleep(time.Millisecond)
 		}
+	case "timed": // timed text, faster than a second
+		for i := 0; i < 5; i++ {
+			say(fmt.Sprintf(`{"type":"dashboard","widgets":[{"kind":"timed_text","lines":[{"t_ms":0,"text":"%d"}]}]}`, i))
+		}
 	case "beyond":
 		say(`{"type":"row","title":"not allowed"}`) // no row capability
 		say(`{"type":"status","text":""}`)          // no text: a violation
@@ -407,4 +411,106 @@ func TestGrantsInInfo(t *testing.T) {
 		i := info(h)
 		return fmt.Sprint(i.Asks) == "[critical]" && fmt.Sprint(i.Grants) == "[focus]"
 	})
+}
+
+// A media event reaches a plugin only while it is granted media and its page
+// is open: nothing while it's closed, nothing without the grant.
+func TestMediaOnlyWhileOpenAndGranted(t *testing.T) {
+	h, _, _ := fakeHost(t, "good")
+	eventually(t, "running", func() bool { return info(h).State == Running })
+	media := func() { h.Send("fake", proto.Event{Type: "media", Media: &proto.Media{Key: "k", Title: "T"}}) }
+	marker := func(s string) {
+		time.Sleep(1100 * time.Millisecond) // its log takes five lines a second
+		h.Send("fake", proto.Event{Type: "click", Target: s})
+	}
+	got := func(s string) bool { return strings.Contains(strings.Join(info(h).Log, "|"), s) }
+	media() // closed, not granted
+	h.Send("fake", proto.Event{Type: "dash", State: "open"})
+	media() // open, not granted
+	marker("one")
+	eventually(t, "the first marker", func() bool { return got("got click one") })
+	h.Grants = func(string) []string { return []string{proto.GrantMedia} }
+	media() // open and granted: this one goes
+	marker("two")
+	eventually(t, "the second marker", func() bool { return got("got click two") })
+	h.Send("fake", proto.Event{Type: "dash", State: "close", Reason: proto.CloseUser})
+	media() // closed again
+	marker("three")
+	eventually(t, "the third marker", func() bool { return got("got click three") })
+	n := strings.Count(strings.Join(info(h).Log, "|"), "got media")
+	if n != 1 {
+		t.Fatalf("%d media events reached it, want 1: %v", n, info(h).Log)
+	}
+}
+
+// One plugin owns a context: the first by name of those granted entry.
+func TestOpener(t *testing.T) {
+	root := t.TempDir()
+	for _, n := range []string{"alpha", "beta", "gamma"} {
+		os.Mkdir(filepath.Join(root, n), 0o755)
+		ctx := "music"
+		if n == "gamma" {
+			ctx = "idle"
+		}
+		hint := ""
+		if n == "beta" {
+			hint = "hint = \"Vibe\"\n"
+		}
+		toml := fmt.Sprintf("name = %q\ncommand = %q\nargs = [\"-fake\", \"nohello\"]\n[opens]\nember = %q\n%s", n, os.Args[0], ctx, hint)
+		os.WriteFile(filepath.Join(root, n, "plugin.toml"), []byte(toml), 0o644)
+	}
+	h := NewHost(root, "v9-test", &sink{})
+	var mu sync.Mutex
+	granted := map[string]bool{}
+	h.Grants = func(n string) []string {
+		mu.Lock()
+		defer mu.Unlock()
+		if granted[n] {
+			return []string{proto.GrantEntry}
+		}
+		return nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	h.Start(ctx)
+	t.Cleanup(func() { cancel(); h.Stop() })
+	if n, _ := h.Opener("music"); n != "" {
+		t.Fatalf("%s opens without the entry grant", n)
+	}
+	mu.Lock()
+	granted["beta"] = true
+	mu.Unlock()
+	if n, hint := h.Opener("music"); n != "beta" || hint != "Vibe" {
+		t.Fatalf("%s %q", n, hint)
+	}
+	mu.Lock()
+	granted["alpha"] = true
+	mu.Unlock()
+	if n, hint := h.Opener("music"); n != "alpha" || hint != "alpha" {
+		t.Fatalf("the first by name owns it: %s %q", n, hint)
+	}
+	if n, _ := h.Opener("idle"); n != "" {
+		t.Fatalf("idle: %s isn't granted", n)
+	}
+	mu.Lock()
+	granted["gamma"] = true
+	mu.Unlock()
+	if n, _ := h.Opener("idle"); n != "gamma" {
+		t.Fatalf("idle: %s", n)
+	}
+}
+
+// A page with timed text is updated at most once a second: the latest wins.
+func TestTimedPagesCoalesce(t *testing.T) {
+	_, s, _ := fakeHost(t, "timed", "dashboard")
+	eventually(t, "the last page", func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		n := len(s.msgs)
+		return n > 0 && s.msgs[n-1].Dashboard.Widgets[0].Lines[0].Text == "4"
+	})
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.msgs) != 2 {
+		t.Fatalf("%d pages applied, want the first and the last", len(s.msgs))
+	}
 }

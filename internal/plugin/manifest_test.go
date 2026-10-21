@@ -38,13 +38,25 @@ again = ["pomodoro-cli", "restart"]
 		`name = "Bad Name"` + "\ncommand = \"x\"": "name",
 		`name = "ok"`:                         "no command",
 		`name = "ok"` + "\ncommand = [\"x\"]": "a string",
-		`name = "ok"` + "\ncommand = \"x\"\n[targets]\nrun = \"make\"": "a command is an array",
-		`name = "ok"` + "\ncommand = \"x\"\n[other]":                   "unknown table",
-		`name = "ok` + "\ncommand = \"x\"":                             "unclosed",
-		`name "ok"`:                                                    "key = value",
+		`name = "ok"` + "\ncommand = \"x\"\n[targets]\nrun = \"make\"":    "a command is an array",
+		`name = "ok"` + "\ncommand = \"x\"\n[other]":                      "unknown table",
+		`name = "ok"` + "\ncommand = \"x\"\n[opens]\nember = \"party\"":   "one of music, idle",
+		`name = "ok"` + "\ncommand = \"x\"\n[opens]\nember = [\"music\"]": "a string",
+		`name = "ok` + "\ncommand = \"x\"":                                "unclosed",
+		`name "ok"`:                                                       "key = value",
 	} {
 		if _, err := parseManifest(text); err == nil || !strings.Contains(err.Error(), why) {
 			t.Errorf("%q: %v, want %q", text, err, why)
 		}
+	}
+}
+
+func TestParseManifestOpens(t *testing.T) {
+	m, err := parseManifest("name = \"vibe\"\ncommand = \"ember\"\ngrants = [\"media\", \"entry\", \"root\"]\n[opens]\nember = \"music\"\nhint = \"Vibe along with the song\"\nlater = \"fine\"\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Opens != "music" || m.Hint != "Vibe along with…" || !reflect.DeepEqual(m.Asks, []string{"media", "entry"}) {
+		t.Fatalf("%+v", m)
 	}
 }

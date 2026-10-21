@@ -119,7 +119,11 @@ func (d extDash) Size(u *UI) (float64, float64) {
 		}
 		h += b.h
 	}
-	return extDashW, float64(min(max(h, 96), extDashMaxH))
+	w := float64(extDashW)
+	if db := d.dash(u); db != nil && db.Size == "card" { // the card's width, in the card's place
+		w = cardW
+	}
+	return w, float64(min(max(h, 96), extDashMaxH))
 }
 
 func (d extDash) Draw(u *UI, x, w float32, age time.Duration) bool {

@@ -23,6 +23,8 @@ type Manifest struct {
 	Caps        []string            // the capabilities it declared that Ember knows
 	Asks        []string            // the grants it asks for (only the user's config grants them)
 	Targets     map[string][]string // a click's targets: a URL (one element) or a command
+	Opens       string              // [opens] ember: the context a click on Ember opens its page in (music | idle)
+	Hint        string              // [opens] hint: the words Ember shows for it ("Vibe")
 	Dir         string
 	Mod         time.Time // the manifest's mtime: a change wakes a suspended plugin
 }
@@ -56,7 +58,8 @@ func LoadManifest(dir string) (*Manifest, error) {
 }
 
 // parseManifest reads the small TOML a manifest uses: key = "string",
-// key = ["array", "of", "strings"], # comments, and a [targets] table.
+// key = ["array", "of", "strings"], # comments, a [targets] table and an
+// [opens] table.
 func parseManifest(text string) (*Manifest, error) {
 	m := &Manifest{Targets: map[string][]string{}}
 	section := ""
@@ -67,7 +70,7 @@ func parseManifest(text string) (*Manifest, error) {
 		}
 		bad := func(f string, a ...any) error { return fmt.Errorf("line %d: %s", i+1, fmt.Sprintf(f, a...)) }
 		if strings.HasPrefix(ln, "[") {
-			if section = strings.TrimSpace(strings.Trim(ln, "[]")); section != "targets" {
+			if section = strings.TrimSpace(strings.Trim(ln, "[]")); section != "targets" && section != "opens" {
 				return nil, bad("unknown table [%s]", section)
 			}
 			continue
@@ -80,6 +83,21 @@ func parseManifest(text string) (*Manifest, error) {
 		vals, isList, err := tomlValue(v)
 		if err != nil {
 			return nil, bad("%s: %v", k, err)
+		}
+		if section == "opens" {
+			if isList {
+				return nil, bad("opens.%s: a string, not an array", k)
+			}
+			switch k {
+			case "ember":
+				if !slices.Contains(proto.Contexts, vals[0]) {
+					return nil, bad("opens.ember %q: one of %s", vals[0], strings.Join(proto.Contexts, ", "))
+				}
+				m.Opens = vals[0]
+			case "hint":
+				m.Hint = proto.Cut(vals[0], 16)
+			}
+			continue
 		}
 		if section == "targets" {
 			if !proto.NameRe.MatchString(k) || len(vals) == 0 {
@@ -110,7 +128,7 @@ func parseManifest(text string) (*Manifest, error) {
 			m.Args = vals
 		case "grants":
 			for _, g := range vals {
-				if slices.Contains([]string{proto.GrantCritical, proto.GrantBadge, proto.GrantFocus}, g) && !slices.Contains(m.Asks, g) {
+				if slices.Contains(proto.Grants, g) && !slices.Contains(m.Asks, g) {
 					m.Asks = append(m.Asks, g)
 				}
 			}

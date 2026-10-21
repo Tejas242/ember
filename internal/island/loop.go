@@ -102,7 +102,7 @@ func (a *app) loop(ctx context.Context) error {
 			return fmt.Errorf("layer surface closed")
 		}
 		// the open card shows a progress bar: re-read the playhead now and then
-		if a.ui.lastView == vExpanded && a.ui.track != nil && a.ui.track.Playing && time.Since(lastPos) > 5*time.Second {
+		if (a.ui.lastView == vExpanded || a.ui.followsPlayhead()) && a.ui.track != nil && a.ui.track.Playing && time.Since(lastPos) > 5*time.Second {
 			lastPos = time.Now()
 			a.music.ReadPosition(a.ui.track.Player)
 		}
@@ -120,6 +120,7 @@ func (a *app) loop(ctx context.Context) error {
 		}
 		f.tick = false
 		a.extDashChanged()
+		a.extMedia()
 		st.wakes++
 		st.report(a)
 		timer.Reset(a.nextWake(f.animating))

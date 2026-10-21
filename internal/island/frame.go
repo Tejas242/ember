@@ -19,6 +19,7 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 	}
 	u.lastTick = now
 	u.dt = dt
+	u.pageEnds(now)
 	v := u.currentView()
 	key := u.viewKey(v)
 	if v != vExpanded {

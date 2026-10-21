@@ -18,6 +18,9 @@ type Track struct {
 	Title    string
 	Artist   string
 	ArtURL   string
+	Album    string
+	URL      string // the track's own address (file:// for a local file)
+	TrackID  string // the player's id for it (mpris:trackid)
 	Playing  bool
 	Length   time.Duration
 	Position time.Duration
@@ -149,6 +152,18 @@ func (m *MPRIS) read(name string) (Track, bool) {
 	}
 	if v, ok := md["mpris:artUrl"]; ok {
 		t.ArtURL, _ = v.Value().(string)
+	}
+	if v, ok := md["xesam:album"]; ok {
+		t.Album, _ = v.Value().(string)
+	}
+	if v, ok := md["xesam:url"]; ok {
+		t.URL, _ = v.Value().(string)
+	}
+	switch id := md["mpris:trackid"].Value().(type) {
+	case dbus.ObjectPath:
+		t.TrackID = string(id)
+	case string:
+		t.TrackID = id
 	}
 	if v, ok := md["mpris:length"]; ok {
 		switch n := v.Value().(type) {

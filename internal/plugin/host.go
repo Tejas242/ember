@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -43,6 +44,8 @@ type Info struct {
 	Icon        string    `json:"icon,omitempty"`
 	State       string    `json:"state"`
 	Caps        []string  `json:"caps,omitempty"`
+	Opens       string    `json:"opens,omitempty"` // [opens] ember: the context a click on Ember opens it in
+	Hint        string    `json:"hint,omitempty"`
 	Grants      []string  `json:"grants,omitempty"` // what the user's config grants it
 	Asks        []string  `json:"asks,omitempty"`   // what its manifest asks for
 	Since       time.Time `json:"since"`
@@ -122,6 +125,17 @@ func (h *Host) Scan() {
 			delete(h.ps, name)
 		}
 	}
+	defer func() { // what the config grants each, for its hello (Grants reads the config: on the caller's goroutine)
+		for name, p := range h.ps {
+			var g []string
+			if h.Grants != nil {
+				g = h.Grants(name)
+			}
+			p.mu.Lock()
+			p.grants = g
+			p.mu.Unlock()
+		}
+	}()
 	for name, m := range found {
 		if _, ok := h.ps[name]; ok {
 			continue
@@ -158,14 +172,57 @@ func (h *Host) proc(name string) *proc {
 func (h *Host) Has(name string) bool { return h.proc(name) != nil }
 
 // Send tells a plugin about an event. It never blocks: a plugin that isn't
-// reading misses it.
+// reading misses it. A media event goes only to a plugin granted media whose
+// page is open (as the dash events it was sent say).
 func (h *Host) Send(name string, ev proto.Event) {
-	if p := h.proc(name); p != nil {
-		if ev.Type == "button" {
-			p.cardClosed(ev.Card)
-		}
-		p.send(ev)
+	p := h.proc(name)
+	if p == nil {
+		return
 	}
+	switch ev.Type {
+	case "button":
+		p.cardClosed(ev.Card)
+	case "dash":
+		p.setOpen(ev.State == "open")
+	case "media":
+		if !p.open() || !h.granted(name, proto.GrantMedia) {
+			return
+		}
+	}
+	p.send(ev)
+}
+
+func (h *Host) granted(name, grant string) bool {
+	return h.Grants != nil && slices.Contains(h.Grants(name), grant)
+}
+
+// Opener is the plugin whose page a click on Ember opens in a context
+// (music, idle), and its hint: the first by name that asks for the context
+// in its manifest and is granted entry. "" if none.
+func (h *Host) Opener(context string) (name, hint string) {
+	h.mu.Lock()
+	var names []string
+	for n, p := range h.ps {
+		if p.m.Opens == context {
+			names = append(names, n)
+		}
+	}
+	h.mu.Unlock()
+	sort.Strings(names)
+	for _, n := range names {
+		if h.granted(n, proto.GrantEntry) {
+			p := h.proc(n)
+			if p == nil {
+				continue
+			}
+			hint := p.m.Hint
+			if hint == "" {
+				hint = n
+			}
+			return n, hint
+		}
+	}
+	return "", ""
 }
 
 // CardClosed: one of the plugin's cards went without a button (dismissed,

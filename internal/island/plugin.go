@@ -24,6 +24,21 @@ type Dashboard interface {
 	Draw(u *UI, x, w float32, age time.Duration) (animating bool)
 }
 
+// extHost is what the island asks of the plugin host (package
+// internal/plugin's Host; a test's own).
+type extHost interface {
+	Send(name string, ev proto.Event)
+	CardClosed(name, id string)
+	Click(name, target string)
+	Has(name string) bool
+	Opener(context string) (name, hint string)
+	Info() []plugin.Info
+	Scan()
+	Stop()
+}
+
+var _ extHost = (*plugin.Host)(nil)
+
 // redetectEvery: how often the host looks for new plugins and manifests
 // that changed, so installing one needs no restart.
 const redetectEvery = time.Minute
@@ -49,9 +64,10 @@ func (a *app) toPlugin(name string, payload json.RawMessage) {
 // startPlugins runs the plugins in ~/.config/ember/plugins until ctx ends
 // (stop ends it).
 func (a *app) startPlugins(ctx context.Context, stop func()) {
-	a.host = plugin.NewHost(filepath.Join(xdg.ConfigHome(), "ember", "plugins"), a.version, extSink{posts: a.posts, ctx: ctx})
-	a.host.Enabled = func(name string) bool { return a.ui.cfg.PluginOn(name, true) } // Scan runs on the loop
-	a.host.Grants = func(name string) []string { return a.ui.cfg.PluginGrants(name) }
-	a.stopAll = stop
-	a.host.Start(ctx)
+	h := plugin.NewHost(filepath.Join(xdg.ConfigHome(), "ember", "plugins"), a.version, extSink{posts: a.posts, ctx: ctx})
+	h.Enabled = func(name string) bool { return a.ui.cfg.PluginOn(name, true) } // Scan runs on the loop
+	h.Grants = func(name string) []string { return a.ui.cfg.PluginGrants(name) }
+	a.host, a.stopAll = h, stop
+	a.ui.openers = h.Opener
+	h.Start(ctx)
 }

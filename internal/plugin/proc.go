@@ -64,12 +64,27 @@ type proc struct {
 	viol    []time.Time
 	logSec  time.Time
 	logN    int
-	alive   bool // a run is going: applying is allowed
+	alive   bool     // a run is going: applying is allowed
+	shown   bool     // its page is open (the last dash event it was sent)
+	grants  []string // the config's grants as of the last Scan (on the island's loop): its hello says them
 }
 
 func newProc(h *Host, m *Manifest, cancel context.CancelFunc) *proc {
 	return &proc{h: h, m: m, cancel: cancel, out: make(chan []byte, 32),
-		info: Info{Name: m.Name, Description: m.Description, Icon: m.Icon, Caps: m.Caps, Asks: m.Asks, State: Starting, Since: time.Now(), Dir: m.Dir}}
+		info: Info{Name: m.Name, Description: m.Description, Icon: m.Icon, Caps: m.Caps, Asks: m.Asks, Opens: m.Opens, Hint: m.Hint,
+			State: Starting, Since: time.Now(), Dir: m.Dir}}
+}
+
+func (p *proc) setOpen(on bool) {
+	p.mu.Lock()
+	p.shown = on
+	p.mu.Unlock()
+}
+
+func (p *proc) open() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.shown && p.alive
 }
 
 func (p *proc) snapshot() Info {
@@ -210,7 +225,7 @@ func (p *proc) run(ctx context.Context) error {
 	}
 	p.setState(Starting, "")
 	p.mu.Lock()
-	p.alive, p.last, p.pending, p.cards, p.viol = true, map[string]time.Time{}, map[string]proto.Message{}, map[string]time.Time{}, nil
+	p.alive, p.last, p.pending, p.cards, p.viol, p.shown = true, map[string]time.Time{}, map[string]proto.Message{}, map[string]time.Time{}, nil, false
 	p.mu.Unlock()
 	for len(p.out) > 0 { // events for the last run aren't this one's
 		<-p.out
@@ -237,7 +252,10 @@ func (p *proc) run(ctx context.Context) error {
 		}
 	}()
 	go func() { // what Ember says: the hello, events, and stop when it's time
-		hello, _ := proto.Line("hello", proto.HelloEmber{V: proto.Version, Ember: p.h.Version, Caps: p.m.Caps})
+		p.mu.Lock()
+		grants := p.grants
+		p.mu.Unlock()
+		hello, _ := proto.Line("hello", proto.HelloEmber{V: proto.Version, Ember: p.h.Version, Caps: p.m.Caps, Grants: grants})
 		stdin.Write(hello)
 		for {
 			select {
@@ -432,7 +450,7 @@ func (p *proc) offer(m proto.Message, now time.Time) {
 		p.h.Sink.Apply(p.m.Name, m)
 		return
 	case "status", "row", "dashboard":
-		if wait := interval[m.Type] - now.Sub(p.last[m.Type]); wait > 0 {
+		if wait := p.every(m) - now.Sub(p.last[m.Type]); wait > 0 {
 			if _, ok := p.pending[m.Type]; ok {
 				p.info.Dropped++ // the one it replaces never showed
 			}
@@ -479,11 +497,23 @@ func (p *proc) offer(m proto.Message, now time.Time) {
 	p.h.Sink.Apply(p.m.Name, m)
 }
 
+// every is how often a kind of update may apply: a dashboard with timed
+// text once a second.
+func (p *proc) every(m proto.Message) time.Duration {
+	if m.Type == "dashboard" && m.Dashboard.Timed() {
+		return timedEvery
+	}
+	return interval[m.Type]
+}
+
+// timedEvery: a page with timed text is updated at most this often.
+var timedEvery = time.Second
+
 // untilNext is how long until the earliest pending update may go.
 func (p *proc) untilNext(now time.Time) time.Duration {
 	next := time.Hour
-	for k := range p.pending {
-		next = min(next, max(0, interval[k]-now.Sub(p.last[k])))
+	for k, m := range p.pending {
+		next = min(next, max(0, p.every(m)-now.Sub(p.last[k])))
 	}
 	return next
 }
@@ -497,7 +527,7 @@ func (p *proc) flush() {
 	}
 	now := time.Now()
 	for k, m := range p.pending {
-		if now.Sub(p.last[k]) >= interval[k] {
+		if now.Sub(p.last[k]) >= p.every(m) {
 			delete(p.pending, k)
 			p.last[k] = now
 			p.h.Sink.Apply(p.m.Name, m)

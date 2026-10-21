@@ -10,9 +10,9 @@ import (
 
 	"github.com/Tejas242/ember/internal/config"
 	"github.com/Tejas242/ember/internal/ipc"
-	"github.com/Tejas242/ember/internal/plugin"
 	"github.com/Tejas242/ember/internal/source"
 	"github.com/Tejas242/ember/internal/wayland"
+	proto "github.com/Tejas242/ember/pkg/plugin"
 )
 
 const (
@@ -29,7 +29,9 @@ type app struct {
 	win       *wayland.Window
 	music     *source.MPRIS
 	sup       *source.Supervisor   // runs the sources; knows how each is doing
-	host      *plugin.Host         // runs the external plugins
+	host      extHost              // runs the external plugins
+	mediaTo   string               // the page last told about the song
+	mediaLast *proto.Media         // and what it was told
 	stopAll   func()               // ends the sources and the plugins
 	lastDash  string               // the dashboard open last time we looked: plugins hear of a change
 	cliLast   map[string]time.Time // when each one-liner last changed what shows

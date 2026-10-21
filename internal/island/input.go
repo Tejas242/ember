@@ -6,6 +6,8 @@ import (
 	"math"
 	"strings"
 	"time"
+
+	proto "github.com/Tejas242/ember/pkg/plugin"
 )
 
 func (u *UI) hitAt(x, y float64) string {
@@ -41,8 +43,8 @@ func (u *UI) pointer(e pointerEvent) (redraw, hand bool) {
 		}
 		u.hover, u.pinned, u.suppress = false, false, false
 		u.leftAt = u.now()
-		if u.dash != "" && u.dashIn { // you looked and moved on
-			u.closeDash()
+		if u.dash != "" && u.dashIn && !u.pageSticky() { // you looked and moved on
+			u.closeDash(proto.ClosePointer)
 			u.suppress = false
 		}
 		u.hoverKey = ""
@@ -124,7 +126,7 @@ func (u *UI) press(k string, button int) {
 	if button == 3 { // right: dismiss — a moment, the open card, a plugin's card
 		switch {
 		case u.currentView() == vDash:
-			u.closeDash()
+			u.closeDash(proto.CloseUser)
 		case u.moment != nil:
 			u.moment = nil
 		case u.currentView() == vExpanded:
@@ -166,8 +168,10 @@ func (u *UI) press(k string, button int) {
 			}
 		}
 		u.pinned, u.suppress = true, false
-	case k == "ember": // Ember itself
-		u.poke()
+	case k == "ember": // Ember itself: a page that opens from it, or a poke
+		if !u.enterPage() {
+			u.poke()
+		}
 	case k == "panel": // the card's background closes it
 		u.pinned, u.suppress = false, true
 	case k == "rows:all": // "Show all" / "Show less"
@@ -176,8 +180,8 @@ func (u *UI) press(k string, button int) {
 		u.hero, u.staggerAt = strings.TrimPrefix(k, "s:"), u.now()
 	case strings.HasPrefix(k, "a:"): // an agent on the branch: open or close its steps
 		u.opened[k] = !u.shownOpen[k]
-	case k == "dash": // so does a dashboard's
-		u.closeDash()
+	case k == "dash", k == "page:back": // so does a dashboard's, and a stage's way back
+		u.closeDash(proto.CloseUser)
 	case strings.HasPrefix(k, "dash:"): // a plugin's row in the card: its dashboard
 		u.openDash(strings.TrimPrefix(k, "dash:"))
 	case k == "trail": // the satellite at the pill's end: swap it in
