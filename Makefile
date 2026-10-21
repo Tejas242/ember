@@ -1,7 +1,7 @@
 PREFIX ?= $(HOME)/.local
 BIN    := $(PREFIX)/bin/ember
 
-.PHONY: build install uninstall test check fmt vet lint race vuln cover preview gallery demo docs site-media
+.PHONY: build install uninstall test check fmt vet lint race vuln cover preview gallery vibe demo docs site-media
 
 # pinned tools, run through go run (nothing to install)
 STATICCHECK := honnef.co/go/tools/cmd/staticcheck@v0.8.2
@@ -70,6 +70,11 @@ preview:
 gallery:
 	mkdir -p preview
 	EMBER_PREVIEW=$(CURDIR)/preview EMBER_EDGE_STATS=$(XDG_RUNTIME_DIR)/edge/stats.json go test -tags render -count=1 -run TestGallery ./internal/island
+
+# the vibe stage in every case and its film, as plugins/vibe asks for them, in ./preview/vibe
+vibe:
+	mkdir -p preview/vibe
+	EMBER_VIBE=$(CURDIR)/preview/vibe EMBER_VIBE_FILM=$(CURDIR)/preview/vibe/film go test -tags render -count=1 -run 'TestVibe' ./internal/island
 
 # the README's pictures: stills, animated demos (needs ffmpeg with libwebp) and the banner,
 # drawn without plugins (EMBER_PLUGINS=off), as most people run Ember
