@@ -53,25 +53,26 @@ func TestShapeDevanagari(t *testing.T) {
 	}
 }
 
-// Arabic: the letters join (initial, medial, final forms), right to left.
+// Arabic: the letters join, right to left. Fonts differ (some fuse lam and
+// alef into one ligature, so "سلام" is 3 glyphs or 4); either way the meem at
+// the left end stays alone (alef doesn't join to its left), the seen at the
+// right end takes its initial form, and the glyphs run left to right on screen.
 func TestShapeArabic(t *testing.T) {
 	needScript(t, 'س')
 	f := face(fSemiBold, 17)
 	st := shaped(f, "سلام")
-	if len(st.glyphs) != 4 || !st.rtl || st.mixed {
-		t.Fatalf("%d glyphs, rtl %v, mixed %v", len(st.glyphs), st.rtl, st.mixed)
+	if n := len(st.glyphs); (n != 3 && n != 4) || !st.rtl || st.mixed {
+		t.Fatalf("%d glyphs, rtl %v, mixed %v", n, st.rtl, st.mixed)
 	}
-	// left to right on screen: meem (alone: alef doesn't join to its left), alef (final), lam (medial), seen (initial)
-	for i, c := range []struct {
-		r      rune
-		joined bool
-	}{{'م', false}, {'ا', true}, {'ل', true}, {'س', true}} {
-		g := st.glyphs[i]
-		nom, _ := g.face.NominalGlyph(c.r)
-		if (g.gid != nom) != c.joined {
-			t.Errorf("glyph %d (%c): gid %d, isolated %d, want joined %v", i, c.r, g.gid, nom, c.joined)
-		}
-		if i > 0 && g.x <= st.glyphs[i-1].x {
+	first, last := st.glyphs[0], st.glyphs[len(st.glyphs)-1]
+	if meem, _ := first.face.NominalGlyph('م'); first.gid != meem {
+		t.Errorf("the meem (left end) should stand alone: gid %d, isolated %d", first.gid, meem)
+	}
+	if seen, _ := last.face.NominalGlyph('س'); last.gid == seen {
+		t.Errorf("the seen (right end) should join: still its isolated form %d", seen)
+	}
+	for i := 1; i < len(st.glyphs); i++ {
+		if st.glyphs[i].x <= st.glyphs[i-1].x {
 			t.Errorf("glyph %d not right of %d", i, i-1)
 		}
 	}
