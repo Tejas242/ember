@@ -3,6 +3,14 @@
 Each release's section here becomes its notes on GitHub. Versions follow [semver](https://semver.org): the config
 file, the commands and the plugin protocol are the public surface.
 
+## 1.0.2
+
+- Ember's springs step in pieces no longer than a 60th of a second. At the card's 24 fps tick the old step was
+  unstable: a pixel of error rang up until Ember flew off the island (or the island panicked), and the instability
+  drove it into bursts of 60 fps frames.
+- A missing glyph's fallback font tries fontconfig's candidates until one parses and has it, so Chinese, Japanese
+  and Korean text no longer draws as boxes where the first candidate is a .ttc Ember can't read.
+
 ## 1.0.1
 
 Built with Go 1.27.3: 1.0.0's binaries were built with Go 1.27.1, whose standard library has known vulnerabilities in
