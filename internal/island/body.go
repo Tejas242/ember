@@ -56,10 +56,15 @@ type body struct {
 	coal     osc     // 0 a flame … 1 a coal
 	sqRest   float64 // a held squash (compacting): 1 normally
 	hold     float64 // a lean held by a muscle (a shake) or the dance's weight on one foot
-	danceSq  float64 // the dance's dip, 1 at rest
+	danceSq  float64 // the dance's knees: the height it is asked to stand at, 1 at rest
+	danceUp  float64 // the dance's lift off its floor, px (a bounce leaves the ground a little)
+	bob      osc     // that lift, through a spring: the weight lands a hair after the beat
+	headA    float64 // how hard the top of its head is accelerating, px/s² up, smoothed: its tongue and headphones feel it
 	leanK    float64 // its stiffness while a muscle holds it, 0 otherwise
 	leanRest float64 // a held lean (resting its head on the wall asleep)
 	coalRest float64
+	breath   float64 // where it is in a breath, 0..1 (posture counts it)
+	breathT  float64 // and when it last counted
 
 	slotV  float64 // the slot's velocity at the last step: its change is the inertia felt
 	slotA  float64 // and that acceleration, smoothed a little
@@ -190,8 +195,16 @@ func (b *body) tick(h, slotV float64) {
 	if b.y > 0 { // in the air it stretches with its speed
 		sqTarget += math.Min(math.Abs(b.vy)*0.0024, 0.18)
 	}
+	sqV, bobV := b.sq.v, b.bob.v
 	b.sq.step(sqTarget, 520, 0.36, 0, h)
 	b.sq.x = math.Max(0.55, math.Min(1.6, b.sq.x))
+	b.bob.step(b.danceUp, 420, 0.55, 0, h)
+	if b.bob.x < 0 {
+		b.bob.x, b.bob.v = 0, math.Max(0, b.bob.v)
+	}
+	// the top of its head: the body stretching (≈14 px tall at s = 16) and lifting.
+	// Whatever is loose on it (the tongue, the headphones) lags that.
+	b.headA += (((b.sq.v-sqV)*14+(b.bob.v-bobV))/h - b.headA) * 0.25
 
 	la := b.lean.v
 	lk, lz := 150.0, 0.42
@@ -200,7 +213,7 @@ func (b *body) tick(h, slotV float64) {
 	}
 	b.lean.step(b.leanRest+b.hold, lk, lz, -b.slotA*0.03, h)
 	b.tip.step(0, 80, 0.32, -(b.lean.v-la)/h*0.35, h)
-	b.tipH.step(0, 260, 0.38, 0, h)
+	b.tipH.step(0, 260, 0.38, -b.headA*0.012, h)
 	b.core.step(1, 200, 0.55, 0, h)
 	b.coal.step(b.coalRest, 90, 0.7, 0, h)
 
@@ -254,7 +267,7 @@ func (b *body) tick(h, slotV float64) {
 			}
 		} else { // they ride its head: a little behind when it moves, held by the band
 			ay := (b.vy - vy0) / h
-			ph.vy += (-ph.y*500 - ph.vy*2*0.35*math.Sqrt(500) - ay*0.02) * h
+			ph.vy += (-ph.y*500 - ph.vy*2*0.35*math.Sqrt(500) - ay*0.02 - b.headA*0.55) * h
 			ph.y += ph.vy * h
 			if ph.y < -0.6 {
 				ph.y, ph.vy = -0.6, 0
@@ -276,7 +289,7 @@ func (b *body) tick(h, slotV float64) {
 // whatever rate the island already runs at.
 func (b *body) busy() bool {
 	if b.airborne() || math.Abs(b.lean.v) > 4 || math.Abs(b.sq.v) > 0.5 || math.Abs(b.tip.v) > 6 || math.Abs(b.tipH.v) > 0.6 ||
-		math.Abs(b.core.v) > 0.6 || math.Abs(b.coal.v) > 0.15 {
+		math.Abs(b.core.v) > 0.6 || math.Abs(b.coal.v) > 0.15 || math.Abs(b.bob.v) > 1 {
 		return true
 	}
 	for _, p := range b.parts {
@@ -290,7 +303,7 @@ func (b *body) busy() bool {
 
 // pose writes the body's state into p.
 func (b *body) pose(p *pose) {
-	p.lift += float32(b.y)
+	p.lift += float32(b.y + b.bob.x)
 	p.sq *= float32(b.sq.x)
 	p.lean += float32(b.lean.x)
 	p.tip += float32(b.tip.x)

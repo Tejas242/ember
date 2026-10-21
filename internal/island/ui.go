@@ -163,6 +163,7 @@ type emberState struct {
 	act              *act          // what it's acting out, if anything
 	dancing          bool          // it has caught the song's beat
 	groove           groove        // its sense of rhythm
+	dancer           dancer        // how it moves to it
 	travelTo         float32       // where its slot last was: a jump in it is a trip, taken with a hop
 	travelling       bool
 	tripFrom         float64   // where the trip left from

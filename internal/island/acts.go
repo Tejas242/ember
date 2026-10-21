@@ -376,17 +376,26 @@ func (u *UI) posture(p *pose, now time.Time, t float64) {
 	heat := math.Min(1, m.rate/15)
 	md := u.spot.mood
 
-	// breathing: in 40 %, out 60 %, its pace following its energy
+	// breathing: in 40 %, out 60 %, its pace following its energy; no two
+	// breaths the same length or depth (its pace wanders ±25 % through slow
+	// noise), and dancing it breathes with the beat instead (its knees carry
+	// it). The breath is counted, not read off the clock, so a change of
+	// energy changes the pace of the next breath, never where this one is.
 	period := 5.2 - 3.2*en
-	ph := math.Mod(t/period, 1)
+	if dt := t - b.breathT; dt > 0 {
+		b.breath = math.Mod(b.breath+math.Min(dt, 0.5)*(1+0.25*vnoise(t/11, 77))/period, 1)
+	}
+	b.breathT = t
+	ph := b.breath
 	var br float64
 	if ph < 0.4 {
 		br = smooth01(ph / 0.4)
 	} else {
 		br = 1 - smooth01((ph-0.4)/0.6)
 	}
-	p.sq *= float32(1 + 0.045*(br-0.5))
-	p.lift += float32(0.3 * br)
+	depth := (1 + 0.25*vnoise(t/7, 78)) * (1 - 0.75*u.dancer.in)
+	p.sq *= float32(1 + 0.045*depth*(br-0.5))
+	p.lift += float32(0.3 * depth * br)
 
 	// the flicker: noise, faster and taller the more Claude does; the two tongues on their own seeds
 	sp, amp := 1+1.4*heat, 0.06+0.12*heat
@@ -586,6 +595,9 @@ func (u *UI) emberPose(t float64, now time.Time) pose {
 	return ps
 }
 
+// debugPose, when set (render tools), receives each frame's final pose.
+var debugPose *pose
+
 func (u *UI) drawEmber(t float64, now time.Time) {
 	if !u.spot.show {
 		return
@@ -596,6 +608,9 @@ func (u *UI) drawEmber(t float64, now time.Time) {
 	}
 	m := u.mind
 	ps := u.emberPose(t, now)
+	if debugPose != nil {
+		*debugPose = ps
+	}
 	f := u.emberFire()
 	base := y + 0.45*s
 	if !m.asleep && s <= 48 { // the light it casts on the island, brighter with its energy (on a stage, the floor's light is its light)
