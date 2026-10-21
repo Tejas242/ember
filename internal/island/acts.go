@@ -224,18 +224,16 @@ func (u *UI) actFace(p *pose, now time.Time) {
 	in := func(a, b float64) bool { return t >= a && t < b }
 	switch ac.kind {
 	case "ignite":
-		switch {
-		case t < 0.09:
-			p.eyeH = 1
-		default:
-			p.eyeH = 4 + float32(math.Exp(-(t-0.09)/0.25))
+		p.eyeH = 4 + float32(math.Exp(-math.Max(0, t-0.09)/0.25))
+		if t < 0.09 { // a blink as it catches
+			p.lid = 1
 		}
 		p.flash = max(p.flash, float32(0.6*math.Exp(-math.Max(0, t-0.08)/0.1)*b2f(t >= 0.08)))
 	case "needs":
 		p.eyeH, p.lookY, p.mouth = 5, -1, mouthO
 		p.lookX = 0
 		if in(0.46, 0.52) || in(0.6, 0.66) { // a double blink: "hey"
-			p.eyeH = 1
+			p.lid = 1
 		}
 	case "done":
 		p.eyes, p.lid, p.slant = eyeHappy, 0, 0
@@ -286,7 +284,7 @@ func (u *UI) actFace(p *pose, now time.Time) {
 				p.mouth = mouthYawn
 			}
 		case t < 1.1:
-			p.eyeH = 1
+			p.lid = 1
 		default:
 			p.lookX, p.lookY = 2, 0 // a look at the clock
 		}
@@ -294,8 +292,8 @@ func (u *UI) actFace(p *pose, now time.Time) {
 		if in(0.25, 0.85) {
 			p.mouth, p.eyes = mouthYawn, eyeShut
 		}
-	case "eyeroll": // half-lidded, the eyes sweep up and across
-		p.lid = 0.45
+	case "eyeroll": // half-lidded, one lid lower, the eyes sweep up and across
+		p.lid, p.lidAsym = 0.45, 0.3
 		p.lookY = -1
 		p.lookX = float32(-2 + 4*smooth01(t/0.5))
 	case "poke":
@@ -323,6 +321,18 @@ func (u *UI) actFace(p *pose, now time.Time) {
 			p.cheeks = float32(math.Sin(math.Min(1, t/0.8) * math.Pi))
 		}
 	}
+}
+
+// readGaze: reading a line, the eyes step along it in fixations (a quarter
+// second each, quicker the busier Claude is) and sweep back to its start.
+func readGaze(t, pace float64) float32 {
+	const fix = 4
+	n := t * pace / 0.28
+	k := int(math.Floor(n)) % (fix + 1)
+	if k == fix { // the sweep back
+		k = 0
+	}
+	return float32(0.3 + 0.35*float64(k))
 }
 
 func smooth01(x float64) float64 {
@@ -393,22 +403,25 @@ func (u *UI) posture(p *pose, now time.Time, t float64) {
 
 	// the mood's face
 	p.eyeH = 3
-	look := float32(u.look.x) * 1.5
+	look := float32(u.lookTarget(now)) * 1.5 // where it wants to look: the face jumps there
 	p.lookX = look
 	switch md {
 	case moodWork:
 		p.eyeH = 4
-		if math.Abs(u.look.x) < 0.2 {
-			p.lookX = 1 // reading the label
+		if math.Abs(float64(look)) < 0.3 { // reading the label: a few fixations along it, a sweep back
+			p.lookX = readGaze(t, 1+heat)
 		}
 		if heat > 0.5 {
 			p.slant = float32(0.35 * (heat - 0.5) * 2)
 		}
 	case moodWait:
 		p.eyeH, p.lookY, p.mouth = 4, -1, mouthO
-	case moodHappy:
+	case moodHappy: // ^ ^ first; after a while pleased, eyes open, smiling at you
 		p.eyes = eyeHappy
 		p.tipH += 0.15
+		if u.moodSince(now) > 2500*time.Millisecond {
+			p.eyes, p.lid, p.lookY, p.mouth = eyeOpen, 0, -0.4, mouthSmile
+		}
 	case moodError:
 		p.slant, p.lookY, p.mouth = -0.6, 1, mouthFlat // slumped: the posture carries it, not darkness
 		p.tipH -= 0.18
@@ -426,15 +439,12 @@ func (u *UI) posture(p *pose, now time.Time, t float64) {
 	}
 	// hovered: it perks up (eyes wide for a moment), then follows the pointer
 	if u.hover {
-		if now.Sub(u.hoverAt) < 250*time.Millisecond {
-			p.eyeH = 5
+		if k := now.Sub(u.hoverAt).Seconds(); k < 1.5 { // it perks up, and settles
+			p.eyeH += float32(2 * math.Exp(-k/0.35))
 		}
 		p.tipH += 0.12
 	}
-	// a blink: the lids come down in whole pixels; the eye isn't squashed
-	if bl := m.blink(now); bl > 0 && p.eyes == eyeOpen {
-		p.lid = max(p.lid, float32(math.Min(1, bl*1.2)))
-	}
+	// (blinks are the face's: see faceStep)
 
 	// held parts
 	b.sqRest, b.leanRest, b.coalRest = 1, 0, 0
@@ -561,6 +571,21 @@ func (u *UI) emberRect() image.Rectangle {
 	return r
 }
 
+// emberPose is how Ember looks this frame: the posture, the act's face, the
+// body, the stage.
+func (u *UI) emberPose(t float64, now time.Time) pose {
+	m := u.mind
+	ps := restPose()
+	u.posture(&ps, now, t)
+	u.actFace(&ps, now)
+	u.body.pose(&ps)
+	u.stagePose(&ps) // on a stage: singing along, listening, waiting an ad out, looking at the cover while paused
+	u.faceStep(&ps, now)
+	ps.lookX += float32(u.body.lean.x*0.45 + u.body.lean.v*0.02) // the eyes lead the head
+	ps.scale *= 1 + 0.05*float32(m.arousal-0.5)                  // a touch bigger when lively
+	return ps
+}
+
 func (u *UI) drawEmber(t float64, now time.Time) {
 	if !u.spot.show {
 		return
@@ -570,13 +595,7 @@ func (u *UI) drawEmber(t float64, now time.Time) {
 		return
 	}
 	m := u.mind
-	ps := restPose()
-	u.posture(&ps, now, t)
-	u.actFace(&ps, now)
-	u.body.pose(&ps)
-	u.stagePose(&ps)                                             // on a stage: singing along, listening, waiting an ad out, looking at the cover while paused
-	ps.lookX += float32(u.body.lean.x*0.45 + u.body.lean.v*0.02) // the eyes lead the head
-	ps.scale *= 1 + 0.05*float32(m.arousal-0.5)                  // a touch bigger when lively
+	ps := u.emberPose(t, now)
 	f := u.emberFire()
 	base := y + 0.45*s
 	if !m.asleep && s <= 48 { // the light it casts on the island, brighter with its energy (on a stage, the floor's light is its light)

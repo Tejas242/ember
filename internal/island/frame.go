@@ -226,7 +226,7 @@ func (u *UI) drawPeeks(n notch, behind int) {
 }
 
 func (u *UI) moving(settled bool, p float64, sliding, flashing bool) bool {
-	return !settled || p < 1 || sliding || flashing || u.tweening || u.mind.blinking(u.now()) || u.act != nil || u.body.busy() || u.travelling || !u.emberSettled()
+	return !settled || p < 1 || sliding || flashing || u.tweening || u.mind.blinking(u.now()) || u.face.busy(u.now()) || u.act != nil || u.body.busy() || u.travelling || !u.emberSettled()
 }
 
 // transition: the view is about to change. Opening the card notes the

@@ -930,11 +930,42 @@ func (u *UI) stagePose(ps *pose) {
 		ps.eyes, ps.eyeH, ps.lid, ps.lookX, ps.lookY, ps.mouth = eyeOpen, 3, 0, 1.6, 0.2, mouthNone
 	case e.Pose == "sleepy": // waiting something out
 		ps.eyes, ps.eyeH, ps.lid, ps.lookX, ps.lookY, ps.mouth = eyeOpen, 3, 0.45, 1.4, 0.4, mouthNone
-	case e.Sing && st.fillK >= 0 && u.dancing && !u.discreet(): // it sings along: its mouth opens with the voice
-		if lv, ok := u.audio.Levels(); ok && lv[1] > 0.5 {
-			ps.mouth = mouthO
-		}
+	case e.Sing && st.fillK >= 0 && u.dancing && !u.discreet() && st.idx >= 0 && st.idx < len(st.lines): // it sings along
+		u.singFace(ps, st)
 	}
+}
+
+// singFace: singing a line. The mouth opens with the voice and takes the
+// shape of the vowel in the words where they're lit. A new line starts with
+// a breath (a blink) and a glance at the words; then it sings out, eyes open
+// and a little up, closing them while the song holds loud (shut 1.4 s at
+// least, open 0.8 s).
+func (u *UI) singFace(ps *pose, st *stageState) {
+	f, now := &u.face, u.now()
+	ps.mouth = mouthSing
+	ps.open = float32(math.Max(0, math.Min(1, (f.vox-0.3)/0.45)))
+	vw, vh := vowelAt(st.lines[st.idx].text, st.fillK)
+	ps.vw, ps.vh = float32(vw), float32(vh)
+	e := math.Max(0, math.Min(1, (f.voxS-0.35)/0.3))
+	if st.idx != f.lineIdx {
+		f.lineIdx, f.readAt = st.idx, now
+		u.mind.blinkSoon(now)
+	}
+	hold := 800 * time.Millisecond // eyes open a while before they close again
+	if f.shut {
+		hold = 1400 * time.Millisecond // closed into a held note: long enough not to read as a slow blink
+	}
+	if want := e > 0.6; want != f.shut && now.Sub(f.shutAt) > hold && now.Sub(f.readAt) > 900*time.Millisecond {
+		f.shut, f.shutAt = want, now
+	}
+	ps.eyes, ps.lid, ps.lidAsym, ps.lookX, ps.lookY = eyeOpen, float32(0.12+0.25*e), 0, 0, -0.4
+	switch {
+	case now.Sub(f.readAt) < 450*time.Millisecond: // the words
+		ps.lid, ps.lookX, ps.lookY = 0.05, 1.0, 0.1
+	case f.shut:
+		ps.eyes = eyeShut
+	}
+	ps.lidFine = 0
 }
 
 // stageFPS is how often a stage's live parts repaint: 24 a second on a

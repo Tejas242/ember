@@ -193,23 +193,87 @@ func (u *UI) listen(now time.Time) {
 	b.phones.tilt.v += (0.15*sway*amp - b.phones.tilt.x) * 0.2
 }
 
-// danceFace: grooving, it closes its eyes and smiles; nodding, it looks down on the beat.
+// danceFace: how Ember's face rides the song. Not one face for the whole
+// song: at each phrase (eight beats) it picks one, by a roll weighted with
+// how hard the song is going: lost in it (^ ^ and a smile), grooving (eyes
+// open, lids relaxed and a little down, the lids dipping on the beat where a
+// pixel can show it, a soft smile), or beaming at you (eyes open and
+// up, a smile, a blush, now and then a wink). The first phrase after it
+// finds the beat it grooves, eyes open, still listening. Its blinks land on
+// beats, and a phrase begins with one.
 func (u *UI) danceFace(p *pose) {
-	g := &u.groove
+	g, f := &u.groove, &u.face
 	if u.act != nil || !u.body.phones.seated {
 		return
 	}
-	if !u.dancing { // swaying to something soft: eyes closed, listening
-		if u.now().Sub(g.heardAt) < time.Second && g.level > 0.15 {
-			p.eyes = eyeShut
+	now := u.now()
+	if !u.dancing { // swaying to something soft: eyes closed, listening; now and then they open a while, heavy, and close again
+		if now.Sub(g.heardAt) < time.Second && g.level > 0.15 {
+			t := float64(now.UnixMilli()%1_000_000) / 1000
+			if math.Mod(t+4*vnoise(t/23, 5), 9) < 6.5 {
+				p.eyes = eyeShut
+			} else {
+				p.lid, p.lookX, p.lookY = 0.4, -0.7, 0.6
+			}
 		}
 		return
 	}
-	p.eyes, p.mouth = eyeHappy, mouthSmile
-	f := g.phase - math.Floor(g.phase)
-	p.lift += float32(0.6 * g.lock * math.Min(1, g.energy+0.4) * math.Sin(math.Pi*f)) // up between the beats, down on them
-	if g.move == moveNod && f < 0.3 {
+	fr := g.phase - math.Floor(g.phase)
+	p.lift += float32(0.6 * g.lock * math.Min(1, g.energy+0.4) * math.Sin(math.Pi*fr)) // up between the beats, down on them
+	p.tipH += float32(0.18 * g.hi * flick(float64(now.UnixMilli())/120, 7))            // the hi-hats in its flame
+
+	e := math.Max(0, math.Min(1, (f.voxS-0.35)/0.3)) // how hard the song is going
+	onBeat := int(math.Floor(g.phase)) != f.beatN    // a new beat began (whatever the frame rate)
+	f.beatN = int(math.Floor(g.phase))
+	if ph := g.counted / 8; ph != f.phrase {
+		f.phrase = ph
+		prev := f.dstate
+		switch r := (hash1(int64(ph), 77) + 1) / 2; {
+		case ph == 0:
+			f.dstate = danceGroove
+		case r < 0.25+0.5*e:
+			f.dstate = danceLost
+		case r < 0.47+0.5*e && prev != danceBeam:
+			f.dstate = danceBeam
+			if now.Sub(f.winked) > 30*time.Second && (hash1(int64(ph), 91)+1)/2 < 0.4 {
+				f.winkAt, f.winked = now, now
+			}
+		default:
+			f.dstate = danceGroove
+		}
+		if f.dstate == prev && prev != danceLost {
+			u.mind.blinkSoon(now)
+		}
+	}
+	if g.counted%8 == 4 { // half way: the song can change its mind for it
+		switch {
+		case f.dstate == danceLost && e < 0.15:
+			f.dstate = danceGroove
+		case f.dstate == danceGroove && e > 0.85:
+			f.dstate = danceLost
+		}
+	}
+	switch f.dstate {
+	case danceLost:
+		p.eyes, p.mouth = eyeHappy, mouthSmile
+	case danceGroove: // relaxed, not sleepy: light lids, a soft smile, a look to one side then the other each half phrase
+		side := float32(1 - 2*((g.counted/4)%2))
+		p.eyes, p.lid, p.mouth = eyeOpen, float32(0.12+0.18*e), mouthSmile
+		p.lookX, p.lookY = 0.6*side, 0.3
+		p.lidFine = float32(0.2 * math.Exp(-fr*7))
+	case danceBeam:
+		p.eyes, p.eyeH, p.lid, p.lookX, p.lookY, p.mouth = eyeOpen, 3.4, 0.05, 0, -0.5, mouthSmile
+	}
+	if g.move == moveNod && fr < 0.3 {
 		p.lookY = 1
 	}
-	p.tipH += float32(0.18 * g.hi * flick(float64(u.now().UnixMilli())/120, 7)) // the hi-hats in its flame
+	if p.eyes == eyeOpen && onBeat && u.mind.blinkDue(now, 600*time.Millisecond) { // a blink about due: on this beat
+		u.mind.blinkSoon(now)
+	}
 }
+
+const (
+	danceGroove = iota
+	danceLost
+	danceBeam
+)

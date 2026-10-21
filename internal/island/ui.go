@@ -180,6 +180,7 @@ type emberState struct {
 	wasAsleep        bool
 	ex, ey, es       spring // Ember's position and size, shared by every view
 	look             spring
+	face             faceState     // the face over time: blinks between expressions, saccades, the mouth
 	emberCol         [3][3]float64 // its fire: hot, body, tip
 	spot             emberSpot
 	start, lastBlink time.Time
@@ -537,7 +538,7 @@ func (u *UI) emberSettled() bool {
 // glancing: Ember's eyes are moving (a glance, a notice, the pointer).
 func (u *UI) glancing() bool {
 	_, moving := u.mind.gaze(u.now(), 0, u.hover)
-	return moving || math.Abs(u.look.x-u.lookTarget(u.now())) > 0.03
+	return moving || math.Abs(u.look.x-u.lookTarget(u.now())) > 0.03 || u.face.busy(u.now())
 }
 
 func (u *UI) lookTarget(now time.Time) float64 {

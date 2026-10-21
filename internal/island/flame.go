@@ -58,6 +58,7 @@ const (
 	mouthYawn
 	mouthSmile
 	mouthFlat
+	mouthSing // open with the voice (pose.open), shaped by the vowel (pose.vw, pose.vh)
 )
 
 // pose is everything Ember looks like in one frame: its body (from the
@@ -75,10 +76,15 @@ type pose struct {
 
 	eyeH         float32 // 1 a blink … 3 calm … 4 attentive … 5 startled
 	lid          float32 // 0..1 of each eye's top covered
+	lidAsym      float32 // more lid on the right eye (+) or the left (−): a wink is 1
+	lidFine      float32 // lid only drawn where a fraction of a pixel shows (above 30 px): the lids on the beat
 	slant        float32 // + determined (inner corners down), − worried (outer corners down)
 	lookX, lookY float32 // where it looks, px
 	eyes         eyeKind
 	mouth        int
+	mouthK       float32 // how far the mouth has opened into its shape, 0..1
+	open         float32 // singing: how open, 0..1
+	vw, vh       float32 // singing: the vowel's width and height, 1 a middling one
 	cheeks       float32 // a blush
 
 	core  float32 // the inner light's size, 1 rest
@@ -86,7 +92,7 @@ type pose struct {
 	dim   float32 // the body toward the dark
 }
 
-func restPose() pose { return pose{sq: 1, scale: 1, eyeH: 3, core: 1} }
+func restPose() pose { return pose{sq: 1, scale: 1, eyeH: 3, core: 1, mouthK: 1, vw: 1, vh: 1} }
 
 // flameGeo is Ember's outline for one pose: the transform from the drawing's
 // rest coordinates to the canvas.
@@ -374,7 +380,14 @@ func (c *canvas) drawFace(p palette, g flameGeo, f fire, a float64) {
 	default:
 		for i, ex := range eyes {
 			// lids and slants cut the eye's top: whole pixels at pill sizes
-			inner, outer := ps.lid*eh, ps.lid*eh
+			lid := ps.lid
+			if !small {
+				lid = min(lid+ps.lidFine, 1)
+			}
+			if a := ps.lidAsym; (a > 0 && i == 1) || (a < 0 && i == 0) { // one lid lower: a wink, a wry look
+				lid = min(lid+abs32(a), 1)
+			}
+			inner, outer := lid*eh, lid*eh
 			if ps.slant > 0 {
 				inner += ps.slant * eh * 0.7
 			} else if ps.slant < 0 {
@@ -387,6 +400,17 @@ func (c *canvas) drawFace(p palette, g flameGeo, f fire, a float64) {
 				c.roundRect(ex+(ew-bw)/2, top, bw, eh, bw*0.5, ink)
 			} else if inner <= 0.05 && outer <= 0.05 {
 				c.roundRect(ex, top, ew, eh, min(ew, eh)*0.3, ink)
+			} else if g.s > 48 { // big, lidded: the lid's straight edge on top, the eye's round bottom below
+				bw := 1.7 * kk
+				x0 := ex + (ew-bw)/2
+				ly, ry := top+outer, top+inner
+				if i == 1 {
+					ly, ry = top+inner, top+outer
+				}
+				b := top + eh
+				r := min(bw*0.5, (b-max(ly, ry))*0.5)
+				c.roundRect(x0, b-2*r, bw, 2*r, r, ink)
+				c.poly(ink, pt{x0, ly}, pt{x0 + bw, ry}, pt{x0 + bw, b - r}, pt{x0, b - r})
 			} else {
 				ly, ry := top+outer, top+inner
 				if i == 1 {
@@ -402,26 +426,38 @@ func (c *canvas) drawFace(p palette, g flameGeo, f fire, a float64) {
 	}
 
 	my := top + eh + snap(1.1*kk)
+	mk := ps.mouthK // a mouth opens into its shape: at pill sizes a smaller glyph first
 	switch ps.mouth {
+	case mouthSing:
+		c.singMouth(ps, fx, my, kk, small, snap, ink)
 	case mouthO:
 		w := max(snap(2*kk), 2)
 		if g.s > 48 { // big: a small round "o", singing
-			ow, oh := 1.5*kk, 1.8*kk
-			c.roundRect(fx-ow/2, my-0.2*kk, ow, oh, ow*0.5, ink)
+			ow, oh := 1.5*kk*(0.6+0.4*mk), 1.8*kk*mk
+			c.roundRect(fx-ow/2, my-0.2*kk+(1.8*kk-oh)/2, ow, max(oh, 1), ow*0.5, ink)
+			break
+		}
+		if mk < 0.5 {
+			c.roundRect(snap(fx-w/2), my+snap(w/2), w, 1, 0, ink)
 			break
 		}
 		c.roundRect(snap(fx-w/2), my, w, w, w*0.3, ink)
 	case mouthYawn:
 		w, h := max(snap(2*kk), 2), max(snap(3*kk), 2)
+		if mk < 0.5 {
+			h = w
+		}
 		c.roundRect(snap(fx-w/2), my-snap(0.4*kk), w, h, w*0.4, ink)
 	case mouthSmile:
 		if small {
 			c.roundRect(snap(fx-1.5*kk), my, max(snap(3*kk), 3), 1, 0, ink)
-			c.roundRect(snap(fx-1.5*kk)-1, my-1, 1, 1, 0, ink)
-			c.roundRect(snap(fx-1.5*kk)+max(snap(3*kk), 3), my-1, 1, 1, 0, ink)
+			if mk >= 0.5 { // the corners come up as it opens into the smile
+				c.roundRect(snap(fx-1.5*kk)-1, my-1, 1, 1, 0, ink)
+				c.roundRect(snap(fx-1.5*kk)+max(snap(3*kk), 3), my-1, 1, 1, 0, ink)
+			}
 		} else {
 			if g.s > 48 {
-				c.arc(fx, my-1.0*kk, 1.3*kk, max(0.5*kk, 1), 0.4, math.Pi-0.4, ink)
+				c.arc(fx, my-1.0*kk*mk, 1.3*kk, max(0.5*kk, 1), 0.4+0.5*(1-mk), math.Pi-0.4-0.5*(1-mk), ink)
 			} else {
 				c.arc(fx, my-1.2*kk, 1.6*kk, max(kk, 1), 0.35, math.Pi-0.35, ink)
 			}
@@ -429,6 +465,34 @@ func (c *canvas) drawFace(p palette, g flameGeo, f fire, a float64) {
 	case mouthFlat:
 		c.roundRect(snap(fx-1*kk), my, max(snap(2*kk), 2), max(snap(0.9*kk), 1), 0, ink)
 	}
+}
+
+// singMouth: singing, the mouth opens with the voice. Big, it's a soft
+// shape as wide and tall as the vowel; nearly closed, a small smile (lips
+// together between words). At pill sizes it's whole pixels: a 2×2 "o", a
+// 2×1 slit, a smile.
+func (c *canvas) singMouth(ps pose, fx, my, kk float32, small bool, snap func(float32) float32, ink color.NRGBA) {
+	o := ps.open * ps.mouthK
+	if small {
+		w := max(snap(2*kk), 2)
+		switch {
+		case o > 0.5:
+			c.roundRect(snap(fx-w/2), my, w, w, w*0.3, ink)
+		case o > 0.15:
+			c.roundRect(snap(fx-w/2), my+1, w, 1, 0, ink)
+		default:
+			c.roundRect(snap(fx-1.5*kk), my, max(snap(3*kk), 3), 1, 0, ink)
+		}
+		return
+	}
+	if o < 0.12 { // lips together, a little smile
+		c.arc(fx, my-1.0*kk, 1.15*kk, max(0.5*kk, 1), 0.55, math.Pi-0.55, ink)
+		return
+	}
+	w := kk * (0.9 + 0.75*ps.vw*(0.55+0.45*o))
+	h := kk * (0.5 + 2.1*o*ps.vh)
+	top := my - 0.45*kk
+	c.roundRect(fx-w/2, top, w, h, min(w, h)*0.5, ink)
 }
 
 // headAt is the centre of the round body and its radius, for the headphones.

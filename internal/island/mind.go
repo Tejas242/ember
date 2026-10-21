@@ -48,6 +48,7 @@ type mind struct {
 	rng        *rand.Rand
 	blinkAt    time.Time // start of the current/next blink
 	blinkTwice bool
+	blinkPrev  time.Time // the blink before
 	glanceAt   time.Time // start of the current glance
 	glanceLen  float64   // seconds
 	glanceDir  float64
@@ -179,26 +180,64 @@ func (m *mind) lids(now time.Time) float64 {
 }
 
 // blink is the blink amount now (1 = shut) and schedules the next one.
-// Blinks come as a Poisson process; one in five is a double blink.
+// Blinks come as a Poisson process; one in five is a double blink. A lid
+// falls fast and rises slowly: 70 ms down, 20 ms shut, 130 ms up.
 func (m *mind) blink(now time.Time) float64 {
-	const dur = 0.15
+	const down, shut, up = 0.07, 0.02, 0.13
+	const dur = down + shut + up
 	if m.asleep {
 		return 0
+	}
+	one := func(t float64) float64 {
+		switch {
+		case t < down:
+			k := t / down
+			return k * k
+		case t < down+shut:
+			return 1
+		}
+		k := (t - down - shut) / up
+		return 1 - k*(2-k)
 	}
 	t := now.Sub(m.blinkAt).Seconds()
 	switch {
 	case t < 0:
 		return 0
 	case t < dur:
-		return math.Sin(t / dur * math.Pi)
-	case m.blinkTwice && t < 2.2*dur:
+		return one(t)
+	case m.blinkTwice && t < dur+0.08:
 		return 0
-	case m.blinkTwice && t < 3.2*dur:
-		return math.Sin((t - 2.2*dur) / dur * math.Pi)
+	case m.blinkTwice && t < 2*dur+0.08:
+		return one(t - dur - 0.08)
 	}
+	m.blinkPrev = m.blinkAt
 	m.blinkTwice = m.rng.Float64() < 0.2
-	m.blinkAt = now.Add(m.exp(2.6 + 2.5*m.arousal))
+	m.blinkAt = now.Add(time.Duration(0.6*float64(time.Second)) + m.exp(2+2.5*m.arousal))
 	return 0
+}
+
+// blinkSoon: a blink now, with something that brings one (a big glance, a
+// breath between lines), unless one just happened or is under way.
+// Never within 1.5 s of the last one: a face that blinks at every cue looks
+// nervous.
+func (m *mind) blinkSoon(now time.Time) {
+	if m.asleep || m.blinking(now) {
+		return
+	}
+	last := m.blinkPrev
+	if !m.blinkAt.After(now) { // the scheduled one already happened
+		last = m.blinkAt
+	}
+	if now.Sub(last) < 1500*time.Millisecond {
+		return
+	}
+	m.blinkPrev, m.blinkAt, m.blinkTwice = last, now, false
+}
+
+// blinkDue: the next blink is coming within d.
+func (m *mind) blinkDue(now time.Time, d time.Duration) bool {
+	t := m.blinkAt.Sub(now)
+	return t > 0 && t < d
 }
 
 func (m *mind) blinking(now time.Time) bool {
@@ -212,7 +251,7 @@ func (m *mind) blinking(now time.Time) bool {
 func (m *mind) gaze(now time.Time, pointer float64, hovered bool) (float64, bool) {
 	jitter := 0.05 * math.Sin(float64(now.UnixMilli())/310) * math.Sin(float64(now.UnixMilli())/770)
 	if t := now.Sub(m.noticeAt).Seconds(); t < 1.3 && !m.noticeAt.IsZero() {
-		return m.noticeDir*math.Sin(math.Min(1, t/0.25)*math.Pi/2) + jitter, true
+		return m.noticeDir + jitter, true
 	}
 	if hovered {
 		return pointer + jitter, true
@@ -223,8 +262,8 @@ func (m *mind) gaze(now time.Time, pointer float64, hovered bool) (float64, bool
 	t := now.Sub(m.glanceAt).Seconds()
 	if t > m.glanceLen {
 		if t > m.glanceLen+0.1 { // schedule the next glance
-			m.glanceAt = now.Add(m.exp(5 + 4*(1-m.arousal)))
-			m.glanceLen = 0.5 + m.rng.Float64()*0.9
+			m.glanceAt = now.Add(m.exp(3 + 3*(1-m.arousal)))
+			m.glanceLen = 0.6 + m.rng.Float64()*1.2
 			m.glanceDir = (0.45 + 0.55*m.rng.Float64()) * float64(1-2*m.rng.Intn(2))
 		}
 		return jitter, false
@@ -232,7 +271,7 @@ func (m *mind) gaze(now time.Time, pointer float64, hovered bool) (float64, bool
 	if t < 0 {
 		return jitter, false
 	}
-	return m.glanceDir*math.Sin(t/m.glanceLen*math.Pi) + jitter, true
+	return m.glanceDir + jitter, true // the eyes jump there and back (the face makes the jumps)
 }
 
 // ---- attention: what the pill shows ----
