@@ -574,11 +574,12 @@ func (u *UI) drawEmber(t float64, now time.Time) {
 	u.posture(&ps, now, t)
 	u.actFace(&ps, now)
 	u.body.pose(&ps)
+	u.stagePose(&ps)                                             // on a stage: singing along, listening, waiting an ad out, looking at the cover while paused
 	ps.lookX += float32(u.body.lean.x*0.45 + u.body.lean.v*0.02) // the eyes lead the head
 	ps.scale *= 1 + 0.05*float32(m.arousal-0.5)                  // a touch bigger when lively
 	f := u.emberFire()
 	base := y + 0.45*s
-	if !m.asleep { // the light it casts on the island, brighter with its energy
+	if !m.asleep && s <= 48 { // the light it casts on the island, brighter with its energy (on a stage, the floor's light is its light)
 		gy, gr := base-s*0.45, s*1.5
 		r := image.Rect(int(x-gr), int(gy-gr), int(x+gr)+1, int(gy+gr)+1).Intersect(u.emberRect())
 		u.cv.glowInside(r, x, gy, gr, f.mid, 0.08+0.16*m.arousal+0.25*float64(ps.flash))

@@ -123,6 +123,9 @@ type pointerState struct {
 	drag                    string                     // the control being dragged: sys:vol, sys:light, music:seek
 	dragSent                time.Time                  // when the system last heard about the drag
 	sliders                 map[string]image.Rectangle // System page: sys:vol, sys:light
+	stage                   *stageState                // the open stage's own state
+	nudge                   *wordsNudges               // timed words you moved earlier or later, per song
+	stuck                   string                     // the song whose player's playhead doesn't advance (its media key)
 	openCtx                 string                     // the desk when the card opened
 	openAt                  time.Time
 }

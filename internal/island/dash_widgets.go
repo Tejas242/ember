@@ -112,6 +112,9 @@ func (d extDash) fold(u *UI, i int, wd *proto.Widget) wbox {
 }
 
 func (d extDash) Size(u *UI) (float64, float64) {
+	if db := d.dash(u); db != nil && len(db.Widgets) > 0 && db.Widgets[0].Kind == "stage" {
+		return d.stageSize(u, db)
+	}
 	h := float32(6)
 	for i, b := range d.layout(u) {
 		if i > 0 {
@@ -127,6 +130,9 @@ func (d extDash) Size(u *UI) (float64, float64) {
 }
 
 func (d extDash) Draw(u *UI, x, w float32, age time.Duration) bool {
+	if db := d.dash(u); db != nil && len(db.Widgets) > 0 && db.Widgets[0].Kind == "stage" {
+		return d.drawStage(u, x, w, age)
+	}
 	y := float32(0)
 	for i, b := range d.layout(u) {
 		if i > 0 {

@@ -145,6 +145,10 @@ func (u *UI) listen(now time.Time) {
 			g.reset()
 		}
 		u.dancing = false
+		if u.cfg.Calm && b.phones.seated && u.act == nil && u.mayDance() && u.onStage() { // calm, on a stage: a slow sway
+			t := float64(now.UnixMilli()%1_000_000) / 1000
+			b.hold = 0.8 * math.Sin(2*math.Pi*t/3.6)
+		}
 		return
 	}
 	if lv, at, heard := u.audio.Sample(); heard && at != g.sampleAt { // each 40 ms of the song once

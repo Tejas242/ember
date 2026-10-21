@@ -342,8 +342,19 @@ func (c *canvas) drawFace(p palette, g flameGeo, f fire, a float64) {
 			break
 		}
 		w := max(1.1*kk, 1)
+		if g.s > 48 { // big (the vibe stage): soft arcs, as thin as a pen line
+			w = max(0.55*kk, 1)
+		}
 		for i, ex := range eyes {
 			cx0, y0 := ex+ew/2, fy
+			switch {
+			case g.s > 48 && ps.eyes == eyeShut:
+				c.arc(cx0, y0-0.9*kk, 1.15*kk, w, 0.35, math.Pi-0.35, ink)
+				continue
+			case g.s > 48 && ps.eyes == eyeHappy:
+				c.arc(cx0, y0+0.9*kk, 1.15*kk, w, math.Pi+0.35, 2*math.Pi-0.35, ink)
+				continue
+			}
 			switch ps.eyes {
 			case eyeShut:
 				c.line(pt{cx0 - 1.6*kk, y0 - 0.6*kk}, pt{cx0, y0 + 0.7*kk}, w, ink)
@@ -371,7 +382,10 @@ func (c *canvas) drawFace(p palette, g flameGeo, f fire, a float64) {
 			}
 			minH := max(1, 0.9*kk)
 			inner, outer = min(snap(inner), eh-minH), min(snap(outer), eh-minH)
-			if inner <= 0.05 && outer <= 0.05 {
+			if inner <= 0.05 && outer <= 0.05 && g.s > 48 { // big: rounder, a little narrower
+				bw := 1.7 * kk
+				c.roundRect(ex+(ew-bw)/2, top, bw, eh, bw*0.5, ink)
+			} else if inner <= 0.05 && outer <= 0.05 {
 				c.roundRect(ex, top, ew, eh, min(ew, eh)*0.3, ink)
 			} else {
 				ly, ry := top+outer, top+inner
@@ -391,6 +405,11 @@ func (c *canvas) drawFace(p palette, g flameGeo, f fire, a float64) {
 	switch ps.mouth {
 	case mouthO:
 		w := max(snap(2*kk), 2)
+		if g.s > 48 { // big: a small round "o", singing
+			ow, oh := 1.5*kk, 1.8*kk
+			c.roundRect(fx-ow/2, my-0.2*kk, ow, oh, ow*0.5, ink)
+			break
+		}
 		c.roundRect(snap(fx-w/2), my, w, w, w*0.3, ink)
 	case mouthYawn:
 		w, h := max(snap(2*kk), 2), max(snap(3*kk), 2)
@@ -401,7 +420,11 @@ func (c *canvas) drawFace(p palette, g flameGeo, f fire, a float64) {
 			c.roundRect(snap(fx-1.5*kk)-1, my-1, 1, 1, 0, ink)
 			c.roundRect(snap(fx-1.5*kk)+max(snap(3*kk), 3), my-1, 1, 1, 0, ink)
 		} else {
-			c.arc(fx, my-1.2*kk, 1.6*kk, max(kk, 1), 0.35, math.Pi-0.35, ink)
+			if g.s > 48 {
+				c.arc(fx, my-1.0*kk, 1.3*kk, max(0.5*kk, 1), 0.4, math.Pi-0.4, ink)
+			} else {
+				c.arc(fx, my-1.2*kk, 1.6*kk, max(kk, 1), 0.35, math.Pi-0.35, ink)
+			}
 		}
 	case mouthFlat:
 		c.roundRect(snap(fx-1*kk), my, max(snap(2*kk), 2), max(snap(0.9*kk), 1), 0, ink)

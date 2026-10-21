@@ -173,6 +173,9 @@ func (a *app) nextWake(animating bool) time.Duration {
 		if u.lastView != vCompact || u.eqShown || u.dancing || (u.body.phones.seated && u.danceable()) { // a dance needs every beat
 			next = now.Add(time.Second / 24) // the card's pulses, a listening equaliser: only their squares repaint
 		}
+		if _, _, ok := u.stageNow(); ok { // a stage: as often as the song asks, less on battery
+			next = now.Add(time.Second / time.Duration(u.stageFPS()))
+		}
 		if u.shimmering() { // a band of light crosses smoothly, then rests
 			if t := now.Sub(u.start).Seconds(); shimmerPassing(t) {
 				next = now.Add(time.Second / 40)

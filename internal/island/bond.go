@@ -103,7 +103,12 @@ func (u *UI) calm() bool {
 // wrong, or someone is watching your screen. Claude working doesn't stop it:
 // it works to music too.
 func (u *UI) danceable() bool {
-	if !u.cfg.Dance || u.cfg.Calm || u.casting || len(u.cards) > 0 || u.mind.valence < -0.2 {
+	return !u.cfg.Calm && u.mayDance()
+}
+
+// mayDance is danceable, calm or not: on a stage, calm sways.
+func (u *UI) mayDance() bool {
+	if !u.cfg.Dance || u.casting || len(u.cards) > 0 || u.mind.valence < -0.2 || u.stageStill() {
 		return false
 	}
 	if m := u.moment; m != nil && m.mood == moodError {

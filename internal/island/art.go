@@ -25,6 +25,7 @@ type albumArt struct {
 	row          *image.RGBA // 46 px (the card's music section)
 	wash         *image.RGBA // the cover blurred to a haze: the music section's ambient light
 	accent       color.NRGBA // the cover's colour, lifted to read on the dark island; zero if it's grey
+	sq           *image.RGBA // the last other size asked for (a stage's 30 px)
 }
 
 const coverS = 46 // the cover in the card

@@ -105,6 +105,10 @@ func (u *UI) scroll(steps float64) {
 	switch u.currentView() {
 	case vCompact:
 		u.cycle(dir)
+	case vDash:
+		if u.hitAt(u.mx, u.my) == "page:words" { // over a stage's words: a quarter second earlier or later
+			u.nudgeWords(dir)
+		}
 	case vExpanded:
 		k := u.hitAt(u.mx, u.my)
 		switch {
@@ -180,7 +184,7 @@ func (u *UI) press(k string, button int) {
 		u.hero, u.staggerAt = strings.TrimPrefix(k, "s:"), u.now()
 	case strings.HasPrefix(k, "a:"): // an agent on the branch: open or close its steps
 		u.opened[k] = !u.shownOpen[k]
-	case k == "dash", k == "page:back": // so does a dashboard's, and a stage's way back
+	case k == "dash", k == "page:back", k == "page:words": // so does a dashboard's, and a stage's way back
 		u.closeDash(proto.CloseUser)
 	case strings.HasPrefix(k, "dash:"): // a plugin's row in the card: its dashboard
 		u.openDash(strings.TrimPrefix(k, "dash:"))
