@@ -90,6 +90,9 @@ demo:
 # the landing page's frames: the same scenes on the page's own dark ground, in docs/site
 site-media:
 	rm -rf preview/site && mkdir -p preview/site docs/site
-	EMBER_GROUND=site EMBER_PREVIEW=$(CURDIR)/preview/site EMBER_DEMO=$(CURDIR)/preview/site go test -tags render -count=1 -run 'TestGallery|TestDemo$$' -timeout 30m ./internal/island
+	EMBER_PLUGINS=off EMBER_GROUND=site EMBER_PREVIEW=$(CURDIR)/preview/site EMBER_DEMO=$(CURDIR)/preview/site go test -tags render -count=1 -run 'TestGallery|TestDemo$$' -timeout 30m ./internal/island
+	EMBER_PLUGINS=off EMBER_GROUND=site EMBER_PREVIEW=$(CURDIR)/preview/site go test -tags render -count=1 -run TestPreviewPlugins ./internal/island
+	ffmpeg -loglevel error -y -i preview/site/plugins-dash.png -vf crop=iw:ih-40:0:40 -c:v libwebp -quality 92 docs/site/plugins.webp
 	cp preview/site/*.webp docs/site/
+	rm -f docs/site/dash.webp
 	for f in preview/site/site-*.png; do ffmpeg -loglevel error -y -i $$f -c:v libwebp -quality 92 docs/site/$$(basename $$f .png).webp; done
