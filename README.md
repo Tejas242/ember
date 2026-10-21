@@ -118,6 +118,12 @@ the pill quotes Claude's most informative sentence, and the outcome waits by the
 controls and a scrubber you can drag. While a song plays the equaliser listens to the output, and Ember puts on
 headphones and dances on the beat.
 
+**Vibe.** Waiting on Claude with music on? Click Ember in the card and the card becomes a stage: Ember dances big on a
+floor of the cover's light, on its own sense of the beat, and sings along with the song's words, which light up as
+they're sung (from an `.lrc` beside the file, a cache, or LRCLIB, asked only while the stage is open; `[vibe] lyrics =
+false` keeps it offline). Claude's session stays in the corner of your eye; a request replaces the stage at once, and
+when Claude finishes, the stage folds itself at the end of the song. It's a plugin like any other (`plugins/vibe`).
+
 <br clear="right">
 
 <img align="right" src="docs/demo/moments.webp" alt="Moments: charging, headphones, a screenshot, brightness, a session waiting" width="400">

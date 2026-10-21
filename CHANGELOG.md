@@ -3,6 +3,27 @@
 Each release's section here becomes its notes on GitHub. Versions follow [semver](https://semver.org): the config
 file, the commands and the plugin protocol are the public surface.
 
+## Unreleased
+
+**Vibe**
+- Click Ember in the card while a song plays (or the headphones in the music row, or `ember dash vibe`) and the card
+  becomes a stage: Ember dances big on a floor of the cover's light, on its own beat, and sings along with the song's
+  words, lit as they're sung. Claude's session stays in the top line; a request replaces the stage at once; when
+  Claude finishes, the stage folds itself at the end of the song; paused two minutes, it closes.
+- Every case has its look: a break in the words, a very long line, words without times, no words, an instrumental, a
+  new song, a talk, an ad, paused, Claude done or stopped, the screen shared, calm motion, late at night.
+- The words come from an `.lrc` beside the file, a cache in `~/.cache/ember/lyrics`, or LRCLIB, asked only while the
+  stage is open; `[vibe] lyrics = false` keeps it offline. Scroll over the words to move them a quarter second.
+- It's a plugin (`plugins/vibe`, built in as `ember plugin vibe`); `ember install` writes it and grants it `media`
+  and `entry`.
+
+**Plugin protocol** (backward compatible)
+- Stages: the `stage`, `timed_text`, `media`, `sessions`, `audio` and `countdown` widgets.
+- Pages may be `size: "card"`, `sticky`, and say when they `ends`; a `dash` close says why (`reason`).
+- `media` events (the `media` grant): the song playing, only while the plugin's page is open.
+- `[opens] ember = "music" | "idle"` in a manifest (the `entry` grant): a click on Ember in the card opens its page.
+- Ember's hello says the plugin's grants; the Go SDK has `Plugin.Granted` and the harness `Media` and `DashClosed`.
+
 ## 1.0.2
 
 - Ember's springs step in pieces no longer than a 60th of a second. At the card's 24 fps tick the old step was

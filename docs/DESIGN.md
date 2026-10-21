@@ -106,6 +106,48 @@ Radii: the card 22 (continuous superellipse), hovers 10, buttons fully round (26
 - **Round letters** are chips, one per problem: solved filled green, tried ringed red, owed ringed amber, upsolved
   filled blue, lapsed struck through. The pill, the row and the dashboard draw them the same way.
 
+## Stages: vibe
+
+A stage is a page a plugin opens over the card, card-sized, with Ember big on it. The one Ember ships is vibe: click
+Ember in the card while a song plays (or the headphones in the music row, or `ember dash vibe`).
+
+```
+ ● kinvault · 4m                                      ● 86 bpm
+                    every streetlight humming the same…
+     (Ember 88)     we were running out of
+     dancing        reasons to go home        ← lit as it's sung
+    ~~~floor~~~     so we danced on the roof till the mo…
+ [cover] Neon Afternoon                           0:52 / 3:24
+         Kite Club
+ ─────────── progress, in the cover's colour ───────────
+```
+
+- **Why.** Soft fascination while Claude works: rhythmic, predictable, nothing to think about; the work's state always
+  in the corner of the eye; a hand-back at a natural stop (the end of a song), never a timer. Nothing flashes, nothing
+  escalates over hours, and anything that needs you replaces the stage at once.
+- **The floor.** A pool of the cover's light under Ember, breathing with the low end (its swing capped at about 6% in
+  brightness), a ripple on the beat only when the song runs hot, and a shadow that shrinks as Ember hops. Ember's own
+  glow is off: the floor is its light.
+- **Temperature.** One number, T, from the low end's energy and how sure Ember is of the beat, cooled by a third late
+  at night: it sets the floor's light, the words' warmth, how fast a line slides (560 ms slow to 300 ms hot) and the
+  dance (a closed-eye sway, a dip and nod, a bounce).
+- **The words.** The current line at the largest size that fits two lines (17, 15.5, then 14 for three), lit at singing
+  pace with a soft 4 px leading edge; the line before shrinks upward into the past; the next two wait below. A break is
+  three dots filling over it. Lines under 0.9 s apart are sung as one, with a quick fade. Words without times show as
+  stanzas of four, paged through the song. Scrolling over the words moves them a quarter second, remembered per song.
+- **Every case.** A new song: its title under NEW SONG while the words are found. No words, instrumental, offline: the
+  title over a ribbon of the last seconds of the song. A talk: Ember listens, the episode's time left, a grey ribbon.
+  An ad: Ember waits it out, half-lidded, "Back to the music in 0:23" over a draining hairline. Paused: everything at
+  55%, Ember's headphones off, looking at the cover. Claude done: a celebration, the outcome and *Back to it* in the
+  top line, then Ember looks at you; stopped: it slumps; either way the stage folds at the song's end. Screen shared:
+  no words. Calm: a sway and cross-fades only.
+- **Scripts.** Chinese, Japanese and Korean words draw through the fallback font. Scripts that need shaping
+  (Devanagari, Arabic) still draw unshaped, letter by letter: shaping timed text (go-text/typesetting, pure Go) is
+  the follow-up.
+- **Finding it.** With the pointer on Ember in the card, a small *Vibe* under it; a headphones control in the music
+  row; and once ever, *Click me to vibe* under the headline. The pill never hints: Ember dancing in its headphones is
+  the hint.
+
 ## Requests
 
 ```
@@ -247,5 +289,7 @@ Ember has a small mind. None of it is scripted animation. It is a handful of mod
 ## Cost
 
 All drawing is in software. Steady frames repaint only the live rectangles (Ember, shimmer, equaliser, halo,
-countdown), at 12 fps in the pill, 24 in the card and 40 while a shimmer band is crossing. The halo and the sweep are live parts, not full repaints. Targets: ≤ 1.5% of a core while Claude works,
+countdown), at 12 fps in the pill, 24 in the card and 40 while a shimmer band is crossing. A stage repaints Ember,
+its floor, its top line and its words at 24 fps on a locked beat (about 0.7 ms a frame, under 2% of a core), 15 for a
+sway or a talk, 12 calm, 8 paused, 15 on battery and 10 below a fifth; the floor's light is one sprite a song. The halo and the sweep are live parts, not full repaints. Targets: ≤ 1.5% of a core while Claude works,
 no full repaint while nothing changes, and memory under 16 MiB.
