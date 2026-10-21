@@ -70,6 +70,10 @@ func (u *UI) musicRow(x, w, y float32) {
 	right := x + w - pad
 	// the controls: always there, quiet, brighter under the pointer
 	ccy := y + 27
+	page := u.musicOpener()
+	if page != "" { // a page that opens with the music: its control before the others
+		u.vibeControl(right-12-3*32, ccy, on)
+	}
 	for i, k := range []string{"prev", "toggle", "next"} {
 		bx := right - 12 - float32(2-i)*32
 		key := "music:" + k
@@ -92,6 +96,9 @@ func (u *UI) musicRow(x, w, y float32) {
 	e := u.enter("song:"+t.Title+"\x00"+t.Artist, 0, false)
 	ty := rise(e)
 	tw := right - 12 - 2*32 - 22 - tx
+	if page != "" {
+		tw -= 32
+	}
 	u.dc.text(fBody(), ellipsize(fBody(), t.Title, tw), tx, y+23+ty, alpha(p.fg, e))
 	u.dc.text(fSecond(), ellipsize(fSecond(), t.Artist, tw), tx, y+38+ty, alpha(p.muted, e))
 	// the scrubber, the time at both ends: it thickens and grows a knob under the pointer, and drags

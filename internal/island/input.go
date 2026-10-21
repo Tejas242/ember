@@ -225,6 +225,10 @@ func (u *UI) press(k string, button int) {
 	case strings.HasPrefix(k, "x:click:"), strings.HasPrefix(k, "x:btn:"): // a plugin's row, or a button on it
 		u.key(k)
 		u.used(strings.SplitN(strings.TrimPrefix(strings.TrimPrefix(k, "x:click:"), "x:btn:"), "\x00", 2)[0])
+	case k == "music:page": // the music row's way to the page that opens with it
+		if name := u.musicOpener(); name != "" {
+			u.openDash(name)
+		}
 	case strings.HasPrefix(k, "music:"), strings.HasPrefix(k, "focus:"):
 		u.key(k)
 		if strings.HasPrefix(k, "music:") {

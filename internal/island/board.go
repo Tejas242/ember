@@ -357,6 +357,10 @@ func (u *UI) heroHead(b brief, x, w, y float32) {
 		u.arrow(tx+hw+6, y+19+extra, alpha(p.muted, k))
 	}
 	u.facts(b.sub, tx, y+39+extra, right-tx, p.muted)
+	if u.showHint() { // once ever: a page opens from Ember
+		u.hintLine(x, y+heroHeadH+extra-4)
+	}
+	u.hoverLabel(x, y)
 }
 
 const headLineH = 18
@@ -369,7 +373,11 @@ func (u *UI) headLines(b brief) []string {
 
 // headH is the hero's head: one line of headline, or two.
 func (u *UI) headH(b brief) float32 {
-	return heroHeadH + float32(len(u.headLines(b))-1)*headLineH
+	h := heroHeadH + float32(len(u.headLines(b))-1)*headLineH
+	if u.showHint() {
+		h += hintH
+	}
+	return h
 }
 
 // facts draws "kinvault · 4m in · 3 files +58 −12 · 1 failed": quiet words,

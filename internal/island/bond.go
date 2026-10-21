@@ -38,7 +38,9 @@ type bond struct {
 	// has seen a Claude Code session.
 	Introduced time.Time `json:"introduced,omitempty"`
 	MetClaude  bool      `json:"metClaude,omitempty"`
-	dirty      bool
+	// Hinted: when the card first said a page opens from Ember ("Click me to vibe"; once, ever).
+	Hinted time.Time `json:"hinted,omitempty"`
+	dirty  bool
 }
 
 const (

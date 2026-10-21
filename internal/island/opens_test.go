@@ -221,3 +221,52 @@ func TestPageEnds(t *testing.T) {
 		t.Fatalf("at the song's end: %q %+v", g.a.ui.dash, ds)
 	}
 }
+
+// Finding it: the hint once ever (the first card opened while Claude works
+// and a song plays), the label under Ember with the pointer on it, the music
+// row's control; none of it without a page to open.
+func TestDiscover(t *testing.T) {
+	g := newScene()
+	g.a.ui.bond = &bond{Last: map[string]time.Time{}}
+	g.music(true)
+	g.work("k", "kinvault", "fix the race", 2)
+	stagePage(t, g, "vibe", `["media","entry"]`, vibePage)
+	u := g.a.ui
+	u.pinned = true
+	g.run(time.Second)
+	if !u.showHint() || u.bond.Hinted.IsZero() {
+		t.Fatal("no hint the first time")
+	}
+	h1 := u.expandedHeight()
+	u.pinned = false
+	g.run(time.Second)
+	u.pinned = true
+	g.run(time.Second)
+	if u.showHint() || u.expandedHeight() >= h1 {
+		t.Fatal("the hint came back")
+	}
+	if u.musicOpener() != "vibe" {
+		t.Fatal("no control in the music row")
+	}
+	found := false
+	for _, h := range u.hits {
+		found = found || h.key == "music:page"
+	}
+	if !found {
+		t.Fatal("the control isn't there to press")
+	}
+	u.press("music:page", 1)
+	if u.dash != "vibe" {
+		t.Fatal("the control didn't open it")
+	}
+
+	g2 := newScene() // no page that opens from Ember: nothing
+	g2.a.ui.bond = &bond{Last: map[string]time.Time{}}
+	g2.music(true)
+	g2.work("k", "kinvault", "fix the race", 2)
+	g2.a.ui.pinned = true
+	g2.run(time.Second)
+	if g2.a.ui.showHint() || g2.a.ui.musicOpener() != "" {
+		t.Fatal("a hint with nothing to open")
+	}
+}
