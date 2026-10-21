@@ -226,7 +226,14 @@ func (u *UI) drawPeeks(n notch, behind int) {
 }
 
 func (u *UI) moving(settled bool, p float64, sliding, flashing bool) bool {
-	return !settled || p < 1 || sliding || flashing || u.tweening || u.mind.blinking(u.now()) || u.face.busy(u.now()) || u.act != nil || u.body.busy() || u.travelling || !u.emberSettled()
+	now := u.now()
+	if !settled || p < 1 || sliding || flashing || u.tweening || u.act != nil || u.body.flying() || u.travelling || !u.emberSettled() {
+		return true
+	}
+	if u.dancing && u.continuous() { // a dance repaints Ember at its own rate (24 a second): its swing, its face and its blinks ride it
+		return false
+	}
+	return u.mind.blinking(now) || u.face.busy(now) || u.body.swinging()
 }
 
 // transition: the view is about to change. Opening the card notes the

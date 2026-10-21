@@ -287,9 +287,18 @@ func (b *body) tick(h, slotV float64) {
 // busy: something moves enough to want full-rate frames (a hop, a lean
 // swinging, particles, headphones landing). The small tail of a motion rides
 // whatever rate the island already runs at.
-func (b *body) busy() bool {
-	if b.airborne() || math.Abs(b.lean.v) > 4 || math.Abs(b.sq.v) > 0.5 || math.Abs(b.tip.v) > 6 || math.Abs(b.tipH.v) > 0.6 ||
-		math.Abs(b.core.v) > 0.6 || math.Abs(b.coal.v) > 0.15 || math.Abs(b.bob.v) > 1 {
+func (b *body) busy() bool { return b.swinging() || b.flying() }
+
+// swinging: the body's springs move fast (a lean, a squash, a tip). A dance
+// swings all the time, and rides the dance's own rate.
+func (b *body) swinging() bool {
+	return math.Abs(b.lean.v) > 4 || math.Abs(b.sq.v) > 0.5 || math.Abs(b.tip.v) > 6 || math.Abs(b.tipH.v) > 0.6 ||
+		math.Abs(b.core.v) > 0.6 || math.Abs(b.coal.v) > 0.15 || math.Abs(b.bob.v) > 1
+}
+
+// flying: a hop, sparks or smoke, the headphones landing or leaving.
+func (b *body) flying() bool {
+	if b.airborne() {
 		return true
 	}
 	for _, p := range b.parts {
