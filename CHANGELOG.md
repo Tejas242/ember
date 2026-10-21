@@ -16,6 +16,10 @@ file, the commands and the plugin protocol are the public surface.
   stage is open; `[vibe] lyrics = false` keeps it offline. Scroll over the words to move them a quarter second.
 - It's a plugin (`plugins/vibe`, built in as `ember plugin vibe`); `ember install` writes it and grants it `media`
   and `entry`.
+- Words in scripts that join, reorder or run right to left (Hindi and other Indic scripts, Arabic, Hebrew) are shaped
+  in their own script's font; right-to-left lines sit right and light up from the right, a mixed line in reading order.
+- A player whose playhead never moves (some browsers) is noticed after four seconds: its words page by how long the
+  song has played, and say so, until the playhead moves again.
 
 **Plugin protocol** (backward compatible)
 - Stages: the `stage`, `timed_text`, `media`, `sessions`, `audio` and `countdown` widgets.
