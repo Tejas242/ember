@@ -126,6 +126,7 @@ type pointerState struct {
 	stage                   *stageState                // the open stage's own state
 	nudge                   *wordsNudges               // timed words you moved earlier or later, per song
 	stuck                   string                     // the song whose player's playhead doesn't advance (its media key)
+	playhead                playheadWatch              // what the player has said of its playhead, to tell when it's stuck
 	openCtx                 string                     // the desk when the card opened
 	openAt                  time.Time
 }

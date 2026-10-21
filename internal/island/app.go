@@ -176,6 +176,7 @@ func (a *app) setTrack(t *Track) {
 		}
 	}
 	a.ui.track = t
+	a.ui.heardPlayhead()
 	if t != nil && t.Playing && (prev == nil || prev.Title != t.Title) {
 		a.ui.mind.novel["music"] = a.ui.now()
 		a.ui.mind.kick(a.ui.now(), 0.1, 0.1)

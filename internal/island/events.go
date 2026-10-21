@@ -72,6 +72,7 @@ func (a *app) handle(e source.Event) {
 	case source.Playhead:
 		if a.ui.track != nil && a.ui.track.Player == e.Player {
 			a.ui.track.Position, a.ui.track.PosAt = e.Pos, e.At
+			a.ui.heardPlayhead()
 		}
 	case source.Screenshot:
 		if e.Path == "" {

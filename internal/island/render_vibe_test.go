@@ -179,6 +179,13 @@ func vibeScenes() []vScene {
 			setup: func(g *galleryScene) { g.a.ui.shared, g.a.ui.cfg.Discreet = true, true }},
 		{name: "18-hindi-line", kind: "karaoke", lines: hindiWords, title: "Subah ki Chai", artist: "Kite Club", pos: 46400 * time.Millisecond, feed: "song"},
 		{name: "19-arabic-line", kind: "karaoke", lines: arabicWords, title: "Layl Tawil", artist: "Kite Club", pos: 46400 * time.Millisecond, feed: "song"},
+		{name: "20-a-player-that-doesnt-say", kind: "karaoke", lines: upbeatWords, title: "Neon Afternoon", artist: "Kite Club", pos: 52 * time.Second, feed: "song",
+			after: func(g *galleryScene) { // a browser's player: its position never moves
+				for i := 0; i < 3; i++ {
+					g.a.handle(source.Playhead{Player: g.a.ui.track.Player, Pos: 52 * time.Second, At: g.clock})
+					g.run(2500 * time.Millisecond)
+				}
+			}, settle: 500 * time.Millisecond},
 	}
 }
 

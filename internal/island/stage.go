@@ -604,16 +604,7 @@ func (u *UI) stageColumn(cv *canvas, st *stageState, sw stageWidgets, kind strin
 	case "stanzas": // words without times: four lines at a time, paged through the song
 		ls := st.stagedLines(sw.text)
 		n := len(ls)
-		pages := max((n+3)/4, 1)
-		pg := 0
-		pos := t.Pos(now)
-		switch {
-		case t.Length > 0 && u.stuck != mediaKey(t):
-			pg = int(float64(pos) / float64(t.Length) * float64(pages))
-		default: // no playhead to follow: a page every sixteen seconds
-			pg = int(now.Sub(st.at) / (16 * time.Second))
-		}
-		pg = min(max(pg, 0), pages-1)
+		pg := u.stanzaPage(st, max((n+3)/4, 1))
 		f := face(fMedium, 14)
 		y := cy - 30
 		for i := pg * 4; i < min(n, pg*4+4); i++ {
@@ -621,10 +612,39 @@ func (u *UI) stageColumn(cv *canvas, st *stageState, sw stageWidgets, kind strin
 			cv.text(f, ln, lineX(f, ln, x, w), y, alpha(p.fg, 0.82*k))
 			y += 21
 		}
-		caption(capOf(""), y+10, 1)
+		caption(u.stanzaCaption(sw), y+10, 1)
 		return
 	}
 	u.karaoke(cv, st, sw, x, w, k)
+}
+
+// stanzaPage is the page of words to show, of pages: through the song by
+// its playhead, or by how long it has played when its player doesn't say
+// where it is; without a length, one every sixteen seconds.
+func (u *UI) stanzaPage(st *stageState, pages int) int {
+	t, now := u.track, u.now()
+	pos := t.Pos(now)
+	if u.stuck == mediaKey(t) {
+		pos = u.songElapsed(now)
+	}
+	pg := 0
+	switch {
+	case t.Length > 0:
+		pg = int(float64(pos) / float64(t.Length) * float64(pages))
+	default: // no playhead to follow
+		pg = int(now.Sub(st.at) / (16 * time.Second))
+	}
+	return min(max(pg, 0), pages-1)
+}
+
+// stanzaCaption is what's said under words shown as stanzas: the plugin's
+// caption, or, for timed words whose player's playhead doesn't move, why
+// they're not.
+func (u *UI) stanzaCaption(sw stageWidgets) string {
+	if u.stuck == mediaKey(u.track) && sw.text.Mode != "stanzas" {
+		return "This player doesn't say where the song is"
+	}
+	return sw.text.Caption
 }
 
 // karaoke: the line being sung, filling with light at its pace with a soft
