@@ -103,11 +103,24 @@ func fallbackFace(f font.Face, r rune) font.Face {
 }
 
 func findFallback(r rune) *opentype.Font {
-	out, err := exec.Command("fc-match", "-f", "%{file}", "sans-serif:charset="+hex(r)).Output()
+	out, err := exec.Command("fc-match", "-s", "-f", "%{file}\n", "sans-serif:charset="+hex(r)).Output()
 	if err != nil || len(out) == 0 {
 		return nil
 	}
-	b, err := os.ReadFile(string(out))
+	// fontconfig's best may not parse (wqy-zenhei's .ttc doesn't): take the first that does and has r
+	for i, file := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if i >= 8 {
+			break
+		}
+		if ft := fontWith(file, r); ft != nil {
+			return ft
+		}
+	}
+	return nil
+}
+
+func fontWith(file string, r rune) *opentype.Font {
+	b, err := os.ReadFile(file)
 	if err != nil {
 		return nil
 	}
@@ -126,7 +139,7 @@ func findFallback(r rune) *opentype.Font {
 		return nil
 	}
 	if gi, err := ft.GlyphIndex(&glyphBuf, r); err != nil || gi == 0 {
-		return nil // fontconfig's best guess doesn't have it either
+		return nil
 	}
 	return ft
 }
