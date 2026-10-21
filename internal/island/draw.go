@@ -134,12 +134,13 @@ type canvas struct {
 	img     *image.RGBA
 	r       *vector.Rasterizer
 	masks   map[maskKey]*textMask
-	bodyRow []byte          // a row of the island's body colour, to copy
-	clip    *notch          // when set, fills stay inside this shape
-	bodyPx  [4]byte         // the pixel bodyRow is made of
-	k       float64         // when set (0..1), everything drawn is faded by it: a live part arriving with its row
-	clipR   image.Rectangle // when set, text stays inside it (a rolling digit)
-	abuf    *image.Alpha    // coverage for shaded fills (Ember), reused
+	bodyRow []byte               // a row of the island's body colour, to copy
+	clip    *notch               // when set, fills stay inside this shape
+	bodyPx  [4]byte              // the pixel bodyRow is made of
+	k       float64              // when set (0..1), everything drawn is faded by it: a live part arriving with its row
+	clipR   image.Rectangle      // when set, text stays inside it (a rolling digit)
+	lit     map[litKey]*textMask // the sung part of a line in a script that's shaped
+	abuf    *image.Alpha         // coverage for shaded fills (Ember), reused
 }
 
 // fadeCol applies the canvas's fade to col.
@@ -319,6 +320,11 @@ func (c *canvas) mask(f font.Face, s string) *textMask {
 	if len(c.masks) > 400 {
 		clear(c.masks)
 	}
+	if needsShaping(s) && faceInfo[f].name != "" { // joined, reordered or right to left: shaped
+		tm := shapedMask(f, s)
+		c.masks[k] = tm
+		return tm
+	}
 	met := f.Metrics()
 	asc, desc := met.Ascent.Ceil(), met.Descent.Ceil()
 	w := advance(f, s).Ceil()
@@ -335,7 +341,11 @@ func (c *canvas) text(f font.Face, s string, x, y float32, col color.NRGBA) floa
 	if s == "" {
 		return 0
 	}
-	m := c.mask(f, s)
+	return c.drawMask(c.mask(f, s), x, y, col)
+}
+
+// drawMask draws a text mask with its baseline at y and returns its advance width.
+func (c *canvas) drawMask(m *textMask, x, y float32, col color.NRGBA) float32 {
 	col = c.fadeCol(col)
 	if col.A > 0 {
 		px, py := int(math.Round(float64(x)))-1, int(math.Round(float64(y)))-m.asc

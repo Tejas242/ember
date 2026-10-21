@@ -617,7 +617,8 @@ func (u *UI) stageColumn(cv *canvas, st *stageState, sw stageWidgets, kind strin
 		f := face(fMedium, 14)
 		y := cy - 30
 		for i := pg * 4; i < min(n, pg*4+4); i++ {
-			cv.text(f, ellipsize(f, ls[i].text, w), x, y, alpha(p.fg, 0.82*k))
+			ln := ellipsize(f, ls[i].text, w)
+			cv.text(f, ln, lineX(f, ln, x, w), y, alpha(p.fg, 0.82*k))
 			y += 21
 		}
 		caption(capOf(""), y+10, 1)
@@ -692,10 +693,12 @@ func (u *UI) karaoke(cv *canvas, st *stageState, sw stageWidgets, x, w float32, 
 			cv.circle(x+5+float32(i)*15, cy-5+shift, 3.6+0.8*pulse, alpha(p.fg, (0.22+0.72*fi)*k*dimK))
 		}
 		if nx := at(idx + 1); nx != "" {
-			cv.text(small, ellipsize(small, nx, w), x, cy+26+shift, alpha(p.muted, 0.6*k*dimK))
+			nx = ellipsize(small, nx, w)
+			cv.text(small, nx, lineX(small, nx, x, w), cy+26+shift, alpha(p.muted, 0.6*k*dimK))
 		}
 		if pv := at(idx - 1); pv != "" {
-			cv.text(small, ellipsize(small, pv, w), x, cy-34+shift-8*float32(e), alpha(p.muted, 0.4*k*dimK*(1-0.5*e)))
+			pv = ellipsize(small, pv, w)
+			cv.text(small, pv, lineX(small, pv, x, w), cy-34+shift-8*float32(e), alpha(p.muted, 0.4*k*dimK*(1-0.5*e)))
 		}
 		return
 	}
@@ -717,19 +720,43 @@ func (u *UI) karaoke(cv *canvas, st *stageState, sw stageWidgets, x, w float32, 
 	before := float32(0)
 	y := top
 	asc := int(bf.Metrics().Ascent.Ceil()) + 2
+	rtl := rtlText(cur) // a line read right to left: against the right edge, lit from the right
+	byLetter, letters, beforeL := needsShaping(cur), 0, 0
+	if byLetter { // shaped: lit by its letters, in reading order
+		for _, ln := range lines {
+			letters += utf8.RuneCountInString(display(keepDir(ln, rtl)))
+		}
+	}
 	for _, ln := range lines {
+		ln = keepDir(ln, rtl)
 		lw := measure(bf, ln)
-		cv.text(bf, ln, x, y, alpha(dim, e*k*dimK))
-		if sung := float32(fill)*total - before; sung > 0 {
-			clip := func(x0, x1 float32, a float64) {
-				cv.clipR = image.Rect(int(x0), int(y)-asc, int(x1), int(y)+6)
-				cv.text(bf, ln, x, y, alpha(lit, a*e*k*dimK))
+		lx := x
+		if rtl {
+			lx = x + w - lw
+		}
+		cv.text(bf, ln, lx, y, alpha(dim, e*k*dimK))
+		var spans []litSpan
+		if byLetter {
+			ds := display(ln)
+			if sung := float32(fill)*float32(letters) - float32(beforeL); sung > 0 {
+				var upto int
+				if spans, upto = shapedSpans(bf, ds, lx, sung); upto > 0 {
+					cv.drawMask(cv.litMask(bf, ds, upto), lx, y, alpha(lit, e*k*dimK))
+				}
 			}
-			edge := x + min(sung, lw)
-			clip(x-2, edge, 1)
-			if sung < lw { // a soft leading edge, not a hard cut
-				clip(edge, edge+2, 0.6)
-				clip(edge+2, edge+4, 0.3)
+			beforeL += utf8.RuneCountInString(ds)
+		} else if sung := float32(fill)*total - before; sung > 0 {
+			spans = litSpans(lx, lw, sung, rtl)
+		}
+		if len(spans) > 0 {
+			ct, cb := int(y)-asc, int(y)+6
+			if needsShaping(ln) { // its marks may reach further than Ember's font
+				m := cv.mask(bf, ln)
+				ct, cb = min(ct, int(y)-m.asc-1), max(cb, int(y)-m.asc+m.m.Rect.Dy()+1)
+			}
+			for _, sp := range spans {
+				cv.clipR = image.Rect(int(sp.x0), ct, int(sp.x1), cb)
+				cv.text(bf, ln, lx, y, alpha(lit, sp.a*e*k*dimK))
 			}
 			cv.clipR = image.Rectangle{}
 		}
@@ -742,11 +769,13 @@ func (u *UI) karaoke(cv *canvas, st *stageState, sw stageWidgets, x, w float32, 
 			pf, pl := bigFace(pv, w)
 			yy := top - shift - float32(e)*34 - float32(len(pl)-1)*lh/2
 			for _, ln := range pl {
-				cv.text(pf, ln, x, yy, alpha(lit, (1-e)*0.8*k*dimK))
+				ln = keepDir(ln, rtlText(pv))
+				cv.text(pf, ln, lineX(pf, ln, x, w), yy, alpha(lit, (1-e)*0.8*k*dimK))
 				yy += lh
 			}
 		}
-		cv.text(small, ellipsize(small, pv, w), x, top-34+(1-float32(e))*8, alpha(p.muted, 0.42*e*k*dimK))
+		pv = ellipsize(small, pv, w)
+		cv.text(small, pv, lineX(small, pv, x, w), top-34+(1-float32(e))*8, alpha(p.muted, 0.42*e*k*dimK))
 	}
 	yb := top + float32(len(lines)-1)*lh + 28
 	for i, a := range []float64{0.6, 0.3} {
@@ -754,7 +783,8 @@ func (u *UI) karaoke(cv *canvas, st *stageState, sw stageWidgets, x, w float32, 
 		if nx == "" {
 			break
 		}
-		cv.text(small, ellipsize(small, nx, w), x, yb+float32(i)*19, alpha(p.muted, a*k*dimK))
+		nx = ellipsize(small, nx, w)
+		cv.text(small, nx, lineX(small, nx, x, w), yb+float32(i)*19, alpha(p.muted, a*k*dimK))
 	}
 	if d := now.Sub(st.nudgeAt); d < 1500*time.Millisecond { // you nudged the words: by how much, a moment
 		n := u.wordsNudge(sw.text.MediaKey)
@@ -762,6 +792,51 @@ func (u *UI) karaoke(cv *canvas, st *stageState, sw stageWidgets, x, w float32, 
 		f := fCaption()
 		cv.text(f, s, x+w-measure(f, s), 52, alpha(p.faint, (1-float64(d)/float64(1500*time.Millisecond))*k))
 	}
+}
+
+// lineX is where a line of the words starts: at the column's left edge x,
+// or against its right edge when the line reads right to left.
+func lineX(f fontFace, s string, x, w float32) float32 {
+	if rtlText(s) {
+		return x + w - measure(f, s)
+	}
+	return x
+}
+
+// keepDir keeps a wrapped piece of a line read right to left reading that
+// way when it starts with a word in a left-to-right script (a right-to-left
+// mark before it).
+func keepDir(ln string, rtl bool) string {
+	if rtl && !rtlText(ln) {
+		return "\u200f" + ln
+	}
+	return ln
+}
+
+// litSpan is a stretch of a line drawn lit, and how strongly.
+type litSpan struct {
+	x0, x1 float32
+	a      float64
+}
+
+// litSpans is the part of a line (drawn from lx, lw wide) lit once sung
+// pixels of it are sung: from the left with a soft leading edge two steps
+// wide; a line read right to left fills from the right.
+func litSpans(lx, lw, sung float32, rtl bool) []litSpan {
+	if !rtl {
+		edge := lx + min(sung, lw)
+		sp := []litSpan{{lx - 2, edge, 1}}
+		if sung < lw { // a soft leading edge, not a hard cut
+			sp = append(sp, litSpan{edge, edge + 2, 0.6}, litSpan{edge + 2, edge + 4, 0.3})
+		}
+		return sp
+	}
+	edge := lx + lw - min(sung, lw)
+	sp := []litSpan{{edge, lx + lw + 2, 1}}
+	if sung < lw {
+		sp = append(sp, litSpan{edge - 2, edge, 0.6}, litSpan{edge - 4, edge - 2, 0.3})
+	}
+	return sp
 }
 
 // lineFill is how far line idx is sung at pos, 0..1: by its words' times

@@ -36,6 +36,16 @@ func display(s string) string {
 	if ascii {
 		return s
 	}
+	plain := true // nothing to fold (Hindi, Arabic, Japanese): no copy each frame
+	for _, r := range s {
+		if styled(r) {
+			plain = false
+			break
+		}
+	}
+	if plain {
+		return s
+	}
 	var b strings.Builder
 	for _, r := range s {
 		if styled(r) {
@@ -181,6 +191,9 @@ func runs(f font.Face, s string, each func(f font.Face, s string)) {
 
 // advance is the width of s in f, with fallbacks.
 func advance(f font.Face, s string) fixed.Int26_6 {
+	if needsShaping(s) && faceInfo[f].name != "" {
+		return shaped(f, s).w
+	}
 	var w fixed.Int26_6
 	runs(f, s, func(fc font.Face, part string) { w += font.MeasureString(fc, part) })
 	return w

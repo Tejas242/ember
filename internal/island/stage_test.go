@@ -195,8 +195,16 @@ func TestNudgeWords(t *testing.T) {
 }
 
 // BenchmarkStageSteady: a stage's steady frames, at 24 a second, on a song.
-func BenchmarkStageSteady(b *testing.B) {
-	g := stageScene(b, testLines, mediaKey, "synced", "ready")
+func BenchmarkStageSteady(b *testing.B) { benchStage(b, testLines, 0) }
+
+// BenchmarkStageSinging: the same, a line being sung (the playhead kept
+// within it), its fill moving every frame.
+func BenchmarkStageSinging(b *testing.B) { benchStage(b, testLines, 10500*time.Millisecond) }
+
+// benchStage: a stage's frames at 24 a second; with sing, the playhead loops
+// over the three seconds from there.
+func benchStage(b *testing.B, lines []proto.TimedLine, sing time.Duration) {
+	g := stageScene(b, lines, mediaKey, "synced", "ready")
 	lv := stageLevels()
 	for i := 0; i < 240; i++ {
 		g.a.ui.audio.Feed(lv[i*25/60%len(lv)], time.Now())
@@ -207,6 +215,9 @@ func BenchmarkStageSteady(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		g.a.ui.audio.Feed(lv[(240+i)*25/24%len(lv)], time.Now())
 		g.clock = g.clock.Add(time.Second / 24)
+		if sing > 0 {
+			g.a.ui.track.Position, g.a.ui.track.PosAt = sing+time.Duration(i%72)*time.Second/24, g.clock
+		}
 		g.a.ui.renderDamage()
 		if g.a.ui.lastFull {
 			full++

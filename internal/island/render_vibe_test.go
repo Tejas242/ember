@@ -67,11 +67,25 @@ var cjkWords = []vLine{
 	{51000, "a small fire, swaying"},
 }
 
+var hindiWords = []vLine{
+	{44000, "चाय की खुशबू में सुबह जागी"},
+	{47400, "खिड़की पर बारिश धीरे गाती है"},
+	{51000, "हम छत पर नाचे सुबह तक"},
+	{54600, "शहर ने फिर भी नहीं सुना"},
+}
+
+var arabicWords = []vLine{
+	{44000, "الليل طويل والأغاني قريبة"},
+	{47400, "قلبي يغني on repeat طول الليل"},
+	{51000, "نرقص على السطح حتى الصباح"},
+	{54600, "والمدينة لا تسمع"},
+}
+
 var plainWords = []string{"the kettle sings at seven", "a small flame keeps the time", "the window learns the morning", "nobody asked the radio",
 	"it sang along all the same", "the floor still warm from dancing", "we said we'd sleep at two", "the city didn't listen"}
 
 func init() {
-	for _, ws := range [][]vLine{upbeatWords, nightWords, longWords, cjkWords} {
+	for _, ws := range [][]vLine{upbeatWords, nightWords, longWords, cjkWords, hindiWords, arabicWords} {
 		for i := range ws {
 			ws[i].at *= time.Millisecond
 		}
@@ -163,6 +177,8 @@ func vibeScenes() []vScene {
 			}, settle: 1200 * time.Millisecond, crop: 40},
 		{name: "17-screen-shared", kind: "karaoke", lines: upbeatWords, title: "Neon Afternoon", artist: "Kite Club", pos: 52 * time.Second, feed: "song",
 			setup: func(g *galleryScene) { g.a.ui.shared, g.a.ui.cfg.Discreet = true, true }},
+		{name: "18-hindi-line", kind: "karaoke", lines: hindiWords, title: "Subah ki Chai", artist: "Kite Club", pos: 46400 * time.Millisecond, feed: "song"},
+		{name: "19-arabic-line", kind: "karaoke", lines: arabicWords, title: "Layl Tawil", artist: "Kite Club", pos: 46400 * time.Millisecond, feed: "song"},
 	}
 }
 
