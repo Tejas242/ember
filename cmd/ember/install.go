@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Tejas242/ember/internal/config"
+	"github.com/Tejas242/ember/internal/ipc"
 	"github.com/Tejas242/ember/internal/xdg"
 )
 
@@ -215,7 +216,7 @@ func installHooks(settings, exe string) (bool, error) {
 }
 
 // uninstall removes Ember's hooks and its service; the config stays.
-func uninstall() error {
+func uninstall(purge bool) error {
 	settings := settingsPath()
 	if raw, err := os.ReadFile(settings); err == nil {
 		out, err := patchSettings(raw, "", false)
@@ -230,7 +231,26 @@ func uninstall() error {
 	systemctl("disable", "--now", "ember.service")
 	os.Remove(unitPath())
 	systemctl("daemon-reload")
-	fmt.Println("service stopped and removed. Your config stays at", config.Path())
+	if !purge {
+		fmt.Println("service stopped and removed. Kept: your config at", config.Path()+",",
+			"Ember's memory at", filepath.Join(xdg.StateHome(), "ember")+",",
+			"and your original Claude settings at", settings+".pre-ember. ember uninstall --purge removes the first two.")
+		return nil
+	}
+	fmt.Println("service stopped and removed.")
+	// --purge: the config (and plugin manifests beside it), Ember's memory, its
+	// sessions and its socket. The Claude settings backup stays: it's yours.
+	for _, p := range []string{filepath.Dir(config.Path()), filepath.Join(xdg.StateHome(), "ember"),
+		filepath.Join(filepath.Dir(ipc.SockPath()), "ember-sessions.json"), ipc.SockPath()} {
+		if _, err := os.Lstat(p); err != nil {
+			continue
+		}
+		if err := os.RemoveAll(p); err != nil {
+			return err
+		}
+		fmt.Println("removed", p)
+	}
+	fmt.Println("kept your original Claude settings at", settings+".pre-ember")
 	return nil
 }
 

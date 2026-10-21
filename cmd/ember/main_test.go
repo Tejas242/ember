@@ -21,7 +21,7 @@ func TestRoute(t *testing.T) {
 		{argv: []string{"install"}, run: "install"},
 		{argv: []string{"install", "--help"}, code: 0, out: "usage: ember install\n"},
 		{argv: []string{"install", "-h"}, code: 0, out: "usage: ember install\n"},
-		{argv: []string{"uninstall", "--help"}, code: 0, out: "usage: ember uninstall\n"},
+		{argv: []string{"uninstall", "--help"}, code: 0, out: "usage: ember uninstall [--purge]\n"},
 		{argv: []string{"install", "--force"}, code: 2, err: `ember install: unexpected argument "--force" (see ember help install)`},
 		{argv: []string{"uninstall", "now"}, code: 2, err: `ember uninstall: unexpected argument "now"`},
 		{argv: []string{"allow", "x"}, code: 2, err: `ember allow: unexpected argument "x"`},

@@ -288,7 +288,7 @@ func TestInstallKeepsSettings(t *testing.T) {
 	os.WriteFile(settings, raw, 0o600)
 
 	calls := fakeSystemctl(t)
-	if err := uninstall(); err != nil {
+	if err := uninstall(false); err != nil {
 		t.Fatal(err)
 	}
 	raw, _ = os.ReadFile(settings)
@@ -434,5 +434,38 @@ func TestStaleBins(t *testing.T) {
 	}
 	if n, stale := hookCountIn([]byte(settingsFixture), "/tmp/claude-1000/x/ember-pd"); n != 4 || stale != 3 {
 		t.Fatalf("%d hooks, %d stale", n, stale)
+	}
+}
+
+// --purge also takes the config (and plugin manifests), Ember's memory, its
+// sessions and its socket; the Claude settings backup stays.
+func TestUninstallPurge(t *testing.T) {
+	h := sandbox(t)
+	fakeSystemctl(t)
+	run := filepath.Join(h, "run")
+	files := []string{
+		filepath.Join(h, ".config", "ember", "config.toml"),
+		filepath.Join(h, ".config", "ember", "plugins", "edge", "plugin.toml"),
+		filepath.Join(h, ".local", "state", "ember", "bond.json"),
+		filepath.Join(run, "ember-sessions.json"),
+		filepath.Join(run, "ember.sock"),
+	}
+	for _, f := range files {
+		os.MkdirAll(filepath.Dir(f), 0o755)
+		os.WriteFile(f, []byte("x"), 0o600)
+	}
+	backup := filepath.Join(h, ".claude", "settings.json.pre-ember")
+	os.MkdirAll(filepath.Dir(backup), 0o755)
+	os.WriteFile(backup, []byte("{}"), 0o600)
+	if err := uninstall(true); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		if fileExists(f) {
+			t.Errorf("--purge left %s", f)
+		}
+	}
+	if !fileExists(backup) {
+		t.Error("--purge removed the Claude settings backup")
 	}
 }

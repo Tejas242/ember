@@ -54,7 +54,9 @@ func (a *app) key(k string) {
 	}
 }
 
-// command handles keyboard commands: answer the oldest request.
+// command handles keyboard commands: answer the oldest request. allow,
+// deny, always and terminal with an argument answer only that session's
+// request (ember demo answers its own, never a real one).
 func (a *app) command(cmd, arg string) {
 	switch cmd {
 	case "toggle":
@@ -82,6 +84,9 @@ func (a *app) command(cmd, arg string) {
 	}
 	for _, c := range a.ui.cards {
 		if c.Kind != "perm" && c.Kind != "ask" {
+			continue
+		}
+		if arg != "" && cmd != "answer" && !strings.HasPrefix(c.ID, "perm:"+arg+":") && c.ID != "ask:"+arg {
 			continue
 		}
 		key := cmd

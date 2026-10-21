@@ -40,6 +40,7 @@ The first release: everything Ember does today, in one static binary for Linux o
 
 **Tools**
 - `ember install` (a systemd user service, the hooks, a default config), `ember doctor` (the service, protocols,
-  watchers, hooks, config lines, plugins, and whether the running island is this binary), `ember uninstall`.
+  watchers, hooks, config lines, plugins, and whether the running island is this binary), `ember demo` (a Claude
+  session played on the island), `ember uninstall [--purge]`.
 - A config that applies within ten seconds and never stops Ember over a bad line; every key in `docs/CONFIG.md`.
 - About 9 MB of memory and ≈1% of a core while Claude works, drawn in software with damage tracking; nothing polls.

@@ -11,29 +11,39 @@ func dialIsland() (net.Conn, error) {
 	return net.DialTimeout("unix", SockPath(), 150*time.Millisecond)
 }
 
+// DemoSession starts the session id of every session ember demo plays.
+const DemoSession = "ember-demo-"
+
 // Send tells the island about a hook event without waiting. Silent if the
 // island isn't running.
-func Send(event string, payload []byte) {
+func Send(event string, payload []byte) { SendHook(event, payload, Ancestors()) }
+
+// SendHook is Send for a hook whose process tree is pids (nil: none, so no
+// terminal is its own).
+func SendHook(event string, payload []byte, pids []int) {
 	c, err := dialIsland()
 	if err != nil {
 		return
 	}
 	defer c.Close()
 	c.SetDeadline(time.Now().Add(300 * time.Millisecond))
-	b, _ := json.Marshal(Msg{Type: "hook", Event: event, Pids: Ancestors(), Payload: payload})
+	b, _ := json.Marshal(Msg{Type: "hook", Event: event, Pids: pids, Payload: payload})
 	c.Write(append(b, '\n'))
 }
 
 // Ask shows a hook on the island and waits for the user's answer: the hook
 // output to print, or nil to fall back to Claude's own prompt. It returns nil
 // at once if the island isn't running, and after AskTimeout at the latest.
-func Ask(event string, payload []byte) []byte {
+func Ask(event string, payload []byte) []byte { return AskHook(event, payload, Ancestors()) }
+
+// AskHook is Ask for a hook whose process tree is pids.
+func AskHook(event string, payload []byte, pids []int) []byte {
 	c, err := dialIsland()
 	if err != nil {
 		return nil
 	}
 	defer c.Close()
-	b, _ := json.Marshal(Msg{Type: "hook", Event: event, Wait: true, Pids: Ancestors(), Payload: payload})
+	b, _ := json.Marshal(Msg{Type: "hook", Event: event, Wait: true, Pids: pids, Payload: payload})
 	c.SetDeadline(time.Now().Add(AskTimeout + 5*time.Second))
 	if _, err := c.Write(append(b, '\n')); err != nil {
 		return nil

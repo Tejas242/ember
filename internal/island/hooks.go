@@ -80,6 +80,10 @@ const forgetIdle = 3 * time.Hour
 
 // ---- Claude Code hooks ----
 
+// isDemo: a session ember demo plays. It shows like any other, but isn't
+// counted in the day, the habits or what Ember has learned.
+func isDemo(s *Session) bool { return strings.HasPrefix(s.ID, ipc.DemoSession) }
+
 func (a *app) hook(m ipc.Msg, answer chan<- json.RawMessage) string {
 	var in hookInput
 	if err := json.Unmarshal(m.Payload, &in); err != nil && len(m.Payload) > 0 {
@@ -94,7 +98,9 @@ func (a *app) hook(m ipc.Msg, answer chan<- json.RawMessage) string {
 	if s == nil && in.SessionID != "" && m.Event != "SessionEnd" && !over {
 		s = &Session{ID: in.SessionID, State: "idle", Since: now}
 		a.ui.sessions[in.SessionID] = s
-		a.ui.bond.meet()
+		if !isDemo(s) {
+			a.ui.bond.meet()
+		}
 	}
 	if s != nil {
 		s.Seen = now
@@ -190,7 +196,9 @@ func (a *app) hook(m ipc.Msg, answer chan<- json.RawMessage) string {
 			s.StepAt = now
 		}
 		s.Turn.step(now, in.Tool, tin)
-		a.ui.day.call(now)
+		if !isDemo(s) {
+			a.ui.day.call(now)
+		}
 		a.ui.mind.toolCall(now)
 		if ss := a.ui.sessionList(); len(ss) > 0 && ss[0] == s && now.Sub(a.ui.gulpAt) > 1200*time.Millisecond {
 			a.ui.gulpAt = now
@@ -240,12 +248,14 @@ func (a *app) hook(m ipc.Msg, answer chan<- json.RawMessage) string {
 		s.Recap = &Recap{Summary: summarize(in.LastMessage), At: now, Took: took, Steps: s.Turn.Count,
 			Files: len(s.Turn.Files), Plus: s.Turn.Plus, Minus: s.Turn.Minus, Failures: s.Turn.Failures}
 		s.cheer = cheer{size: doneSize(took), roll: absolutelyRight.MatchString(in.LastMessage)}
-		if b := a.ui.bond; b != nil {
+		if b := a.ui.bond; b != nil && !isDemo(s) {
 			long := b.turn(took)
 			hard := s.Turn.Failures >= 2 || s.Turn.Count >= 40 // failures overcome, or a lot of work
 			s.cheer.flare = (long || hard) && s.Turn.streak == 0 && !s.Recap.troubled()
 		}
-		a.ui.day.done(now, s.Project, took)
+		if !isDemo(s) {
+			a.ui.day.done(now, s.Project, took)
+		}
 		s.Asking = ""
 		if !a.looking(s) {
 			s.Unseen = now // it stays in the pill, quietly, until you've seen it

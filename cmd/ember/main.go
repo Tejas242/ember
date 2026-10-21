@@ -63,7 +63,9 @@ func init() {
 	commands = []*command{
 		{name: "install", summary: "set up the service, Claude Code's hooks and a config", run: runInstall},
 		{name: "doctor", summary: "check every piece and say what to fix", run: func([]string) int { doctor(); return 0 }},
-		{name: "uninstall", summary: "remove the hooks and the service (the config stays)", run: runUninstall},
+		{name: "uninstall", args: "[--purge]", summary: "remove the hooks and the service (--purge: the config and Ember's memory too)",
+			bools: []string{"purge"}, runf: runUninstall},
+		{name: "demo", summary: "play a Claude Code session on the island, to see what Ember does", run: runDemo},
 		{name: "version", aliases: []string{"--version", "-v"}, summary: "print Ember's version",
 			run: func([]string) int { fmt.Println("ember", versionString()); return 0 }},
 		{name: "help", aliases: []string{"--help", "-h"}, args: "[command]", max: 1, summary: "this list, or one command's help"},
@@ -290,8 +292,9 @@ func runInstall([]string) int {
 	return 0
 }
 
-func runUninstall([]string) int {
-	if err := uninstall(); err != nil {
+func runUninstall(_ []string, f map[string]string) int {
+	_, purge := f["purge"]
+	if err := uninstall(purge); err != nil {
 		fmt.Fprintln(os.Stderr, "ember:", err)
 		return 1
 	}

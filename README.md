@@ -91,8 +91,9 @@ terminal titles, screen sharing, the bar's height and palette); Hyprland, Sway a
 tested, and reports are welcome. Music needs an MPRIS player; volume and the listening equaliser PipeWire (`wpctl`,
 `pactl`, `parec`); the battery UPower; headphones BlueZ. Restart open Claude sessions after installing. With another
 bar, tell Ember its height (`[look] bar_height`); [docs/CONFIG.md](docs/CONFIG.md#fitting-it-to-your-desktop) has
-that, Noctalia's popups and niri's blur. `ember uninstall` takes out the hooks and the service and leaves your
-config.
+that, Noctalia's popups and niri's blur. `ember demo` plays a Claude session on the island so you can see what it
+does. `ember uninstall` takes out the hooks and the service and leaves your config (`--purge` takes that and Ember's
+memory too).
 
 ## What it shows
 
