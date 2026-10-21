@@ -119,7 +119,9 @@ func simCases() []simCase {
 			return song(g)
 		}},
 		{"vibe-stage", func(g *galleryScene) func(time.Duration) {
-			*g = *stageScene(&testing.T{}, testLines, mediaKey, "synced", "ready")
+			s := stageScene(&testing.T{}, testLines, mediaKey, "synced", "ready")
+			g.clock, g.a = s.clock, s.a
+			g.a.ui.now = func() time.Time { return g.clock } // the stage's clock is this scene's
 			return songFeeder(g.a.ui)
 		}},
 		{"asleep", func(g *galleryScene) func(time.Duration) {
