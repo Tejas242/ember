@@ -115,6 +115,9 @@ func install(exe string) error {
 	if err := installEdge(exe); err != nil {
 		return err
 	}
+	if err := installVibe(exe); err != nil {
+		return err
+	}
 
 	u := unitPath()
 	if err := os.MkdirAll(filepath.Dir(u), 0o755); err != nil {

@@ -11,14 +11,17 @@ import (
 	"github.com/Tejas242/ember/internal/xdg"
 	"github.com/Tejas242/ember/pkg/plugin"
 	"github.com/Tejas242/ember/plugins/edge/adapter"
+	"github.com/Tejas242/ember/plugins/vibe/vibe"
 )
 
-// edge's plugin ships inside Ember's binary (`ember plugin edge`), so one
-// static binary is still all there is to install.
+// edge's and vibe's plugins ship inside Ember's binary (`ember plugin
+// edge`, `ember plugin vibe`), so one static binary is still all there is
+// to install.
 
 // builtins are the plugins this binary can be.
 var builtins = map[string]func(*plugin.Plugin) error{
 	"edge": func(p *plugin.Plugin) error { return adapter.Run(p, adapter.Options{}) },
+	"vibe": func(p *plugin.Plugin) error { return vibe.Run(p, vibe.Options{}) },
 }
 
 func runPlugin(args []string) int {
@@ -72,9 +75,16 @@ func installEdge(exe string) error {
 		return err
 	}
 	fmt.Println("edge →", filepath.Join(dir, "plugin.toml"))
+	return grantOnce("edge", `["critical", "badge", "focus"]`,
+		"edge keeps what it could do before plugins: a live round outranks Claude, the\n# padlock on the clock, Ember's game face. Take a grant out to take it back.")
+}
+
+// grantOnce writes a plugin's grants into the config, with a comment
+// saying why, unless the config already says something about them.
+func grantOnce(name, grants, why string) error {
 	cfg := config.Path()
 	c, _ := config.Load(cfg)
-	if _, ok := c.Plugins["edge"]["grants"]; ok {
+	if _, ok := c.Plugins[name]["grants"]; ok {
 		return nil
 	}
 	b, _ := os.ReadFile(cfg)
@@ -82,10 +92,10 @@ func installEdge(exe string) error {
 	if text != "" && !strings.HasSuffix(text, "\n") {
 		text += "\n"
 	}
-	text += "\n# edge keeps what it could do before plugins: a live round outranks Claude, the\n# padlock on the clock, Ember's game face. Take a grant out to take it back.\n[plugins.edge]\ngrants = [\"critical\", \"badge\", \"focus\"]\n"
+	text += "\n# " + why + "\n[plugins." + name + "]\ngrants = " + grants + "\n"
 	if err := xdg.AtomicWrite(cfg, []byte(text), 0o644); err != nil {
 		return err
 	}
-	fmt.Println("edge's grants →", cfg)
+	fmt.Println(name+"'s grants →", cfg)
 	return nil
 }

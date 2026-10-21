@@ -13,6 +13,7 @@ import (
 
 	"github.com/Tejas242/ember/internal/config"
 	"github.com/Tejas242/ember/internal/ipc"
+	"github.com/Tejas242/ember/internal/plugin"
 	"github.com/Tejas242/ember/internal/wayland"
 )
 
@@ -271,8 +272,8 @@ func TestInstallKeepsSettings(t *testing.T) {
 	if n, stale := hookCountIn(raw, exe); n != len(emberHooks) || stale != 0 || !strings.Contains(string(raw), "edge hook") {
 		t.Fatalf("%d hooks (%d stale): %s", n, stale, raw)
 	}
-	if b, _ := os.ReadFile(cfg); string(b) != "clock = \"24h\"\n" {
-		t.Fatal("overwrote the config")
+	if b, _ := os.ReadFile(cfg); !strings.HasPrefix(string(b), "clock = \"24h\"\n") || strings.Count(string(b), "\n[plugins.") != 1 {
+		t.Fatalf("overwrote the config, or added more than vibe's grants:\n%s", b)
 	}
 	if es, _ := os.ReadDir(filepath.Dir(settings)); len(es) != 2 {
 		t.Fatalf("left temp files: %v", es)
@@ -467,5 +468,39 @@ func TestUninstallPurge(t *testing.T) {
 	}
 	if !fileExists(backup) {
 		t.Error("--purge removed the Claude settings backup")
+	}
+}
+
+// Install sets up vibe's plugin (running this binary), grants it media and
+// entry once, and leaves grants the config already has.
+func TestInstallVibe(t *testing.T) {
+	h := sandbox(t)
+	fakeSystemctl(t)
+	exe := "/opt/ember/bin/ember"
+	for i := 0; i < 2; i++ {
+		if err := install(exe); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dir := filepath.Join(h, ".config", "ember", "plugins", "vibe")
+	m, err := plugin.LoadManifest(dir)
+	if err != nil || m.Command != exe || strings.Join(m.Args, " ") != "plugin vibe" || m.Opens != "music" || m.Hint != "Vibe" {
+		t.Fatalf("%v %+v", err, m)
+	}
+	cfgPath := filepath.Join(h, ".config", "ember", "config.toml")
+	c, _ := os.ReadFile(cfgPath)
+	if n := strings.Count(string(c), "[plugins.vibe]\ngrants"); n != 1 {
+		t.Fatalf("grants written %d times:\n%s", n, c)
+	}
+	cfg, warns := config.Load(cfgPath)
+	if len(warns) > 0 || strings.Join(cfg.PluginGrants("vibe"), ",") != "media,entry" {
+		t.Fatalf("%v %v", warns, cfg.PluginGrants("vibe"))
+	}
+	os.WriteFile(cfgPath, []byte("[plugins.vibe]\ngrants = []\n"), 0o644) // taken back: install leaves it so
+	if err := install(exe); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := os.ReadFile(cfgPath); strings.Contains(string(c), "media") {
+		t.Fatalf("install granted again what was taken back:\n%s", c)
 	}
 }

@@ -52,6 +52,8 @@ type Config struct {
 	Discreet    bool // [privacy] discreet: while it's shared, no Claude words, no previews, no hover
 	Done        bool // [show] done: "Done · project" when Claude finishes
 
+	Lyrics bool // [vibe] lyrics: the vibe stage may look a song's words up (LRCLIB); false keeps it offline
+
 	Plugins     map[string]map[string]string // [plugins.<name>] tables: raw key → value (quotes stripped)
 	PluginsOnly []string                     // [plugins] enabled = [...]: only these run; nil means all
 }
@@ -70,7 +72,7 @@ func Default() Config {
 		Answer: true, Wait: ipc.AskTimeout - 5*time.Second, Settle: 30 * time.Minute, AgentQuiet: DefaultAgentQuiet, Opacity: 0.87,
 		Dance: true, Flourishes: true, Celebrate: true,
 		Claude: true, Music: true, Edge: true, Battery: true,
-		OSD: true, Devices: true, Screenshots: true, Privacy: true, Discreet: true, Done: true}
+		OSD: true, Devices: true, Screenshots: true, Privacy: true, Discreet: true, Done: true, Lyrics: true}
 }
 
 // Path is the config file.
@@ -133,12 +135,17 @@ screenshots = true  # a preview when a screenshot is saved
 dot      = true  # a dot while your screen is being shared or recorded (once [show] privacy, still read)
 discreet = true  # while it's shared: Done without Claude's words, no screenshot previews, the card opens on click only
 
+[vibe]
+lyrics = true  # click Ember in the card while a song plays: its words, from an .lrc beside the file, a cache, or LRCLIB; false: no network
+
 # Plugins run when their tool is installed (edge) or when they're in
 # ~/.config/ember/plugins (see docs/PLUGINS.md); ember plugins lists them.
 # [plugins]
 # enabled = "all"   # all | none | ["pomodoro", "edge"]: only these
 # [plugins.edge]
 # enabled = "auto"  # auto | true | false — edge's practice status, cards and dashboard
+[plugins.vibe]
+grants = ["media", "entry"]  # vibe hears the song only while its stage is open; a click on Ember opens it
 `
 
 // Load reads path over the defaults; a missing file means defaults.
@@ -206,7 +213,7 @@ func Paste(missing []string) string {
 	return strings.Join(append(top, rest...), "\n")
 }
 
-var configSections = []string{"", "pill", "card", "moments", "claude", "look", "ember", "show", "privacy", "plugins"}
+var configSections = []string{"", "pill", "card", "moments", "claude", "look", "ember", "show", "privacy", "vibe", "plugins"}
 
 // parse reads the small part of TOML Ember needs: sections and
 // key = value lines. It never fails: an unknown key is skipped and a value
@@ -400,6 +407,8 @@ func parse(text string) (c Config, warns, keys []string) {
 			flag(&c.Screenshots)
 		case "privacy.dot":
 			flag(&c.Privacy)
+		case "vibe.lyrics":
+			flag(&c.Lyrics)
 		case "privacy.discreet":
 			flag(&c.Discreet)
 		case "show.done":

@@ -57,12 +57,17 @@ screenshots = true  # a preview when a screenshot is saved
 dot      = true  # a dot while your screen is being shared or recorded (once [show] privacy, still read)
 discreet = true  # while it's shared: Done without Claude's words, no screenshot previews, the card opens on click only
 
+[vibe]
+lyrics = true  # click Ember in the card while a song plays: its words, from an .lrc beside the file, a cache, or LRCLIB; false: no network
+
 # Plugins run when their tool is installed (edge) or when they're in
 # ~/.config/ember/plugins (see docs/PLUGINS.md); ember plugins lists them.
 # [plugins]
 # enabled = "all"   # all | none | ["pomodoro", "edge"]: only these
 # [plugins.edge]
 # enabled = "auto"  # auto | true | false — edge's practice status, cards and dashboard
+[plugins.vibe]
+grants = ["media", "entry"]  # vibe hears the song only while its stage is open; a click on Ember opens it
 ```
 
 A value Ember can't use, an unknown key or a stray line never stops it: that line keeps its default, and
@@ -81,6 +86,11 @@ of a Done) turn just those off.
 shows a dot while it is; it used to be `[show] privacy`, which still works. `discreet` keeps Claude's words off a
 shared screen: a Done says only "Done kinvault", a screenshot shows the camera instead of its preview, and the card
 opens when you click, not when the pointer passes. Requests still show, since they need you.
+
+`[vibe]` is the stage you get by clicking Ember in the card while a song plays (the vibe plugin). Its words come
+from an `.lrc` file beside the song, then a cache in `~/.cache/ember/lyrics`, then LRCLIB (lrclib.net), asked only
+while the stage is open and only for the song playing. `lyrics = false` keeps it to the first two: nothing leaves
+your machine. The stage still dances, and shows the song's title over its ribbon.
 
 `[plugins] enabled` says which plugins may run at all: `"all"` (the default), `"none"`, or a list of names.
 `[plugins.<name>]` tables belong to plugins. `enabled = "auto"` runs a plugin when its tool is installed (a plugin in

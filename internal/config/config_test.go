@@ -17,8 +17,13 @@ func TestDefaultConfigText(t *testing.T) {
 	if len(warns) > 0 {
 		t.Fatalf("the shipped config warns: %v", warns)
 	}
-	if !reflect.DeepEqual(c, Default()) {
-		t.Fatalf("the shipped config isn't the defaults:\n got %+v\nwant %+v", c, Default())
+	want := Default() // and the grants it gives the built-in vibe plugin (written out, so they can be taken back)
+	want.Plugins = map[string]map[string]string{"vibe": {"grants": `["media", "entry"]`}}
+	if !reflect.DeepEqual(c, want) {
+		t.Fatalf("the shipped config isn't the defaults:\n got %+v\nwant %+v", c, want)
+	}
+	if g := c.PluginGrants("vibe"); strings.Join(g, ",") != "media,entry" {
+		t.Fatalf("vibe's grants: %v", g)
 	}
 	if len(keys) < 20 {
 		t.Fatalf("only %d keys shipped: %v", len(keys), keys)

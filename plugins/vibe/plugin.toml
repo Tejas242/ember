@@ -1,0 +1,15 @@
+# vibe: click Ember in the card while a song plays, and the card becomes a
+# stage. ember install writes this into ~/.config/ember/plugins/vibe, running
+# Ember's own binary as the plugin (ember plugin vibe), and grants it media
+# and entry in the config (only if that key isn't there yet).
+name         = "vibe"
+description  = "Click Ember while a song plays: a stage, with the song's words"
+command      = "ember"
+args         = ["plugin", "vibe"]
+icon         = "headphones"
+capabilities = ["dashboard"]
+grants       = ["media", "entry"]
+
+[opens]
+ember = "music"
+hint  = "Vibe"
