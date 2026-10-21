@@ -292,4 +292,4 @@ All drawing is in software. Steady frames repaint only the live rectangles (Embe
 countdown), at 12 fps in the pill, 24 in the card and 40 while a shimmer band is crossing. A stage repaints Ember,
 its floor, its top line and its words at 24 fps on a locked beat (about 0.7 ms a frame, under 2% of a core), 15 for a
 sway or a talk, 12 calm, 8 paused, 15 on battery and 10 below a fifth; the floor's light is one sprite a song. The halo and the sweep are live parts, not full repaints. Targets: ≤ 1.5% of a core while Claude works,
-no full repaint while nothing changes, and memory under 16 MiB.
+no full repaint while nothing changes, and a heap within half again of what's live (GOGC=50; no GOMEMLIMIT, which at 16 MiB kept the GC running back to back).

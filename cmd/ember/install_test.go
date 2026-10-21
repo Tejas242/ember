@@ -321,6 +321,9 @@ func TestUnitText(t *testing.T) {
 	if !strings.Contains(u, "[Install]\nWantedBy=graphical-session.target\n") {
 		t.Error("no [Install]")
 	}
+	if strings.Contains(u, "GOMEMLIMIT") { // a tight limit makes the GC run back to back
+		t.Error("the unit sets GOMEMLIMIT")
+	}
 }
 
 // No Wayland is exit 78, the code the unit won't restart on.

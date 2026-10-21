@@ -19,7 +19,10 @@ import (
 
 // unitText is the systemd user unit that runs exe. A crash restarts it, but
 // five starts within a minute stop trying, and exit 78 (no Wayland) never
-// restarts.
+// restarts. GOGC=50 keeps the heap within half again of what's live. No
+// GOMEMLIMIT: the runtime's own overhead (stacks, GC metadata) is ~8 MiB, so
+// a 16 MiB limit left the heap no room and the GC ran back to back, up to
+// half a core.
 func unitText(exe string) string {
 	return `[Unit]
 Description=Ember: a dynamic island for Claude Code, music and the clock
@@ -34,7 +37,7 @@ Restart=always
 RestartSec=3
 RestartPreventExitStatus=` + strconv.Itoa(exNoWayland) + `
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin
-Environment=GOGC=50 GOMEMLIMIT=16MiB
+Environment=GOGC=50
 
 [Install]
 WantedBy=graphical-session.target
