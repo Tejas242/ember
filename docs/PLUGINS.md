@@ -48,6 +48,20 @@ docs  = "https://example.com/pomodoro"    # a string is a URL, opened with xdg-o
 again = ["pomodoro-cli", "restart"]       # an array is a command, run without a shell
 ```
 
+A plugin with a dashboard may ask to be opened by a click on Ember in the open card, in one context:
+
+```toml
+[opens]
+ember = "music"    # music: while a song plays; idle: while none does
+hint  = "Vibe"     # ≤ 16: the label beside Ember under the pointer
+```
+
+It needs the `entry` grant (below). Only one plugin owns a context (the first by name, of those granted), and
+Ember's click never opens a page while it has a job of its own: a session waiting on you, or a Done you haven't
+seen. Ember draws the hint itself: the label beside it while the pointer is on it, a quiet control in the card's
+music row for `music`, and once ever, the first time the card opens while Claude works and the context holds,
+"Click me to vibe" under it (the hint, lower-cased).
+
 Ember starts every plugin it finds when it starts (and one that appears, within a minute), in the plugin's directory, with `EMBER_VERSION` and
 `EMBER_PLUGIN_DIR` in its environment, and stops it when the island stops. `[plugins.<name>] enabled = false`
 in Ember's config turns one off (see [CONFIG.md](CONFIG.md)). `ember plugins` lists them, and `ember doctor` says
@@ -210,6 +224,14 @@ capitals, divided by hairlines.
 | `columns` | `split` 0.3..0.7, `a` and `b`: two widgets (not a hero, not columns) side by side, a hairline between |
 | `note` | `icon`, `text ≤ 80`, `mood`: one quiet line |
 
+The dashboard itself may also say:
+
+| field | | |
+| --- | --- | --- |
+| `size` | `page` \| `card` | `page` (the default) is the wide page; `card` is the card's width, in the card's place |
+| `sticky` | bool | the pointer leaving doesn't close it (a click on its background, a right-click or `ember dash` still do) |
+| `ends` | `{media_idle_s ≤ 600, after_claude: "song_end"}` | it closes itself once the music has been paused (or its player gone) that many seconds, and, with `after_claude`, at the end of the song playing when Claude finishes a turn while it's open |
+
 `title` is ≤ 32 for every widget and the dashboard (default the plugin's name); at most 12 widgets. Every widget
 but the hero can fold to one line (a chevron, its title, its `summary ≤ 80`): `fold: true`, `false`, or `"auto"`
 (folded from the bottom up until the page fits the screen); a click unfolds it. A new `dashboard` replaces the
@@ -219,6 +241,32 @@ last; Ember sends `dash` when it opens or closes, so a plugin can send updates o
 Ember's poses in a hero: `calm`, `attentive` (reading), `sidelong` (a look at the button), `game` (eyes front,
 determined: needs the `focus` grant), `sleepy`, `proud`. Its `react` (`hop`, `nod`, `celebrate`) plays once as the
 page opens, through the same limits as a `cheer`. Without a hero, Ember stays in the pill.
+
+#### Stages
+
+A page whose first widget is a `stage` is a stage: Ember stands big on the left, on a floor of light, and dances
+to the song with its own sense of rhythm; the page's other widgets fill the space around it, in fixed places (the
+`sessions` line along the top, the `media` strip along the bottom, the rest in a column beside Ember). Ember draws
+everything from its own data: a plugin says what kind of thing goes where, never a colour or a pixel, and what
+Ember hears (the song's levels, Claude's sessions) never leaves it.
+
+```json
+{"type":"dashboard","title":"Vibe","size":"card","sticky":true,"ends":{"media_idle_s":120,"after_claude":"song_end"},"widgets":[{"kind":"stage","ember":{"dance":"music","sing":true},"light":"audio","haze":"cover"},{"kind":"sessions","style":"line"},{"kind":"timed_text","media_key":"8f2c41d07a9e","state":"ready","lines":[{"t_ms":44000,"text":"the kettle sings at seven"},{"t_ms":47400,"text":""},{"t_ms":49000,"text":"a small flame keeps the time"}]},{"kind":"audio","style":"ribbon","tint":"cover"},{"kind":"media"}]}
+```
+
+| widget | fields |
+| --- | --- |
+| `stage` | first, and only once: `ember` `{dance: music \| still, sing, pose: calm \| attentive \| sleepy}` (`music`: it dances on the beat it hears, sways to a song without one, and with `sing` mouths along with the timed text; `still`: it listens), `light` (`audio`: a pool of the cover's light that breathes with the low end; `still`; `none`), `haze` (`cover`: the cover's colours across the stage; `none`). Ember drops the dance whenever something waits on you, a turn failed, the screen is shared, or `[ember] motion = "calm"` |
+| `timed_text` | words on a clock: karaoke, subtitles, a guided script. `lines` ≤ 400 × `{t_ms, text ≤ 160, words ≤ 40 × {t_ms, n}}` (a line's `text` "" is a break: dots fill over it; `words` time `n` characters each), `mode` (`synced`: the line being said, lit at its pace, the last drifting up and the next waiting; `stanzas`: four lines at a time, paged through the media's length), `state` (`loading`, `ready`, `none`, `instrumental`, `spoken`: the media's title stands in, over the `audio` ribbon if there is one; `spoken` adds the time left), `caption ≤ 60`. Its clock is the media playhead, when `media_key` is the current media event's (the words of another song never show), or its own `clock` `{pos_ms, at_ms, rate 0..4}`. Ember sorts and clamps the lines (60 KiB of words in all); scrolling over them moves them a quarter second earlier or later, remembered for that media |
+| `media` | the song playing, from Ember's own data: the cover (a click plays or pauses), title, artist, time, a hairline of progress |
+| `sessions` | `style: "line"`: Claude's sessions in one line, from Ember's own data (the plugin never sees them): at work, or done or stopped with Claude's last words and a way back to it |
+| `audio` | `style: "ribbon"`, `tint` (`cover` \| `quiet`): the last few seconds of the song as mirrored bars, newest brightest. The levels never leave Ember |
+| `countdown` | `title ≤ 32` (small capitals), `text ≤ 40`, `to: "media_end"`: the time left in the media playing, a hairline draining with it (an ad's "Back to the music in 0:23") |
+
+On a stage a request from Claude still replaces everything at once; the stage is there again once it's answered.
+These widgets are for stages: one of each on a page, never in `columns`, never folded. A page with timed text is
+updated at most once a second (coalesced). While the screen is shared and `[privacy] discreet` is on, timed text
+shows no words and the sessions line only the project.
 
 **`cheer`**: asks Ember to react (capability `cheer`): `{"type":"cheer","kind":"hop"}`, `nod` or `celebrate`.
 `hop` and `nod` are reactions to something that just happened (a test passed, a letter solved): at most one
@@ -235,10 +283,11 @@ milestone): at most once an hour per plugin. Neither is a flourish, and Ember ma
 
 | message | when |
 | --- | --- |
-| `{"type":"hello","v":1,"ember":"v1.4.0","caps":[…]}` | first, always |
+| `{"type":"hello","v":1,"ember":"v1.4.0","caps":[…],"grants":[…]}` | first, always; `grants` are what the config grants it |
 | `{"type":"click","target":"docs"}` | a click on its moment or row: the target's name, or `"row"` for a row without one |
 | `{"type":"button","card":"break","key":"break"}` | a button on its card; the card has closed |
-| `{"type":"dash","state":"open"}` | its dashboard opened (`"close"`: it closed) |
+| `{"type":"dash","state":"open"}` | its dashboard opened (`"close"`: it closed, with `reason`: `user`, `pointer`, `media_idle`, `song_end` or `other`) |
+| `{"type":"media","media_key":"8f2c41d07a9e","player":"spotify","title":"…","artist":"…","album":"…","length_ms":204000,"pos_ms":51000,"at_ms":1792234567000,"playing":true,"url":"…","track_id":"…"}` | the song playing (the `media` grant): only while its dashboard is open, once as it opens and then when it changes (a new song, play, pause, a seek); without `media_key`, nothing plays. Nothing else about your listening reaches a plugin |
 | `{"type":"tool","payload":{…}}` | a message from the plugin's own tool (below) |
 | `{"type":"stop"}` | the island is stopping: exit within 2 seconds (then SIGTERM, then SIGKILL) |
 
@@ -251,7 +300,7 @@ the same, for the plugin named edge.) A payload is at most 60 KiB.
 
 ### Grants
 
-Three things a plugin can do reach past its own line, so the user grants them, in Ember's config:
+Five things a plugin can do reach past its own line, so the user grants them, in Ember's config:
 
 ```toml
 [plugins.edge]
@@ -259,8 +308,10 @@ grants = ["critical", "badge", "focus"]
 ```
 
 `critical` lets its line outrank Claude at work (never a request waiting on you) and its cards come first;
-`badge` lets its badge sit on the clock; `focus` lets its line set Ember's game face. Without the grant the
-field is ignored (`critical` reads as `high`). `ember plugins` and doctor show each plugin's grants. A
+`badge` lets its badge sit on the clock; `focus` lets its line set Ember's game face; `media` sends it `media`
+events (the song playing) while its page is open, and nothing while it's closed; `entry` lets a click on Ember
+open its page (`[opens]`). Without the grant the field is ignored (`critical` reads as `high`), no media event
+is sent, and Ember's click stays Ember's. `ember plugins` and doctor show each plugin's grants. A
 manifest may ask with `grants = [...]`; that is a request shown in `ember plugins`, never a grant.
 
 ### Vocabulary
@@ -278,7 +329,7 @@ manifest may ask with `grants = [...]`; that is a request shown in `ember plugin
 | --- | --- | --- |
 | a line | 64 KiB | violation |
 | `status`, `row` | 10 a second | coalesced: the latest wins |
-| `dashboard` | 4 a second | coalesced: the latest wins |
+| `dashboard` | 4 a second; 1 a second with `timed_text` | coalesced: the latest wins |
 | `moment` | 1 every 10 seconds | dropped |
 | `card` | 3 open, 1 new a second | dropped, a violation |
 | `cheer` | `hop`/`nod` 1 every 5 seconds, `celebrate` 1 an hour | dropped |
@@ -336,6 +387,12 @@ err = h.Stop()
   above (a hero ring, column bars, a banded line, a heatmap, an agenda, folding). During a contest round it uses
   all three grants: its line outranks Claude at work, a padlock sits on the clock, and Ember wears its game face.
   `ember install` sets it up, and grants those three, only when edge is installed.
+- `plugins/vibe` (Go, shipped in Ember's binary as `ember plugin vibe`): click Ember in the card while a song
+  plays and the card becomes a stage, Ember dancing beside the song's words. The plugin only finds the words (an
+  `.lrc` beside the file, a cache in `~/.cache/ember/lyrics`, then LRCLIB, asked only when the stage opens) and
+  tells a song from an ad or a talk; Ember draws the rest, from a `stage`, `timed_text`, `sessions`, `audio` and
+  `media`. It opens from `[opens] ember = "music"` with the `entry` and `media` grants, which `ember install`
+  writes. `[vibe] lyrics = false` in the config keeps it off the network.
 
 ## The schema
 

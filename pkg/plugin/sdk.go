@@ -16,9 +16,10 @@ import (
 // its hello, the events it sends, and the messages to send it. Its methods
 // are safe to call from any goroutine.
 type Plugin struct {
-	Name  string   // this plugin's name, as its manifest has it
-	Ember string   // Ember's version
-	Caps  []string // the capabilities Ember granted
+	Name   string   // this plugin's name, as its manifest has it
+	Ember  string   // Ember's version
+	Caps   []string // the capabilities Ember granted
+	Grants []string // what the user's config grants it (media, entry, …)
 
 	mu     sync.Mutex
 	w      io.Writer
@@ -63,7 +64,7 @@ func Serve(name string, in io.Reader, out io.Writer, fn func(p *Plugin) error) e
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	p := &Plugin{Name: name, Ember: hello.Ember, Caps: hello.Caps, w: out, events: make(chan Event, 64), ctx: ctx}
+	p := &Plugin{Name: name, Ember: hello.Ember, Caps: hello.Caps, Grants: hello.Grants, w: out, events: make(chan Event, 64), ctx: ctx}
 	if err := p.send("hello", Hello{V: Version, Name: name}); err != nil {
 		return err
 	}
@@ -82,7 +83,7 @@ func Serve(name string, in io.Reader, out io.Writer, fn func(p *Plugin) error) e
 			switch ev.Type {
 			case "stop":
 				return
-			case "click", "button", "dash", "tool":
+			case "click", "button", "dash", "tool", "media":
 				select {
 				case p.events <- ev:
 				default: // the plugin isn't reading its events: it misses this one
@@ -94,7 +95,9 @@ func Serve(name string, in io.Reader, out io.Writer, fn func(p *Plugin) error) e
 }
 
 // Events are what Ember tells the plugin: clicks, buttons, its dashboard
-// opening and closing, its tool's messages. The channel closes when Ember says stop.
+// opening and closing (with why it closed), its tool's messages, and, with
+// the media grant while its page is open, the song playing. The channel
+// closes when Ember says stop.
 func (p *Plugin) Events() <-chan Event { return p.events }
 
 // Context ends when Ember says stop (or stops listening).
@@ -103,6 +106,9 @@ func (p *Plugin) Context() context.Context { return p.ctx }
 // Can says whether Ember granted a capability. A message that needs one
 // Ember didn't grant is dropped by Ember (and counted against the plugin).
 func (p *Plugin) Can(capability string) bool { return slices.Contains(p.Caps, capability) }
+
+// Granted says whether the user granted the plugin a grant (media, entry, …).
+func (p *Plugin) Granted(grant string) bool { return slices.Contains(p.Grants, grant) }
 
 // ErrNotGranted: the message needs a capability Ember didn't grant.
 var ErrNotGranted = errors.New("plugin: capability not granted")

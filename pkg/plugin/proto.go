@@ -54,6 +54,25 @@ const (
 	GrantCritical = "critical" // its line may outrank Claude at work; its cards come first
 	GrantBadge    = "badge"    // its badge may sit on the clock
 	GrantFocus    = "focus"    // its line may set Ember's game face
+	GrantMedia    = "media"    // media events (the song playing) while its page is open
+	GrantEntry    = "entry"    // its page opens from a click on Ember in a context ([opens] in its manifest)
+)
+
+// Grants is every grant, in order.
+var Grants = []string{GrantCritical, GrantBadge, GrantFocus, GrantMedia, GrantEntry}
+
+// Contexts a plugin's page may open from, on a click on Ember in the card
+// ([opens] ember = "…" in its manifest, with the entry grant): music while a
+// song plays, idle while none does.
+var Contexts = []string{"music", "idle"}
+
+// Close reasons a dash close event carries.
+const (
+	CloseUser      = "user"       // you closed it: a click on its background, a right-click, its way back, ember dash
+	ClosePointer   = "pointer"    // the pointer left it (not on a sticky page)
+	CloseMediaIdle = "media_idle" // ends.media_idle_s: the music paused that long, or its player went
+	CloseSongEnd   = "song_end"   // ends.after_claude: Claude finished while it was open, and the song ended
+	CloseOther     = "other"      // another page opened, or the plugin took it back
 )
 
 // ChipStates are a chip's states: done (filled green), tried (ringed red),
@@ -209,10 +228,48 @@ type HeroRing struct {
 // HeroEmber is how Ember stands in the hero's ring: its mood, a pose
 // (calm | attentive | sidelong | game | sleepy | proud), and a reaction when
 // the dashboard opens (hop | nod | celebrate, through Ember's gate).
+//
+// On a stage it is Ember on the stage instead: Dance (music: with the song,
+// on the host's own beat; still: it listens) and Sing (along with the
+// timed text's line, while it dances), and Pose (calm, attentive: listening
+// to words; sleepy: waiting something out).
 type HeroEmber struct {
 	Mood  string `json:"mood,omitempty"`
 	Pose  string `json:"pose,omitempty"`
 	React string `json:"react,omitempty"`
+	Dance string `json:"dance,omitempty"` // stage: music | still
+	Sing  bool   `json:"sing,omitempty"`  // stage: sings along with the timed text
+}
+
+// TimedLine is one line of timed text: when it starts, its words (≤ 160;
+// "" is a break), and optionally when each word starts, as N characters of
+// the line from TMs.
+type TimedLine struct {
+	TMs   int64       `json:"t_ms"`
+	Text  string      `json:"text"`
+	Words []TimedWord `json:"words,omitempty"`
+}
+
+// TimedWord is one word of a timed line: N characters, from TMs.
+type TimedWord struct {
+	TMs int64 `json:"t_ms"`
+	N   int   `json:"n"`
+}
+
+// Clock is a timed text's own playhead, when it doesn't follow the media:
+// at AtMs it was at PosMs, and it runs at Rate (0..4, default 1).
+type Clock struct {
+	PosMs int64   `json:"pos_ms"`
+	AtMs  int64   `json:"at_ms"`
+	Rate  float64 `json:"rate,omitempty"`
+}
+
+// Ends are when a page closes itself: the music paused (or its player gone)
+// MediaIdleS seconds (≤ 600), and, with AfterClaude "song_end", at the end
+// of the song playing when Claude finishes a turn while the page is open.
+type Ends struct {
+	MediaIdleS  float64 `json:"media_idle_s,omitempty"`
+	AfterClaude string  `json:"after_claude,omitempty"`
 }
 
 // HeroStat is the hero's number at the top right, and its caption.
@@ -252,6 +309,15 @@ type Step struct {
 //   - agenda: Items (at_ms, title, tag, tag_mood, chips), DayEnds, Empty, Caption
 //   - columns: Split, A, B (neither a hero nor columns)
 //   - note: Icon, Text, Mood
+//   - stage: Ember (dance, sing, pose), Light (audio | still | none), Haze (cover | none): first, at most one
+//   - timed_text: MediaKey or Clock, Lines, Mode (synced | stanzas), State (loading | ready | none | instrumental | spoken), Caption
+//   - media: the song playing, from Ember's own data, with play/pause
+//   - sessions: Style (line): Claude's state, from Ember's own data
+//   - audio: Style (ribbon), Tint (cover | quiet): the song's levels, which never leave Ember
+//   - countdown: Title, Text, To (media_end): a hairline draining to the end of the media playing
+//
+// The kinds after note are for stage pages (docs/PLUGINS.md, Stages); at
+// most one of each on a page, never in columns, never folded.
 //
 // Every kind but hero may fold to one line: Fold true, false or "auto"
 // (folded from the bottom up until the dashboard fits), showing Summary.
@@ -299,6 +365,17 @@ type Widget struct {
 	Step    *Step      `json:"step,omitempty"`
 	Buttons []Button   `json:"buttons,omitempty"`
 
+	Light    string      `json:"light,omitempty"`     // stage
+	Haze     string      `json:"haze,omitempty"`      // stage
+	MediaKey string      `json:"media_key,omitempty"` // timed_text: the media event's key it belongs to
+	Lines    []TimedLine `json:"lines,omitempty"`     // timed_text
+	Mode     string      `json:"mode,omitempty"`      // timed_text
+	State    string      `json:"state,omitempty"`     // timed_text
+	Clock    *Clock      `json:"clock,omitempty"`     // timed_text
+	Style    string      `json:"style,omitempty"`     // sessions, audio
+	Tint     string      `json:"tint,omitempty"`      // audio
+	To       string      `json:"to,omitempty"`        // countdown
+
 	Folded string `json:"-"` // after decoding: yes | no | auto
 }
 
@@ -306,6 +383,20 @@ type Widget struct {
 type Dashboard struct {
 	Title   string   `json:"title,omitempty"`
 	Widgets []Widget `json:"widgets"`
+	Size    string   `json:"size,omitempty"`   // page (the default) | card: the card's width, in the card's place
+	Sticky  bool     `json:"sticky,omitempty"` // the pointer leaving doesn't close it
+	Ends    *Ends    `json:"ends,omitempty"`
+}
+
+// Timed says whether the page carries timed text (its updates go at most
+// once a second).
+func (d *Dashboard) Timed() bool {
+	for _, w := range d.Widgets {
+		if w.Kind == "timed_text" {
+			return true
+		}
+	}
+	return false
 }
 
 // Cheer asks Ember to react: hop | nod | celebrate.
@@ -329,21 +420,43 @@ type Remove struct {
 
 // HelloEmber is Ember's first line.
 type HelloEmber struct {
-	V     int      `json:"v"`
-	Ember string   `json:"ember"`
-	Caps  []string `json:"caps"`
+	V      int      `json:"v"`
+	Ember  string   `json:"ember"`
+	Caps   []string `json:"caps"`
+	Grants []string `json:"grants,omitempty"` // what the user's config grants it
 }
 
-// Event is something Ember tells a plugin: Type is click, button, dash or
-// stop, and the fields that go with it are set.
+// Media is the song playing, as a media event tells a plugin granted media
+// (only while its page is open, and when it changes). Key is Ember's name
+// for this track on this player: a timed_text's media_key. An event without
+// one says nothing plays.
+type Media struct {
+	Key      string `json:"media_key"`
+	Player   string `json:"player,omitempty"`
+	Title    string `json:"title,omitempty"`
+	Artist   string `json:"artist,omitempty"`
+	Album    string `json:"album,omitempty"`
+	URL      string `json:"url,omitempty"`      // the track's own address: file:// for a local file
+	TrackID  string `json:"track_id,omitempty"` // the player's id for it (mpris:trackid)
+	LengthMs int64  `json:"length_ms"`
+	PosMs    int64  `json:"pos_ms"` // the playhead at AtMs
+	AtMs     int64  `json:"at_ms"`
+	Playing  bool   `json:"playing"`
+}
+
+// Event is something Ember tells a plugin: Type is click, button, dash,
+// tool, media or stop, and the fields that go with it are set.
 type Event struct {
 	Type   string `json:"type"`
 	Target string `json:"target,omitempty"` // click
 	Card   string `json:"card,omitempty"`   // button
 	Key    string `json:"key,omitempty"`    // button
 	State  string `json:"state,omitempty"`  // dash: open | close
+	Reason string `json:"reason,omitempty"` // dash close: user | pointer | media_idle | song_end | other
 
 	Payload json.RawMessage `json:"payload,omitempty"` // tool: what the plugin's tool sent
+
+	*Media // media: the song (nil: nothing plays)
 }
 
 // ---- decoding ----
@@ -614,13 +727,27 @@ func (c *Card) fit() error {
 
 func (d *Dashboard) fit() error {
 	d.Title = Cut(d.Title, 32)
+	d.Size = enum(d.Size, "page", "page", "card")
+	if e := d.Ends; e != nil {
+		e.MediaIdleS, e.AfterClaude = clamp(e.MediaIdleS, 0, 600), enum(e.AfterClaude, "", "", "song_end")
+		if e.MediaIdleS == 0 && e.AfterClaude == "" {
+			d.Ends = nil
+		}
+	}
 	if len(d.Widgets) > 12 {
 		d.Widgets = d.Widgets[:12]
 	}
 	ws := d.Widgets[:0]
+	seen := map[string]bool{}
 	for i, w := range d.Widgets {
-		if w.Kind == "hero" && i > 0 {
-			continue // a hero comes first, once
+		if (w.Kind == "hero" || w.Kind == "stage") && i > 0 {
+			continue // a hero or a stage comes first, once
+		}
+		if slices.Contains(stageKinds, w.Kind) {
+			if seen[w.Kind] {
+				continue // one of each on a page
+			}
+			seen[w.Kind] = true
 		}
 		if w.fit(true) {
 			ws = append(ws, w)
@@ -631,16 +758,32 @@ func (d *Dashboard) fit() error {
 }
 
 var itemLimit = map[string]int{"stats": 4, "bars": 12, "chips": 12, "list": 8, "agenda": 5,
-	"sparkline": 0, "line": 0, "heatmap": 0, "columns": 0, "note": 0, "hero": 0}
+	"sparkline": 0, "line": 0, "heatmap": 0, "columns": 0, "note": 0, "hero": 0,
+	"stage": 0, "timed_text": 0, "media": 0, "sessions": 0, "audio": 0, "countdown": 0}
+
+// stageKinds are the widgets for stage pages: one of each at most, at the
+// top level, never folded.
+var stageKinds = []string{"stage", "timed_text", "media", "sessions", "audio", "countdown"}
+
+// Timed text's limits.
+const (
+	MaxTimedLines = 400
+	MaxTimedText  = 60 << 10 // bytes of words in all
+)
 
 // fit makes a widget fit; false for a kind this version doesn't draw. top
 // is false for a column's children: no hero, no columns there.
 func (w *Widget) fit(top bool) bool {
 	n, ok := itemLimit[w.Kind]
-	if !ok || (!top && (w.Kind == "hero" || w.Kind == "columns")) {
+	staged := slices.Contains(stageKinds, w.Kind)
+	if !ok || (!top && (w.Kind == "hero" || w.Kind == "columns" || staged)) {
 		return false
 	}
-	w.Title, w.Caption, w.Summary = Cut(w.Title, 32), Cut(w.Caption, 40), Cut(w.Summary, 80)
+	capN := 40
+	if w.Kind == "timed_text" {
+		capN = 60
+	}
+	w.Title, w.Caption, w.Summary = Cut(w.Title, 32), Cut(w.Caption, capN), Cut(w.Summary, 80)
 	switch f := w.Fold.(type) {
 	case bool:
 		w.Folded = map[bool]string{true: "yes", false: "no"}[f]
@@ -649,7 +792,7 @@ func (w *Widget) fit(top bool) bool {
 	default:
 		w.Folded = "no"
 	}
-	if w.Kind == "hero" || !top {
+	if w.Kind == "hero" || !top || staged {
 		w.Folded = "no"
 	}
 	w.Fold = nil
@@ -706,6 +849,22 @@ func (w *Widget) fit(top bool) bool {
 		if w.Text == "" {
 			return false
 		}
+	case "stage":
+		if w.Ember == nil {
+			w.Ember = &HeroEmber{}
+		}
+		e := w.Ember
+		e.Mood, e.Pose, e.React = mood(e.Mood, Quiet), enum(e.Pose, "calm", "calm", "attentive", "sleepy"), ""
+		e.Dance = enum(e.Dance, "music", "music", "still")
+		w.Light, w.Haze = enum(w.Light, "audio", "audio", "still", "none"), enum(w.Haze, "cover", "cover", "none")
+	case "timed_text":
+		w.fitTimed()
+	case "sessions":
+		w.Style = enum(w.Style, "line", "line")
+	case "audio":
+		w.Style, w.Tint = enum(w.Style, "ribbon", "ribbon"), enum(w.Tint, "cover", "cover", "quiet")
+	case "countdown":
+		w.Text, w.To = Cut(w.Text, 40), enum(w.To, "media_end", "media_end")
 	case "hero":
 		w.Aside, w.Sub, w.SubIcon, w.SubMood = Cut(w.Aside, 12), Cut(w.Sub, 60), icon(w.SubIcon), mood(w.SubMood, Quiet)
 		w.Chips, w.Buttons = chips(w.Chips), buttons(w.Buttons, 2)
@@ -717,6 +876,7 @@ func (w *Widget) fit(top bool) bool {
 			e.Mood = mood(e.Mood, Quiet)
 			e.Pose = enum(e.Pose, "calm", "calm", "attentive", "sidelong", "game", "sleepy", "proud")
 			e.React = enum(e.React, "", "hop", "nod", "celebrate")
+			e.Dance, e.Sing = "", false
 		}
 		if st := w.Stat; st != nil {
 			st.Value, st.Caption = Cut(st.Value, 6), Cut(st.Caption, 16)
@@ -732,7 +892,25 @@ func (w *Widget) fit(top bool) bool {
 		}
 	}
 	if w.Kind != "hero" {
-		w.Ring, w.Ember, w.Stat, w.Step, w.Chips, w.Buttons = nil, nil, nil, nil, nil, nil
+		w.Ring, w.Stat, w.Step, w.Chips, w.Buttons = nil, nil, nil, nil, nil
+		if w.Kind != "stage" {
+			w.Ember = nil
+		}
+	}
+	if w.Kind != "stage" {
+		w.Light, w.Haze = "", ""
+	}
+	if w.Kind != "timed_text" {
+		w.MediaKey, w.Lines, w.Mode, w.State, w.Clock = "", nil, "", "", nil
+	}
+	if w.Kind != "sessions" && w.Kind != "audio" {
+		w.Style = ""
+	}
+	if w.Kind != "audio" {
+		w.Tint = ""
+	}
+	if w.Kind != "countdown" {
+		w.To = ""
 	}
 	if w.Kind != "columns" {
 		w.A, w.B = nil, nil
@@ -787,6 +965,60 @@ func (w *Widget) fit(top bool) bool {
 	}
 	w.Items = items
 	return true
+}
+
+// fitTimed makes timed text fit: its lines sorted by time and cut to their
+// limits (400 lines, 160 characters each, 40 timed words a line, 60 KiB of
+// words in all), a word never before its line.
+func (w *Widget) fitTimed() {
+	w.MediaKey = Cut(w.MediaKey, 64)
+	w.Mode = enum(w.Mode, "synced", "synced", "stanzas")
+	w.State = enum(w.State, "ready", "loading", "ready", "none", "instrumental", "spoken")
+	if c := w.Clock; c != nil {
+		c.PosMs, c.AtMs = max(c.PosMs, 0), max(c.AtMs, 0)
+		if c.Rate == 0 {
+			c.Rate = 1
+		}
+		c.Rate = clamp(c.Rate, 0, 4)
+	}
+	if len(w.Lines) > MaxTimedLines {
+		w.Lines = w.Lines[:MaxTimedLines]
+	}
+	total := 0
+	for i := range w.Lines {
+		l := &w.Lines[i]
+		l.TMs, l.Text = max(l.TMs, 0), Cut(l.Text, 160)
+		if total += len(l.Text); total > MaxTimedText {
+			w.Lines = w.Lines[:i]
+			break
+		}
+		if len(l.Words) > 40 {
+			l.Words = l.Words[:40]
+		}
+		n := utf8.RuneCountInString(l.Text)
+		for j := range l.Words {
+			wd := &l.Words[j]
+			wd.TMs, wd.N = max(wd.TMs, l.TMs), int(clamp(float64(wd.N), 0, float64(n)))
+		}
+		slices.SortStableFunc(l.Words, func(a, b TimedWord) int { return cmpInt(a.TMs, b.TMs) })
+		if len(l.Words) == 0 {
+			l.Words = nil
+		}
+	}
+	slices.SortStableFunc(w.Lines, func(a, b TimedLine) int { return cmpInt(a.TMs, b.TMs) })
+	if len(w.Lines) == 0 {
+		w.Lines = nil
+	}
+}
+
+func cmpInt(a, b int64) int {
+	switch {
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	}
+	return 0
 }
 
 // Line encodes v as one protocol line, newline included.

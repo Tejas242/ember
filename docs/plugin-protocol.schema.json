@@ -46,6 +46,19 @@
               "cheer"
             ]
           }
+        },
+        "grants": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "critical",
+              "badge",
+              "focus",
+              "media",
+              "entry"
+            ]
+          },
+          "description": "What the user's config grants the plugin."
         }
       },
       "required": [
@@ -106,6 +119,16 @@
             "open",
             "close"
           ]
+        },
+        "reason": {
+          "enum": [
+            "user",
+            "pointer",
+            "media_idle",
+            "song_end",
+            "other"
+          ],
+          "description": "Why it closed (with state close)."
         }
       },
       "required": [
@@ -522,7 +545,13 @@
             "heatmap",
             "agenda",
             "columns",
-            "note"
+            "note",
+            "stage",
+            "timed_text",
+            "media",
+            "sessions",
+            "audio",
+            "countdown"
           ]
         },
         "title": {
@@ -1120,6 +1149,204 @@
           "required": [
             "text"
           ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "stage"
+            },
+            "ember": {
+              "type": "object",
+              "properties": {
+                "dance": {
+                  "enum": [
+                    "music",
+                    "still"
+                  ]
+                },
+                "sing": {
+                  "type": "boolean"
+                },
+                "pose": {
+                  "enum": [
+                    "calm",
+                    "attentive",
+                    "sleepy"
+                  ]
+                },
+                "mood": {
+                  "$ref": "#/$defs/mood"
+                }
+              }
+            },
+            "light": {
+              "enum": [
+                "audio",
+                "still",
+                "none"
+              ]
+            },
+            "haze": {
+              "enum": [
+                "cover",
+                "none"
+              ]
+            }
+          },
+          "description": "First on the page, once: Ember on a stage."
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "timed_text"
+            },
+            "media_key": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "clock": {
+              "type": "object",
+              "properties": {
+                "pos_ms": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "at_ms": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "rate": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 4
+                }
+              },
+              "required": [
+                "pos_ms",
+                "at_ms"
+              ]
+            },
+            "mode": {
+              "enum": [
+                "synced",
+                "stanzas"
+              ]
+            },
+            "state": {
+              "enum": [
+                "loading",
+                "ready",
+                "none",
+                "instrumental",
+                "spoken"
+              ]
+            },
+            "caption": {
+              "type": "string",
+              "maxLength": 60
+            },
+            "lines": {
+              "type": "array",
+              "maxItems": 400,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "t_ms": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "text": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "words": {
+                    "type": "array",
+                    "maxItems": 40,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "t_ms": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "n": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 160
+                        }
+                      },
+                      "required": [
+                        "t_ms",
+                        "n"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "t_ms",
+                  "text"
+                ]
+              }
+            }
+          },
+          "description": "Words on a clock: the media playhead (media_key) or its own clock. 60 KiB of words in all."
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "media"
+            }
+          },
+          "description": "The song playing, from Ember's own data."
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "sessions"
+            },
+            "style": {
+              "enum": [
+                "line"
+              ]
+            }
+          },
+          "description": "Claude's sessions in one line, from Ember's own data."
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "audio"
+            },
+            "style": {
+              "enum": [
+                "ribbon"
+              ]
+            },
+            "tint": {
+              "enum": [
+                "cover",
+                "quiet"
+              ]
+            }
+          },
+          "description": "The song's last seconds as a ribbon; the levels never leave Ember."
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "countdown"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "to": {
+              "enum": [
+                "media_end"
+              ]
+            }
+          },
+          "description": "Time left in the media playing, with a draining hairline."
         }
       ]
     },
@@ -1139,13 +1366,37 @@
           "items": {
             "$ref": "#/$defs/widget"
           }
+        },
+        "size": {
+          "enum": [
+            "page",
+            "card"
+          ]
+        },
+        "sticky": {
+          "type": "boolean"
+        },
+        "ends": {
+          "type": "object",
+          "properties": {
+            "media_idle_s": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 600
+            },
+            "after_claude": {
+              "enum": [
+                "song_end"
+              ]
+            }
+          }
         }
       },
       "required": [
         "type",
         "widgets"
       ],
-      "description": "The plugin's page (capability dashboard). 4/s, coalesced."
+      "description": "The plugin's page (capability dashboard). 4/s, coalesced; 1/s with timed_text."
     },
     "cheer": {
       "type": "object",
@@ -1215,6 +1466,57 @@
         "what"
       ],
       "description": "Take something back; a card needs its id."
+    },
+    "media": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "media"
+        },
+        "media_key": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Ember's name for this track on this player: a timed_text's media_key. Absent: nothing plays."
+        },
+        "player": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "artist": {
+          "type": "string"
+        },
+        "album": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string",
+          "description": "the track's own address (file:// for a local file)"
+        },
+        "track_id": {
+          "type": "string",
+          "description": "the player's id for the track (mpris:trackid)"
+        },
+        "length_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pos_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "at_ms": {
+          "type": "integer"
+        },
+        "playing": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "description": "The song playing (the media grant): only while the plugin's dashboard is open, as it opens and when it changes."
     }
   },
   "oneOf": [
@@ -1235,6 +1537,9 @@
         },
         {
           "$ref": "#/$defs/tool"
+        },
+        {
+          "$ref": "#/$defs/media"
         },
         {
           "$ref": "#/$defs/stop"

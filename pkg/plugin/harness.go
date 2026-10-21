@@ -18,8 +18,9 @@ import (
 //	defer h.Stop()
 //	st, err := h.Wait("status", time.Second)
 type Harness struct {
-	Name string
-	Caps []string
+	Name   string
+	Caps   []string
+	Grants []string
 
 	in   *io.PipeWriter // the plugin's stdin
 	mu   sync.Mutex
@@ -28,21 +29,30 @@ type Harness struct {
 	new  chan struct{}
 	end  chan error
 	read chan struct{} // closed when the plugin's output has all been read
+	said chan struct{} // closed when Ember's hello has been written: events come after it
 }
 
 // NewHarness starts fn as plugin name, granted caps.
 func NewHarness(name string, caps []string, fn func(p *Plugin) error) *Harness {
+	return NewHarnessWith(name, caps, nil, fn)
+}
+
+// NewHarnessWith starts fn as plugin name, granted caps, and the user's grants.
+func NewHarnessWith(name string, caps, grants []string, fn func(p *Plugin) error) *Harness {
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
-	h := &Harness{Name: name, Caps: caps, in: inW, new: make(chan struct{}, 1), end: make(chan error, 1), read: make(chan struct{})}
+	h := &Harness{Name: name, Caps: caps, Grants: grants, in: inW, new: make(chan struct{}, 1), end: make(chan error, 1), read: make(chan struct{}), said: make(chan struct{})}
 	go func() {
 		err := Serve(name, inR, outW, fn)
 		outW.Close()
 		h.end <- err
 	}()
 	go h.readAll(outR)
-	b, _ := Line("hello", HelloEmber{V: Version, Ember: "test", Caps: caps})
-	go inW.Write(b)
+	b, _ := Line("hello", HelloEmber{V: Version, Ember: "test", Caps: caps, Grants: grants})
+	go func() {
+		inW.Write(b)
+		close(h.said)
+	}()
 	return h
 }
 
@@ -133,6 +143,7 @@ func (h *Harness) Send(ev Event) error {
 	if err != nil {
 		return err
 	}
+	<-h.said
 	_, err = h.in.Write(b)
 	return err
 }
@@ -154,11 +165,21 @@ func (h *Harness) Dash(open bool) error {
 	return h.Send(Event{Type: "dash", State: st})
 }
 
+// DashClosed sends its dashboard closing, and why (CloseUser, …).
+func (h *Harness) DashClosed(reason string) error {
+	return h.Send(Event{Type: "dash", State: "close", Reason: reason})
+}
+
+// Media sends the song playing (nil: nothing plays), as Ember does to a
+// plugin granted media while its page is open.
+func (h *Harness) Media(m *Media) error { return h.Send(Event{Type: "media", Media: m}) }
+
 // Stop says stop, as Ember does when it stops, and waits up to 2 seconds
 // for the plugin to return: what it returned, or an error if it didn't.
 func (h *Harness) Stop() error {
 	b, _ := Line("stop", Event{Type: "stop"})
 	go func() {
+		<-h.said
 		h.in.Write(b)
 		h.in.Close()
 	}()

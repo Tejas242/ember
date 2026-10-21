@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -21,6 +22,8 @@ func FuzzDecode(f *testing.F) {
 		`{"type":"status","text":"` + strings.Repeat("é", 50) + `","progress":1e309}`,
 		`{"type":"dashboard","widgets":[{"kind":"bars","items":[{"label":"a","value":"NaN"}]},{"kind":"sparkline","values":[1e308,-1e308]}]}`,
 		`{"type":"card","id":"x","title":"t","buttons":[{"key":"\u0000","label":"\ud800"}]}`,
+		`{"type":"dashboard","size":"card","sticky":true,"ends":{"media_idle_s":1e999,"after_claude":"song_end"},"widgets":[{"kind":"stage","ember":{"dance":"music","sing":true}},{"kind":"timed_text","media_key":"k","lines":[{"t_ms":9e18,"text":"a","words":[{"t_ms":-1,"n":-5}]},{"t_ms":-1,"text":"\u0000b"}],"clock":{"rate":"x"}}]}`,
+		`{"type":"dashboard","widgets":[{"kind":"timed_text","clock":{"pos_ms":1,"at_ms":2,"rate":1e308}},{"kind":"countdown","to":"x"},{"kind":"audio","tint":"quiet"},{"kind":"media"},{"kind":"sessions"}]}`,
 		`{"type":"remove","what":"card","id":""}`, `{"type":"hello","v":1,"name":"a"}`, `{}`, `null`, `[]`, `"x"`, "{\"type\":\"log\",\"text\":\"\xff\xfe\"}",
 	} {
 		f.Add([]byte(s))
@@ -56,10 +59,33 @@ func FuzzDecode(f *testing.F) {
 			if len(d.Widgets) > 12 {
 				t.Fatalf("%d widgets", len(d.Widgets))
 			}
-			for _, w := range d.Widgets {
+			seen := map[string]bool{}
+			for i, w := range d.Widgets {
 				if len(w.Items) > 12 || len(w.Values) > 120 {
 					t.Fatalf("widget out of limits: %+v", w)
 				}
+				if slices.Contains(stageKinds, w.Kind) {
+					if seen[w.Kind] || (w.Kind == "stage" && i > 0) || w.Folded != "no" {
+						t.Fatalf("stage widget %s twice, not first, or folded", w.Kind)
+					}
+					seen[w.Kind] = true
+				}
+				bytes := 0
+				for j, l := range w.Lines {
+					bytes += len(l.Text)
+					if runes(l.Text) > 160 || len(l.Words) > 40 || l.TMs < 0 || (j > 0 && l.TMs < w.Lines[j-1].TMs) || !utf8.ValidString(l.Text) {
+						t.Fatalf("timed line out of limits: %+v", l)
+					}
+				}
+				if len(w.Lines) > MaxTimedLines || bytes > MaxTimedText {
+					t.Fatalf("timed text out of limits: %d lines, %d bytes", len(w.Lines), bytes)
+				}
+				if c := w.Clock; c != nil && (c.Rate < 0 || c.Rate > 4 || c.PosMs < 0) {
+					t.Fatalf("clock %+v", c)
+				}
+			}
+			if e := d.Ends; e != nil && (e.MediaIdleS < 0 || e.MediaIdleS > 600) {
+				t.Fatalf("ends %+v", e)
 			}
 			return // Item's decoded Num/Text don't write back out: checked above
 		case "log":
@@ -117,4 +143,33 @@ func field(m Message) any {
 		return m.Log
 	}
 	return nil
+}
+
+// FuzzEvent: what a plugin reads from Ember (a media event among them) never
+// makes the SDK panic, and an event written back out reads the same.
+func FuzzEvent(f *testing.F) {
+	for _, s := range []string{
+		`{"type":"media","media_key":"k","player":"p","title":"T","length_ms":1,"pos_ms":2,"at_ms":3,"playing":true}`,
+		`{"type":"media"}`, `{"type":"dash","state":"close","reason":"song_end"}`, `{"type":"button","card":"c","key":"k"}`,
+		`{"type":"media","media_key":5}`, `{"type":"tool","payload":{"a":[1,2]}}`, `{"type":"hello","v":1,"ember":"x","caps":[],"grants":["media"]}`,
+	} {
+		f.Add([]byte(s))
+	}
+	f.Fuzz(func(t *testing.T, line []byte) {
+		var ev Event
+		if json.Unmarshal(line, &ev) != nil {
+			return
+		}
+		b, err := Line(ev.Type, ev)
+		if err != nil {
+			return // a payload that isn't JSON: the SDK never re-encodes one
+		}
+		var again Event
+		if err := json.Unmarshal(b, &again); err != nil {
+			t.Fatalf("%s: %v", b, err)
+		}
+		if a, b := string(mustJSON(t, ev)), string(mustJSON(t, again)); a != b && ev.Payload == nil {
+			t.Fatalf("not stable:\n%s\n%s", a, b)
+		}
+	})
 }
