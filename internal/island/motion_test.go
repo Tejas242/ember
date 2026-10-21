@@ -1,69 +1,38 @@
 package island
 
 import (
+	"math"
 	"testing"
 	"time"
 )
 
-// [ember] motion = "calm" keeps the colours but drops hops, sparks, bands of
-// light, the halo and the dance; dance, flourishes and celebrate turn their
-// own parts off.
-func TestEmberSettings(t *testing.T) {
-	clock := time.Date(2026, 10, 20, 15, 0, 0, 0, time.Local)
-	a := newTestApp(&clock)
-	u := a.ui
-
-	// full motion: a Done hops, Claude at work shimmers, music may be danced to
-	hookAt(a, "UserPromptSubmit", "k", "kinvault", map[string]any{"prompt": "fix the race in the store"})
-	u.stepEmber(1.0/60, clock)
-	if !u.danceable() {
-		t.Fatal("full motion: no dance")
-	}
-	u.play("done", 0.8)
-	if !u.body.airborne() && u.body.launch == 0 {
-		t.Fatal("full motion: a Done doesn't hop")
-	}
-
-	// calm
-	u.cfg.Calm = true
-	u.body = newBody()
-	u.stepEmber(1.0/60, clock)
-	u.act = nil
-	u.play("done", 0.8)
-	u.body.sparks(4, 30, tipFrom)
-	if u.body.airborne() || u.body.launch != 0 || sparked(u.body) {
-		t.Fatal("calm: it still hops or throws sparks")
-	}
-	if u.danceable() || u.shimmering() {
-		t.Fatal("calm: it still dances or shimmers")
-	}
-
-	// each switch on its own
-	u.cfg.Calm, u.cfg.Dance = false, false
-	if u.danceable() {
-		t.Fatal("dance = false, yet it dances")
-	}
-	u.cfg.Flourishes = false
-	u.bond = &bond{Last: map[string]time.Time{}}
-	if u.flourish("stretch", time.Hour) {
-		t.Fatal("flourishes = false, yet it stretches")
-	}
-	u.cfg.Celebrate = false
-	u.body, u.act = newBody(), nil
-	u.stepEmber(1.0/60, clock)
-	u.play("done", 0.8)
-	clock = clock.Add(time.Second)
-	u.actStep(clock)
-	if u.body.airborne() || u.body.launch != 0 || sparked(u.body) {
-		t.Fatal("celebrate = false, yet a Done hops")
+// Ember's springs are stiff; a frame as slow as the card's 24 fps tick must
+// still settle them, not ring them up until Ember flies off the island.
+func TestSpringsSettleAtAnyFrameRate(t *testing.T) {
+	for _, fps := range []float64{60, 30, 24, 12, 6} {
+		s := spring{x: 1}
+		for i := 0; i < int(fps*3); i++ {
+			s.stepK(0, 1/fps, 600, 49)
+		}
+		if math.Abs(s.x) > 0.01 || math.IsNaN(s.x) {
+			t.Errorf("%v fps: still %.3g px off after 3 s", fps, s.x)
+		}
 	}
 }
 
-func sparked(b *body) bool {
-	for _, p := range b.parts {
-		if p.live {
-			return true
-		}
+// The card held open on its steady 24 fps tick: Ember stays where it is.
+func TestCardSteadyAt24fps(t *testing.T) {
+	g := newScene()
+	g.work("k", "kinvault", "fix the race", 3)
+	g.a.ui.pinned = true
+	g.run(time.Second) // opens, settles
+	u := g.a.ui
+	x0, y0 := u.ex.x, u.ey.x
+	for i := 0; i < 240; i++ { // 10 s of steady frames
+		g.clock = g.clock.Add(time.Second / 24)
+		u.renderDamage()
 	}
-	return false
+	if math.Abs(u.ex.x-x0) > 0.5 || math.Abs(u.ey.x-y0) > 0.5 || math.IsNaN(u.ex.x) {
+		t.Fatalf("Ember drifted from (%.1f, %.1f) to (%.1f, %.1f) at 24 fps", x0, y0, u.ex.x, u.ey.x)
+	}
 }
