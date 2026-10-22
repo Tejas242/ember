@@ -127,6 +127,7 @@ type pointerState struct {
 	stage                   *stageState                // the open stage's own state
 	nudge                   *wordsNudges               // timed words you moved earlier or later, per song
 	keyMemo                 keyMemo                    // the playing track's media key, worked out once
+	offset                  offsetLearner              // the playing song's offset, learnt by ear (lipsync_offset.go)
 	stuck                   string                     // the song whose player's playhead doesn't advance (its media key)
 	playhead                playheadWatch              // what the player has said of its playhead, to tell when it's stuck
 	openCtx                 string                     // the desk when the card opened

@@ -192,3 +192,130 @@ func BenchmarkSingerStep(b *testing.B) {
 		s.step(l)
 	}
 }
+
+// offLine: a line's proposals: the true lag first, then the decoys.
+func offLine(lag float64, decoys ...float64) []offProp {
+	ps := []offProp{{lag, 1}}
+	for _, d := range decoys {
+		ps = append(ps, offProp{d, 0.7})
+	}
+	return ps
+}
+
+func TestOffsetLearnerAgrees(t *testing.T) {
+	var o offsetLearner
+	// lines whose first onset came ~0.5 s late, each with decoys that don't agree
+	lines := [][]offProp{
+		offLine(0.52, 1.3, -0.4), offLine(0.48, 0.9), offLine(0.55, -1.1, 1.2), offLine(0.50, 0.2, 1.25), offLine(0.47),
+	}
+	for i, l := range lines {
+		o.add(l)
+		if i < 3 && o.conf {
+			t.Fatalf("believed after %d lines", i+1)
+		}
+	}
+	v, ok := o.target()
+	if !ok || math.Abs(v-(-0.5+offBias)) > 0.03 {
+		t.Fatalf("target %v %v (est %v, %d lines agree)", v, ok, o.est, o.support)
+	}
+	// a wrong line now and then doesn't move it
+	o.add(offLine(-0.9, 1.1))
+	if v2, _ := o.target(); math.Abs(v2-v) > 0.03 {
+		t.Fatalf("an outlier moved it: %v -> %v", v, v2)
+	}
+	// two clusters as heavy as each other: not believed
+	var p offsetLearner
+	for i := 0; i < 6; i++ {
+		p.add([]offProp{{0.3, 1}, {-0.6, 1}})
+	}
+	if p.conf {
+		t.Fatal("believed with two clusters")
+	}
+	// small and huge
+	var q offsetLearner
+	for i := 0; i < 5; i++ {
+		q.add(offLine(0.07))
+	}
+	if v, ok := q.target(); !ok || v != 0 {
+		t.Fatalf("a few tens of ms should be left alone: %v", v)
+	}
+}
+
+func TestOffsetGlides(t *testing.T) {
+	var o offsetLearner
+	t0 := time.Unix(1000, 0)
+	o.glide(-1.0, t0)
+	last := 0.0
+	for ms := 0; ms <= 4000; ms += 20 {
+		v := o.value(t0.Add(time.Duration(ms) * time.Millisecond))
+		if d := last - v; d > 0.02 { // ~0.5 s a second at most: the words' clock never runs back
+			t.Fatalf("at %d ms it moved %v in 20 ms", ms, d)
+		}
+		last = v
+	}
+	if last != -1 {
+		t.Fatalf("didn't arrive: %v", last)
+	}
+}
+
+func TestGapFinderProposes(t *testing.T) {
+	var g gapFinder
+	at := 10.0
+	feed := func(env, flux float64) {
+		g.take(at, 0.25, source.VoiceFrame{Env: float32(env), Flux: float32(flux)})
+		at += 0.02
+	}
+	for i := 0; i < 40; i++ { // quiet, a drum that dies away, quiet
+		switch {
+		case i == 15:
+			feed(0.8, 1.5)
+		case i > 15 && i < 25:
+			feed(0.8*math.Pow(0.75, float64(i-15)), 0)
+		default:
+			feed(0.05, 0)
+		}
+	}
+	onset := at // the voice comes back and holds
+	feed(0.9, 1.2)
+	for i := 0; i < 30; i++ {
+		feed(0.85, 0.1)
+	}
+	var ps [offProps]offProp
+	// the line is at 0.3 s before the onset on the words' clock, which runs
+	// 0.25 s ahead of the player's: on the player's, the voice came 0.05 s
+	// after the line's time
+	n := g.propose(onset-0.3, 0.25, &ps)
+	if n != 1 || math.Abs(ps[0].r-0.05) > 0.001 || ps[0].w != 1 {
+		t.Fatalf("%d %+v", n, ps[:n])
+	}
+}
+
+func TestLearntOffsetAndNudges(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	g := stageScene(t, testLines, mediaKey, "synced", "ready")
+	u := g.a.ui
+	key := mediaKey(u.track)
+	for i := 0; i < 5; i++ {
+		u.learnOffset(key, offLine(-0.3, 1.0))
+	}
+	g.clock = g.clock.Add(5 * time.Second) // eased in
+	want := time.Duration((0.3 + offBias) * float64(time.Second))
+	if n := u.wordsNudge(key); (n - want).Abs() > time.Millisecond {
+		t.Fatalf("learnt %v, want %v", n, want)
+	}
+	u.nudge, u.offset = nil, offsetLearner{} // the next play
+	if n := u.wordsNudge(key); (n - want).Abs() > time.Millisecond {
+		t.Fatalf("not kept: %v", n)
+	}
+	u.nudgeWords(-1) // you nudge from where it is, and yours wins
+	if n := u.wordsNudge(key); (n - want - 250*time.Millisecond).Abs() > time.Millisecond {
+		t.Fatalf("nudged %v", n)
+	}
+	for i := 0; i < 8; i++ {
+		u.learnOffset(key, offLine(0.6))
+	}
+	g.clock = g.clock.Add(5 * time.Second)
+	if n := u.wordsNudge(key); (n - want - 250*time.Millisecond).Abs() > time.Millisecond {
+		t.Fatalf("learning overrode your nudge: %v", n)
+	}
+}

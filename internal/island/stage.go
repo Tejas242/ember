@@ -952,6 +952,12 @@ func (u *UI) stagePose(ps *pose) {
 	case e.Sing && u.dancing && !u.discreet() && st.idx >= 0 && st.idx < len(st.lines) && sw.text != nil: // it sings along
 		if l, ok := u.singLineOf(st, sw.text); ok {
 			m := u.face.sing.step(l) // it listens all through the line
+			if s := &u.face.sing; s.proposed {
+				s.proposed = false
+				if sw.text.Clock == nil {
+					u.learnOffset(sw.text.MediaKey, s.props[:s.nprops]) // where the line's first syllable came: the song's offset
+				}
+			}
 			if st.fillK >= 0 || u.face.sing.singing(l) {
 				u.singFace(ps, st, m)
 			}
@@ -970,6 +976,9 @@ func (u *UI) singLineOf(st *stageState, tw *proto.Widget) (singLine, bool) {
 		pos -= wordsLead
 	}
 	sl := singLine{text: l.text, at: l.at, posW: pos.Seconds(), audio: u.audio, now: u.now()}
+	if tw.MediaKey != "" && tw.Clock == nil {
+		sl.off = u.wordsNudge(tw.MediaKey).Seconds()
+	}
 	if st.idx+1 < len(st.lines) {
 		sl.next, sl.hasNext = st.lines[st.idx+1].at, true
 	}
@@ -1034,8 +1043,9 @@ func (u *UI) stageFPS() int {
 const maxNudges = 200
 
 type wordsNudges struct {
-	Ms    map[string]int64 `json:"ms"`
-	Order []string         `json:"order"` // oldest first: the oldest is forgotten past maxNudges
+	Ms      map[string]int64 `json:"ms"`
+	Learned map[string]int64 `json:"learned,omitempty"` // offsets Ember learnt by ear (lipsync_offset.go); yours win
+	Order   []string         `json:"order"`             // oldest first: the oldest is forgotten past maxNudges
 }
 
 func nudgesPath() string { return filepath.Join(filepath.Dir(habitsPath()), "words.json") }
@@ -1053,12 +1063,16 @@ func (u *UI) nudges() *wordsNudges {
 	return u.nudge
 }
 
-// wordsNudge is how much earlier (+) the words of a song are shown.
+// wordsNudge is how much earlier (+) the words of a song are shown: as
+// you nudged them, or else as Ember learnt by ear.
 func (u *UI) wordsNudge(key string) time.Duration {
 	if key == "" {
 		return 0
 	}
-	return time.Duration(u.nudges().Ms[key]) * time.Millisecond
+	if ms, ok := u.nudges().Ms[key]; ok {
+		return time.Duration(ms) * time.Millisecond
+	}
+	return u.learnedOffset(key)
 }
 
 // nudgeWords moves the open stage's words a quarter second (dir -1: earlier,
@@ -1070,20 +1084,12 @@ func (u *UI) nudgeWords(dir int) {
 	}
 	n := u.nudges()
 	key := sw.text.MediaKey
-	v := max(-5000, min(5000, n.Ms[key]-int64(dir)*250))
-	if _, had := n.Ms[key]; !had {
-		n.Order = append(n.Order, key)
-		if len(n.Order) > maxNudges {
-			delete(n.Ms, n.Order[0])
-			n.Order = n.Order[1:]
-		}
-	}
+	from := u.wordsNudge(key).Milliseconds() // from where the words are now, learnt or not
+	v := max(-5000, min(5000, from-int64(dir)*250))
+	n.remember(key)
 	n.Ms[key] = v
 	st.nudgeAt = u.now()
-	if b, err := json.Marshal(n); err == nil {
-		os.MkdirAll(filepath.Dir(nudgesPath()), 0o755)
-		save(nudgesPath(), b, 0o644)
-	}
+	n.save()
 }
 
 // ---- shapes ----

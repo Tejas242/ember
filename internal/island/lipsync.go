@@ -123,6 +123,13 @@ type singer struct {
 	segs [16]segment
 	nseg int
 
+	// the song's offset (lipsync_offset.go): a line's likeliest first onsets
+	gaps     gapFinder
+	asked    bool // this line has proposed
+	proposed bool // a line's proposals wait to be taken
+	props    [offProps]offProp
+	nprops   int
+
 	// the mouth: where it is and how fast it's going
 	m, mv mouthShape
 	at    time.Time
@@ -135,13 +142,17 @@ type singLine struct {
 	at, next time.Duration
 	hasNext  bool
 	posW     float64 // the words' clock now, seconds (without the display lead)
+	off      float64 // the offset in that clock (nudged or learnt), seconds: the player's is posW − off
 	audio    *source.Audio
 	now      time.Time
 }
 
 // plan readies the line: its syllables, its pace, the alignment's start.
 func (s *singer) plan(l singLine) {
-	s.key, s.keyAt = l.text, l.at
+	if s.key != "" && !s.asked {
+		s.propose(l.off)
+	}
+	s.key, s.keyAt, s.asked = l.text, l.at, false
 	s.syls = lineSyllables(l.text, s.syls[:0])
 	if len(s.syls) > maxStates-2 {
 		s.syls = s.syls[:maxStates-2]
@@ -166,6 +177,12 @@ func (s *singer) plan(l singLine) {
 	s.cur, s.curAt, s.peak, s.dipAt, s.quietAt = -1, s.start, 0, 0, 0
 	s.lastT = s.start - 0.6 // the singer may start a little before the line's time
 	s.nrec, s.oHist, s.fHist, s.curO = 0, [3]float64{}, [3]float64{}, 0
+}
+
+// propose: the line's likeliest first onsets, for the song's offset.
+func (s *singer) propose(off float64) {
+	s.asked, s.proposed = true, true
+	s.nprops = s.gaps.propose(s.start, off, &s.props)
 }
 
 // mu is syllable j's expected length.
@@ -221,6 +238,7 @@ func (s *singer) listen(l singLine) {
 	}
 	for _, f := range s.frames[:n] {
 		tf := l.posW - l.now.Sub(f.At).Seconds() - voiceLag
+		s.gaps.take(tf, l.off, f)
 		s.take(tf, f)
 		a := 0.015
 		if float64(f.Env) < s.env {
@@ -397,6 +415,9 @@ func (s *singer) step(l singLine) mouthShape {
 		s.listen(l)
 	}
 	t := l.posW
+	if !s.asked && t > s.start+offWin+0.3 { // its onsets near its time are all judged
+		s.propose(l.off)
+	}
 	if !s.heard {
 		s.planned(t)
 	}
