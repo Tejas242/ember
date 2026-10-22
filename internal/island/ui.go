@@ -199,9 +199,10 @@ type frameState struct {
 	second            time.Time
 	washImg           *image.RGBA // the cover's haze, scaled to the music section
 	washKey           string
-	frame             int     // full frames drawn: tweens step once per frame
-	dt                float64 // this frame's time step
-	lastFull          bool    // the last frame was a full repaint (for EMBER_DEBUG)
+	frame             int               // full frames drawn: tweens step once per frame
+	dt                float64           // this frame's time step
+	lastFull          bool              // the last frame was a full repaint (for EMBER_DEBUG)
+	dmg               []image.Rectangle // the last frame's damage, rectangle by rectangle
 	lastPage          string
 	lastChip          string
 	trailOn           bool

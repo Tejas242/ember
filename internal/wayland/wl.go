@@ -254,7 +254,7 @@ type shmBuffer struct {
 	id    uint32
 	data  []byte
 	busy  bool
-	stale image.Rectangle // pixels this buffer hasn't received yet
+	stale []image.Rectangle // pixels this buffer hasn't received yet
 }
 
 func newShmBuffer(c *conn, shm uint32, w, h int) (*shmBuffer, error) {
@@ -272,7 +272,7 @@ func newShmBuffer(c *conn, shm uint32, w, h int) (*shmBuffer, error) {
 		unix.Close(f)
 		return nil, err
 	}
-	b := &shmBuffer{data: data, stale: image.Rect(0, 0, w, h)}
+	b := &shmBuffer{data: data, stale: []image.Rectangle{image.Rect(0, 0, w, h)}}
 	pool := c.newID(nil)
 	c.send(shm, 0, pool, fd(f), int32(size)) // wl_shm.create_pool
 	b.id = c.newID(func(op uint16, d *dec) {

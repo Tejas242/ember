@@ -10,7 +10,8 @@ import (
 // ---- render ----
 
 // renderDamage draws a frame; it reports whether anything is still moving and
-// what changed. Steady frames restore only the live rectangles.
+// what changed (all of it; u.dmg has it as separate rectangles). Steady
+// frames restore only the live rectangles.
 func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 	now := u.now()
 	dt := now.Sub(u.lastTick).Seconds()
@@ -192,12 +193,18 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 		}
 		damage = damage.Union(drawn).Union(u.lastEmber).Intersect(u.cv.img.Rect)
 		u.lastBounds, u.lastEmber = drawn, er // the next full frame clears all of this
+		u.dmg = append(u.dmg[:0], damage)
 		return u.moving(settled, p, sliding, flashing) || leaving > 0, damage
 	}
 	u.stepEmber(dt, now)
 	er := u.emberRect()
-	for _, r := range append([]image.Rectangle{er.Union(u.lastEmber)}, u.liveRects()...) {
+	u.dmg = append(u.dmg[:0], er.Union(u.lastEmber))
+	for _, l := range u.lives {
+		u.dmg = append(u.dmg, l.r)
+	}
+	for i, r := range u.dmg {
 		r = r.Intersect(u.cv.img.Rect)
+		u.dmg[i] = r
 		for yy := r.Min.Y; yy < r.Max.Y; yy++ {
 			o := yy*u.base.Stride + r.Min.X*4
 			copy(u.cv.img.Pix[o:o+r.Dx()*4], u.base.Pix[o:o+r.Dx()*4])
@@ -245,14 +252,6 @@ func (u *UI) transition(v view, key string, now time.Time) {
 	}
 }
 
-func (u *UI) liveRects() []image.Rectangle {
-	rs := make([]image.Rectangle, len(u.lives))
-	for i, l := range u.lives {
-		rs[i] = l.r
-	}
-	return rs
-}
-
 // composite draws src (premultiplied) over dst at strength k, only inside n,
 // shifted dx pixels sideways and dy down. Integer arithmetic throughout; transparent
 // source pixels (most of them) cost one load.
@@ -289,4 +288,12 @@ func composite(dst *canvas, src *image.RGBA, n notch, k float64, dx, dy int) {
 			d[px] = over(v, d[px])
 		}
 	}
+}
+
+func (u *UI) liveRects() []image.Rectangle {
+	rs := make([]image.Rectangle, len(u.lives))
+	for i, l := range u.lives {
+		rs[i] = l.r
+	}
+	return rs
 }

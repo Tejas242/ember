@@ -56,8 +56,12 @@ func (a *app) loop(ctx context.Context) error {
 		} else {
 			st.fast++
 		}
+		rects := a.ui.dmg
+		if !f.lost.Empty() {
+			rects = append(rects, f.lost)
+		}
 		damage = damage.Union(f.lost)
-		if win.Present(a.ui.cv.img, a.ui.shape.bounds().Union(a.ui.bubble), damage, f.animating) {
+		if win.Present(a.ui.cv.img, a.ui.shape.bounds().Union(a.ui.bubble), rects, f.animating) {
 			f.waiting, f.waitingSince = f.animating, time.Now()
 			f.lost = image.Rectangle{}
 		} else {

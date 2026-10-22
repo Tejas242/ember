@@ -3,6 +3,7 @@ package island
 import (
 	"encoding/json"
 	"fmt"
+	"image"
 	"os"
 	"runtime"
 	"runtime/metrics"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Tejas242/ember/internal/source"
+	"github.com/Tejas242/ember/internal/wayland"
 )
 
 // The island's loop on a fake clock: a frame when the last one still moved
@@ -63,8 +65,10 @@ func simLoop(g *galleryScene, d time.Duration, each func(el time.Duration)) simS
 		if each != nil {
 			each(g.clock.Sub(start))
 		}
-		animating, dmg := u.renderDamage()
-		st.damage += dmg.Dx() * dmg.Dy()
+		animating, _ := u.renderDamage()
+		for _, r := range wayland.MergeRects(append([]image.Rectangle(nil), u.dmg...)) {
+			st.damage += r.Dx() * r.Dy()
+		}
 		st.frames++
 		if u.lastFull {
 			st.full++

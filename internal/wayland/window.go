@@ -63,6 +63,7 @@ type Window struct {
 	idleFor                            time.Duration // what it was asked for
 	lastInput                          image.Rectangle
 	lastShape                          uint32
+	dmg, region                        []image.Rectangle // Present's scratch
 }
 
 // Open makes a w×h surface on layer, anchored to the top edge marginTop px down.
@@ -185,7 +186,7 @@ func (win *Window) Raise() {
 	win.configured, win.framePending, win.lastShape = false, false, 0
 	win.lastInput = image.Rect(-1, -1, -1, -1) // the new surface needs its input region
 	for _, b := range win.bufs {
-		b.stale = image.Rect(0, 0, win.w, win.h)
+		b.stale = append(b.stale[:0], image.Rect(0, 0, win.w, win.h))
 	}
 	win.createSurface()
 	c.flush()
@@ -290,10 +291,12 @@ func (win *Window) setInput(r image.Rectangle) {
 	win.lastInput = r
 }
 
-// Present copies img: what changed (damage, plus whatever this buffer missed
-// while the other one was on screen) into a free buffer as ARGB8888, tells
-// the compositor only about that, and commits.
-func (win *Window) Present(img *image.RGBA, input, damage image.Rectangle, wantFrame bool) bool {
+// Present copies img: what changed (the damage rectangles, plus whatever
+// this buffer missed while the others were on screen) into a free buffer as
+// ARGB8888, tells the compositor only about that, and commits. Separate
+// rectangles stay separate (Ember at one end, a meter at the other), so the
+// gap between them is neither copied nor uploaded again.
+func (win *Window) Present(img *image.RGBA, input image.Rectangle, damage []image.Rectangle, wantFrame bool) bool {
 	if !win.configured {
 		return false
 	}
@@ -307,24 +310,27 @@ func (win *Window) Present(img *image.RGBA, input, damage image.Rectangle, wantF
 	if b == nil {
 		return false
 	}
-	damage = damage.Intersect(img.Rect)
-	region := damage.Union(b.stale).Intersect(img.Rect)
-	for y := region.Min.Y; y < region.Max.Y; y++ {
-		o := y*img.Stride + region.Min.X*4
-		swizzle(b.data[o:o+region.Dx()*4], img.Pix[o:o+region.Dx()*4])
+	win.dmg = clipRects(append(win.dmg[:0], damage...), img.Rect)
+	win.region = MergeRects(append(append(win.region[:0], win.dmg...), b.stale...))
+	for _, r := range win.region {
+		r = r.Intersect(img.Rect)
+		for y := r.Min.Y; y < r.Max.Y; y++ {
+			o := y*img.Stride + r.Min.X*4
+			swizzle(b.data[o:o+r.Dx()*4], img.Pix[o:o+r.Dx()*4])
+		}
 	}
-	b.stale = image.Rectangle{}
+	b.stale = b.stale[:0]
 	for _, o := range win.bufs { // the others missed this frame's pixels
-		if o != b {
-			o.stale = o.stale.Union(damage)
+		if o != b && len(win.dmg) > 0 {
+			o.stale = MergeRects(append(o.stale, win.dmg...))
 		}
 	}
 	if input != win.lastInput {
 		win.setInput(input)
 	}
 	win.c.send(win.surface, 1, b.id, int32(0), int32(0)) // attach
-	if !damage.Empty() {
-		win.c.send(win.surface, 9, damage.Min.X, damage.Min.Y, damage.Dx(), damage.Dy())
+	for _, r := range MergeRects(win.dmg) {
+		win.c.send(win.surface, 9, r.Min.X, r.Min.Y, r.Dx(), r.Dy())
 	}
 	if wantFrame && !win.framePending {
 		win.framePending = true
@@ -406,4 +412,46 @@ func swizzle(dst, src []byte) {
 	for i, v := range s {
 		d[i] = v&0xFF00FF00 | v>>16&0xFF | v&0xFF<<16
 	}
+}
+
+// clipRects keeps the parts of rs inside bounds, dropping the empty ones.
+func clipRects(rs []image.Rectangle, bounds image.Rectangle) []image.Rectangle {
+	out := rs[:0]
+	for _, r := range rs {
+		if r = r.Intersect(bounds); !r.Empty() {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// MergeRects folds rectangles that overlap, or whose union costs little more
+// than the two apart, into one; past maxRects it keeps their union. It works
+// in place: the result reuses rs.
+func MergeRects(rs []image.Rectangle) []image.Rectangle {
+	const maxRects = 8
+	area := func(r image.Rectangle) int { return r.Dx() * r.Dy() }
+	rs = clipRects(rs, image.Rect(-1<<20, -1<<20, 1<<20, 1<<20))
+	for merged := true; merged && len(rs) > 1; {
+		merged = false
+		for i := 0; i < len(rs) && !merged; i++ {
+			for j := i + 1; j < len(rs); j++ {
+				u := rs[i].Union(rs[j])
+				if area(u) <= area(rs[i])+area(rs[j])+1024 || rs[i].Overlaps(rs[j]) {
+					rs[i] = u
+					rs = append(rs[:j], rs[j+1:]...)
+					merged = true
+					break
+				}
+			}
+		}
+	}
+	if len(rs) > maxRects {
+		u := rs[0]
+		for _, r := range rs[1:] {
+			u = u.Union(r)
+		}
+		rs = append(rs[:0], u)
+	}
+	return rs
 }
