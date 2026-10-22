@@ -204,6 +204,7 @@ func TestLipSync(t *testing.T) {
 	const faceK = 5
 	hop := 0
 	var ticks []lsTick
+	nofilm := os.Getenv("EMBER_LIPSYNC_NOFILM") != "" // the numbers only
 	aligned := map[string][]float64{}
 	start := g.clock
 	for i := 0; ; i++ {
@@ -228,6 +229,13 @@ func TestLipSync(t *testing.T) {
 		} else {
 			tk.closed = true
 		}
+		if nofilm {
+			ticks = append(ticks, tk)
+			if pos >= truth.Length-0.05 {
+				break
+			}
+			continue
+		}
 		if stage == nil {
 			stageR = vibeCrop(u, 0)
 			stage = newVideo(t, filepath.Join(out, "stage.mp4"), stageR.Dx()*2, stageR.Dy()*2, wav)
@@ -251,13 +259,16 @@ func TestLipSync(t *testing.T) {
 			break
 		}
 	}
-	stage.close()
-	face.close()
-
+	if !nofilm {
+		stage.close()
+		face.close()
+	}
 	rep := lsMeasure(t, truth, ticks, aligned, string(lrc))
 	os.WriteFile(filepath.Join(out, "sync.txt"), []byte(rep), 0o644)
 	t.Log("\n" + rep)
-	lsStrip(t, filepath.Join(out, "strip.png"), truth.Lines[0], ticks)
+	if !nofilm {
+		lsStrip(t, filepath.Join(out, "strip.png"), truth.Lines[0], ticks)
+	}
 }
 
 // dominant is the timeline's strongest shape at t, and its syllable.

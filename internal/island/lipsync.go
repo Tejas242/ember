@@ -484,11 +484,7 @@ func (s *singer) follow(tf float64, o, flux, env float64) {
 	case isPeak:
 		d := peakAt - s.curAt
 		mu := s.mu(s.cur)
-		settleFor := onsetSettle
-		if s.cur == 0 {
-			settleFor = 0.18 // the line's first: the words' time is rough
-		}
-		if d < settleFor {
+		if d < onsetSettle || (s.cur == 0 && d < 0.32 && po > 1.4*s.curO) { // the line's first: its time is rough
 			if po > s.curO {
 				s.curAt, s.curO, s.onsets[s.cur] = peakAt, po, peakAt
 			}
