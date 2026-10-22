@@ -495,10 +495,26 @@ func (u *UI) wordsPos(tw *proto.Widget) (time.Duration, bool) {
 		return time.Duration(c.PosMs)*time.Millisecond + time.Duration(float64(now.Sub(at))*c.Rate), true
 	}
 	t := u.track
-	if t == nil || tw.MediaKey != mediaKey(t) {
+	if t == nil || tw.MediaKey != u.trackKey(t) {
 		return 0, false
 	}
 	return t.Pos(now) + wordsLead + u.wordsNudge(tw.MediaKey), true
+}
+
+// keyMemo remembers the playing track's media key: the stage asks for it a
+// few times a frame, and working it out allocates.
+type keyMemo struct {
+	player, title, artist, album string
+	secs                         int64
+	key                          string
+}
+
+func (u *UI) trackKey(t *Track) string {
+	m, secs := &u.keyMemo, t.Length.Milliseconds()/1000
+	if m.key == "" || m.player != t.Player || m.title != t.Title || m.artist != t.Artist || m.album != t.Album || m.secs != secs {
+		*m = keyMemo{t.Player, t.Title, t.Artist, t.Album, secs, mediaKey(t)}
+	}
+	return m.key
 }
 
 // wordsLead: the words are shown a little ahead of the song, as a singer breathes in first.
