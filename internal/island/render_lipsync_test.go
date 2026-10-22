@@ -143,6 +143,7 @@ type lsTick struct {
 	domSyl int    // whose it is (-1 none)
 	closed bool   // the lips closed (pressed or resting)
 	h      float32
+	off    float64     // the words' offset applied (s, nudged or learnt): the words' clock is t + off
 	img    *image.RGBA // the face, for the strip (only near line 0)
 }
 
@@ -190,6 +191,9 @@ func TestLipSync(t *testing.T) {
 	tr.URL = "file://" + filepath.Join(sd, "song.flac")
 	tr.Position, tr.PosAt = 0, g.clock
 	g.a.ui.audio = &source.Audio{Now: func() time.Time { return g.clock }}
+	if os.Getenv("EMBER_LIPSYNC_NOLEARN") != "" { // a nudge of 0 set by hand: it wins, nothing is learnt
+		g.a.ui.nudges().Ms[mediaKey(tr)] = 0
+	}
 	b := startVibe(t, g)
 	g.a.ui.openDash("vibe")
 	b.settle(false)
@@ -217,12 +221,16 @@ func TestLipSync(t *testing.T) {
 		}
 		u.renderDamage()
 		s := &u.face.sing
+		off := u.wordsNudge(mediaKey(tr)).Seconds()
 		if s.key != "" {
 			aligned[s.key] = append(aligned[s.key][:0], s.onsets...)
+			for k := range aligned[s.key] {
+				aligned[s.key][k] -= off // on the song's clock
+			}
 		}
-		tk := lsTick{t: pos, key: s.key, cur: s.cur, domSyl: -1}
+		tk := lsTick{t: pos, key: s.key, cur: s.cur, domSyl: -1, off: off}
 		if last.mouth == mouthSing {
-			tk.dom, tk.domSyl = s.dominant(pos)
+			tk.dom, tk.domSyl = s.dominant(pos + off)
 			m := last.sing
 			tk.h = m.h * last.mouthK
 			tk.closed = tk.h < 0.07
@@ -264,6 +272,18 @@ func TestLipSync(t *testing.T) {
 		face.close()
 	}
 	rep := lsMeasure(t, truth, ticks, aligned, string(lrc))
+	if o := &u.offset; o.lines > 0 { // what each line offered for the song's offset
+		var ob strings.Builder
+		fmt.Fprintf(&ob, "\nthe offset: lines %d, onsets' lag %+.0f ms, %d lines agree, believed %v\n", o.lines, o.est*1000, o.support, o.conf)
+		for i := 0; i < min(o.lines, offLines); i++ {
+			fmt.Fprintf(&ob, "line %2d proposes", i)
+			for _, p := range o.props[i][:o.np[i]] {
+				fmt.Fprintf(&ob, " %+5.0f/%.2f", p.r*1000, p.w)
+			}
+			ob.WriteString("\n")
+		}
+		rep += ob.String()
+	}
 	os.WriteFile(filepath.Join(out, "sync.txt"), []byte(rep), 0o644)
 	t.Log("\n" + rep)
 	if !nofilm {
@@ -470,6 +490,49 @@ func lsMeasure(t *testing.T, truth lsTruth, ticks []lsTick, aligned map[string][
 		}
 	}
 	fmt.Fprintf(&b, "m/b/p onsets with the lips closed between the consonant and the vowel: %d of %d (by 100 ms into the vowel: %d)\n", closed, lips, late)
+	fmt.Fprintf(&b, "\nper line: the offset applied as it starts (ms, + the words earlier), aligned onsets within 100 ms, viseme onsets within 100 ms\n")
+	for li, ln := range truth.Lines {
+		off := math.NaN()
+		for _, tk := range ticks {
+			if tk.t >= ln.Start {
+				off = tk.off
+				break
+			}
+		}
+		var n, ia, iv int
+		for _, y := range syls {
+			if y.line != li {
+				continue
+			}
+			n++
+			if math.Abs(y.onsetAt-y.vowelAt) <= 0.1 {
+				ia++
+			}
+			if math.Abs(y.shapeAt-y.vowelAt) <= 0.1 {
+				iv++
+			}
+		}
+		if n > 0 {
+			fmt.Fprintf(&b, "line %2d  offset %+5.0f  aligned %3.0f%%  viseme %3.0f%%  (%d syllables)\n", li, off*1000, 100*float64(ia)/float64(n), 100*float64(iv)/float64(n), n)
+		}
+	}
+	{
+		var n, ia, iv int
+		for _, y := range syls {
+			if y.line >= 5 {
+				n++
+				if math.Abs(y.onsetAt-y.vowelAt) <= 0.1 {
+					ia++
+				}
+				if math.Abs(y.shapeAt-y.vowelAt) <= 0.1 {
+					iv++
+				}
+			}
+		}
+		if n > 0 {
+			fmt.Fprintf(&b, "lines 5 on: aligned %3.0f%%  viseme %3.0f%%  (%d syllables)\n", 100*float64(ia)/float64(n), 100*float64(iv)/float64(n), n)
+		}
+	}
 	fmt.Fprintf(&b, "\nper syllable (s from the vowel's true onset): text, viseme, old, plan, aligned, shape\n")
 	for _, y := range syls {
 		fmt.Fprintf(&b, "%d %-8s %-5s %+6.3f %+6.3f %+6.3f %+6.3f %v\n", y.line, y.text, y.v1, y.oldAt-y.vowelAt, y.planAt-y.vowelAt, y.alignedAt-y.vowelAt, y.shapeAt-y.vowelAt, map[bool]string{true: "lips closed", false: ""}[y.closedOK])

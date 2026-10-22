@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The lip-sync test song: original lines sung by espeak-ng over a made-up beat.
 
-    python3 song.py OUTDIR
+    python3 song.py OUTDIR [long]
 
 writes OUTDIR/song.wav (48 kHz stereo, the voice in the centre, the band
 panned), OUTDIR/song.lrc (its lines' times) and OUTDIR/truth.json (every
@@ -26,6 +26,20 @@ LINES = [
     ("hi", "मेरा मन बस गाता रहे", [52, 56, 54, 50, 48], 2.0),
     ("hi", "phir se gao, dil ki baat|फिर से गाओ दिल की बात", [55, 52, 58, 54, 50, 48], 2.0),
     ("en", "we were only humming at the stars", [50, 52, 55, 58, 54, 50, 52], 2.5),
+]
+
+# `song.py OUTDIR long`: a second verse, for what needs many lines (the
+# words' offset is learnt over a song's lines).
+VERSE2 = [
+    ("en", "the kettle hums a tune the morning knows", [52, 55, 58, 56, 54, 52, 50, 48], 1.5),
+    ("en", "we fold the map and let the river choose", [50, 54, 56, 58, 55, 52, 50, 48], 1.5),
+    ("en", "a paper lantern drifting over town", [55, 58, 56, 54, 52, 50], 2.0),
+    ("hi", "दिल की बातें धीरे धीरे", [52, 55, 58, 54, 50], 2.0),
+    ("en", "lights are low and the radio is warm", [50, 52, 55, 58, 56, 54, 52, 50], 1.5),
+    ("en", "carry me home on a quiet little train", [55, 52, 56, 58, 54, 52, 50, 48], 1.5),
+    ("en", "hold the moment like a pebble in the rain", [58, 56, 54, 52, 55, 52, 50, 48, 46], 2.0),
+    ("en", "and every window keeps a song for you", [50, 52, 55, 58, 56, 52, 50, 48], 1.5),
+    ("en", "slowly the city falls asleep again", [56, 54, 52, 55, 52, 50, 48], 3.0),
 ]
 
 lib = ctypes.CDLL("libespeak-ng.so.1")
@@ -122,13 +136,14 @@ def pan(x, p):  # p -1 left .. +1 right, constant power
     return np.stack([x * math.cos(th), x * math.sin(th)], 1)
 
 
-def main(out):
+def main(out, long=False):
     os.makedirs(out, exist_ok=True)
+    lines = LINES + VERSE2 if long else LINES
     rng = np.random.default_rng(7)
     lead = 4 * BEAT * 2  # two bars of beat first
     t = lead
     voice_parts, truth, lrc = [], [], []
-    for li, (voice, text, pitches, held) in enumerate(LINES):
+    for li, (voice, text, pitches, held) in enumerate(lines):
         text, _, sung = text.partition("|")
         words = (sung or text).replace(",", "").split()
         line = {"line": li, "text": text, "phonemes": []}
@@ -227,4 +242,4 @@ def main(out):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main(sys.argv[1], len(sys.argv) > 2 and sys.argv[2] == "long")
