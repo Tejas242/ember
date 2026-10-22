@@ -11,7 +11,11 @@ file, the commands and the plugin protocol are the public surface.
   a groove, a head-bob or a bounce from how hard this part of the song goes, and blends between them.
 - Its face moves like a face: a change of expression happens behind a blink, the eyes jump and hold, blinks land on
   beats and new lines, and each phrase of a song gets its own face (lost in it, grooving, beaming, now and then a
-  wink). On the stage its mouth follows the voice and the vowel.
+  wink).
+- On the stage it sings the words. Ember listens for the singer in the middle of the stereo picture, finds where each
+  syllable starts, and shapes its mouth for it: lips closing on m, b and p, teeth on f and v, the tongue on l and th,
+  wide on "ah", round on "oh" and "oo", flowing from one to the next and holding a held note. It reads English,
+  Hindi in Devanagari and in Latin letters, and has a go at Arabic and Japanese kana.
 - Its idle breath no longer jumps when its mood changes.
 
 **Vibe**
