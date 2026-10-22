@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -365,23 +366,35 @@ func (u *UI) momentAct(m moment) {
 // then the newest turn. Not the last one heard from: two sessions working at
 // once both speak every few seconds, and the pill would swap between them.
 func (u *UI) sessionList() []*Session {
-	var out []*Session
+	out := make([]*Session, 0, len(u.sessions))
 	for _, s := range u.sessions {
 		out = append(out, s)
 	}
-	rank := map[string]int{"wait": 3, "work": 2, "idle": 1}
-	sort.Slice(out, func(i, j int) bool {
-		a, b := out[i], out[j]
-		if ra, rb := rank[a.status()], rank[b.status()]; ra != rb {
-			return ra > rb
+	rank := func(s *Session) int {
+		switch s.status() {
+		case "wait":
+			return 3
+		case "work":
+			return 2
+		case "idle":
+			return 1
+		}
+		return 0
+	}
+	slices.SortFunc(out, func(a, b *Session) int { // a total order: the same result as any sort
+		if ra, rb := rank(a), rank(b); ra != rb {
+			return rb - ra
 		}
 		if wa, wb := u.watching[a.ID], u.watching[b.ID]; wa != wb {
-			return wb
+			if wb { // (as it always sorted: the one you're not watching first)
+				return -1
+			}
+			return 1
 		}
 		if !a.Since.Equal(b.Since) {
-			return a.Since.After(b.Since)
+			return b.Since.Compare(a.Since)
 		}
-		return a.ID < b.ID
+		return strings.Compare(a.ID, b.ID)
 	})
 	return out
 }

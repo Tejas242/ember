@@ -172,8 +172,12 @@ func (c *canvas) fillShade(x0, y0, x1, y1 float32, shade func(x, y float32) colo
 	if bw <= 0 || bh <= 0 {
 		return
 	}
-	if c.abuf == nil || c.abuf.Rect.Dx() < bw || c.abuf.Rect.Dy() < bh {
-		c.abuf = image.NewAlpha(image.Rect(0, 0, max(bw, 64), max(bh, 64)))
+	if c.abuf == nil || c.abuf.Rect.Dx() < bw || c.abuf.Rect.Dy() < bh { // it only grows: a wide shape then a tall one don't trade it back and forth
+		w, h := max(bw, 64), max(bh, 64)
+		if c.abuf != nil {
+			w, h = max(w, c.abuf.Rect.Dx()), max(h, c.abuf.Rect.Dy())
+		}
+		c.abuf = image.NewAlpha(image.Rect(0, 0, w, h))
 	}
 	m := c.abuf
 	for y := 0; y < bh; y++ {

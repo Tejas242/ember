@@ -48,7 +48,7 @@ func (c *canvas) line(a, b pt, w float32, col color.NRGBA) {
 // arc strokes a circular arc (angles in radians, 0 = right, clockwise on screen).
 func (c *canvas) arc(cx, cy, rad, w, a0, a1 float32, col color.NRGBA) {
 	const n = 18
-	var ps []pt
+	ps := c.pts[:0] // the canvas's scratch: an arc a frame (headphones, a smile) allocates nothing
 	for i := 0; i <= n; i++ {
 		a := float64(a0 + (a1-a0)*float32(i)/n)
 		ps = append(ps, pt{cx + (rad+w/2)*float32(math.Cos(a)), cy + (rad+w/2)*float32(math.Sin(a))})
@@ -57,6 +57,7 @@ func (c *canvas) arc(cx, cy, rad, w, a0, a1 float32, col color.NRGBA) {
 		a := float64(a0 + (a1-a0)*float32(i)/n)
 		ps = append(ps, pt{cx + (rad-w/2)*float32(math.Cos(a)), cy + (rad-w/2)*float32(math.Sin(a))})
 	}
+	c.pts = ps
 	c.poly(col, ps...)
 }
 

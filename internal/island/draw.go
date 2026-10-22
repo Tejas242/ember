@@ -141,6 +141,7 @@ type canvas struct {
 	clipR   image.Rectangle      // when set, text stays inside it (a rolling digit)
 	lit     map[litKey]*textMask // the sung part of a line in a script that's shaped
 	abuf    *image.Alpha         // coverage for shaded fills (Ember), reused
+	pts     []pt                 // scratch for paths built point by point (arcs), reused
 }
 
 // fadeCol applies the canvas's fade to col.
