@@ -58,7 +58,7 @@ const (
 	mouthYawn
 	mouthSmile
 	mouthFlat
-	mouthSing // open with the voice (pose.open), shaped by the vowel (pose.vw, pose.vh)
+	mouthSing // singing the words: shaped by pose.sing
 )
 
 // pose is everything Ember looks like in one frame: its body (from the
@@ -82,17 +82,16 @@ type pose struct {
 	lookX, lookY float32 // where it looks, px
 	eyes         eyeKind
 	mouth        int
-	mouthK       float32 // how far the mouth has opened into its shape, 0..1
-	open         float32 // singing: how open, 0..1
-	vw, vh       float32 // singing: the vowel's width and height, 1 a middling one
-	cheeks       float32 // a blush
+	mouthK       float32    // how far the mouth has opened into its shape, 0..1
+	sing         mouthShape // singing: the mouth's shape (lipsync.go)
+	cheeks       float32    // a blush
 
 	core  float32 // the inner light's size, 1 rest
 	flash float32 // the body toward white
 	dim   float32 // the body toward the dark
 }
 
-func restPose() pose { return pose{sq: 1, scale: 1, eyeH: 3, core: 1, mouthK: 1, vw: 1, vh: 1} }
+func restPose() pose { return pose{sq: 1, scale: 1, eyeH: 3, core: 1, mouthK: 1} }
 
 // flameGeo is Ember's outline for one pose: the transform from the drawing's
 // rest coordinates to the canvas.
@@ -471,32 +470,95 @@ func (c *canvas) drawFace(p palette, g flameGeo, f fire, a float64) {
 	}
 }
 
-// singMouth: singing, the mouth opens with the voice. Big, it's a soft
-// shape as wide and tall as the vowel; nearly closed, a small smile (lips
-// together between words). At pill sizes it's whole pixels: a 2×2 "o", a
-// 2×1 slit, a smile.
+// singMouth: singing, the mouth takes the shape of the sound being sung
+// (lipsync.go). Big, it's a soft shape as wide, open and round as the
+// shape asks, the upper teeth along its top and the tongue at its floor
+// where they show; closed, a small smile, or the lips pressed flat for m,
+// b, p. At pill sizes it's whole pixels: a glyph for each kind of shape.
 func (c *canvas) singMouth(ps pose, fx, my, kk float32, small bool, snap func(float32) float32, ink color.NRGBA) {
-	o := ps.open * ps.mouthK
+	m := ps.sing
+	o := m.h * ps.mouthK
 	if small {
-		w := max(snap(2*kk), 2)
-		switch {
-		case o > 0.5:
-			c.roundRect(snap(fx-w/2), my, w, w, w*0.3, ink)
-		case o > 0.15:
-			c.roundRect(snap(fx-w/2), my+1, w, 1, 0, ink)
-		default:
-			c.roundRect(snap(fx-1.5*kk), my, max(snap(3*kk), 3), 1, 0, ink)
+		gw, gh, dy := singGlyph(m, o)
+		w, h := max(snap(gw*kk), 1), max(snap(gh*kk), 1)
+		if gw >= 3 && h <= 1 && o < 0.06 && m.smile > 0.5 { // at rest: a smile's line
+			c.roundRect(snap(fx-w/2), my, w, 1, 0, ink)
+			return
 		}
+		c.roundRect(snap(fx-w/2), my+snap(dy*kk), w, h, min(w, h)*0.3, ink)
 		return
 	}
-	if o < 0.12 { // lips together, a little smile
-		c.arc(fx, my-1.0*kk, 1.15*kk, max(0.5*kk, 1), 0.55, math.Pi-0.55, ink)
+	if o < 0.07 {
+		if m.smile > 0.5 { // lips together, a little smile
+			c.arc(fx, my-1.0*kk, 1.15*kk, max(0.5*kk, 1), 0.55, math.Pi-0.55, ink)
+			return
+		}
+		w := kk * (0.75 + 0.9*m.w) // pressed: a firm flat line
+		c.roundRect(fx-w/2, my-0.05*kk, w, max(0.42*kk, 1.5), 0.2*kk, ink)
 		return
 	}
-	w := kk * (0.9 + 0.75*ps.vw*(0.55+0.45*o))
-	h := kk * (0.5 + 2.1*o*ps.vh)
+	w := kk * (0.55 + 1.3*m.w)
+	h := kk * (0.25 + 2.6*o)
 	top := my - 0.45*kk
-	c.roundRect(fx-w/2, top, w, h, min(w, h)*0.5, ink)
+	cx, cy := fx, top+h/2
+	rx, ry := w/2, h/2
+	kt := 0.5523 + 0.36*(1-min(m.round, 1)) // the top flatter, the corners squarer, unless it's round
+	kb := 0.5523 + 0.18*(1-min(m.round, 1))
+	teethCol := mix(ink, rgb(0xfff6ec), 0.84)
+	tongueCol := mix(ink, rgb(0xff7a70), 0.62)
+	band := m.teeth * min(0.34*h, 0.7*kk) * (1 + 0.8*m.tuck) // the upper teeth; over the lower lip for f, v
+	band = min(band, h*0.75)
+	tr := m.tongue * 0.3 * h // the tongue rises off the floor
+	if m.tongue > 0.7 {
+		tr = m.tongue * 0.48 * h // l, th: up to the teeth
+	}
+	c.fillShade(cx-rx, top, cx+rx, top+h, func(x, y float32) color.NRGBA {
+		col := ink
+		if tr > 0.3 {
+			dx := (x - cx) / (rx * 0.62)
+			dy := (y - (top + h)) / tr
+			if d := dx*dx + dy*dy; d < 1.15 {
+				col = lerpCol(ink, tongueCol, min(1, (1.15-d)*3))
+			}
+		}
+		if band > 0.25 {
+			if k := top + band - y + 0.5; k > 0 {
+				col = lerpCol(col, teethCol, min(k, 1))
+			}
+		}
+		return col
+	}, func(r *vector.Rasterizer, ox, oy float32) {
+		x, y := cx-ox, cy-oy
+		r.MoveTo(x+rx, y)
+		r.CubeTo(x+rx, y+kb*ry, x+kb*rx, y+ry, x, y+ry)
+		r.CubeTo(x-kb*rx, y+ry, x-rx, y+kb*ry, x-rx, y)
+		r.CubeTo(x-rx, y-kt*ry, x-kt*rx, y-ry, x, y-ry)
+		r.CubeTo(x+kt*rx, y-ry, x+rx, y-kt*ry, x+rx, y)
+		r.ClosePath()
+	})
+}
+
+// singGlyph is the mouth at pill sizes, in pills' px (×kk): width, height
+// and how far down it sits. Whole pixels can't show teeth or a tongue, so
+// the shapes are told apart by their outline: wide open, wide and flat,
+// round, a small round, a slit.
+func singGlyph(m mouthShape, o float32) (w, h, dy float32) {
+	switch {
+	case o < 0.06:
+		if m.smile > 0.5 {
+			return 3, 1, 0
+		}
+		return 2, 1, 0.5 // lips pressed: a short dash
+	case m.round > 0.6 && o > 0.38 && m.w > 0.7:
+		return 2, 2, 0 // O
+	case m.round > 0.6:
+		return 1, 1, 0.5 // U, W
+	case o > 0.6:
+		return 3, 2, 0 // AI
+	case m.w > 1.25:
+		return 4, 1, 0.5 // E
+	}
+	return 2, 1, 0.5 // a consonant
 }
 
 // headAt is the centre of the round body and its radius, for the headphones.

@@ -498,8 +498,11 @@ func (u *UI) wordsPos(tw *proto.Widget) (time.Duration, bool) {
 	if t == nil || tw.MediaKey != mediaKey(t) {
 		return 0, false
 	}
-	return t.Pos(now) + 150*time.Millisecond + u.wordsNudge(tw.MediaKey), true
+	return t.Pos(now) + wordsLead + u.wordsNudge(tw.MediaKey), true
 }
+
+// wordsLead: the words are shown a little ahead of the song, as a singer breathes in first.
+const wordsLead = 150 * time.Millisecond
 
 // stageColumn draws the column beside Ember: the words, or the song's title
 // over its ribbon when there are none to show.
@@ -930,22 +933,41 @@ func (u *UI) stagePose(ps *pose) {
 		ps.eyes, ps.eyeH, ps.lid, ps.lookX, ps.lookY, ps.mouth = eyeOpen, 3, 0, 1.6, 0.2, mouthNone
 	case e.Pose == "sleepy": // waiting something out
 		ps.eyes, ps.eyeH, ps.lid, ps.lookX, ps.lookY, ps.mouth = eyeOpen, 3, 0.45, 1.4, 0.4, mouthNone
-	case e.Sing && st.fillK >= 0 && u.dancing && !u.discreet() && st.idx >= 0 && st.idx < len(st.lines): // it sings along
-		u.singFace(ps, st)
+	case e.Sing && u.dancing && !u.discreet() && st.idx >= 0 && st.idx < len(st.lines) && sw.text != nil: // it sings along
+		if l, ok := u.singLineOf(st, sw.text); ok {
+			m := u.face.sing.step(l) // it listens all through the line
+			if st.fillK >= 0 || u.face.sing.singing(l) {
+				u.singFace(ps, st, m)
+			}
+		}
 	}
 }
 
-// singFace: singing a line. The mouth opens with the voice and takes the
-// shape of the vowel in the words where they're lit. A new line starts with
+// singLineOf is the line on stage as the singing mouth needs it.
+func (u *UI) singLineOf(st *stageState, tw *proto.Widget) (singLine, bool) {
+	pos, ok := u.wordsPos(tw)
+	if !ok || st.idx < 0 || st.idx >= len(st.lines) {
+		return singLine{}, false
+	}
+	l := st.lines[st.idx]
+	if tw.MediaKey != "" || tw.Clock == nil {
+		pos -= wordsLead
+	}
+	sl := singLine{text: l.text, at: l.at, posW: pos.Seconds(), audio: u.audio, now: u.now()}
+	if st.idx+1 < len(st.lines) {
+		sl.next, sl.hasNext = st.lines[st.idx+1].at, true
+	}
+	return sl, l.text != ""
+}
+
+// singFace: singing a line. The mouth sings the words (lipsync.go). A new line starts with
 // a breath (a blink) and a glance at the words; then it sings out, eyes open
 // and a little up, closing them while the song holds loud (shut 1.4 s at
 // least, open 0.8 s).
-func (u *UI) singFace(ps *pose, st *stageState) {
+func (u *UI) singFace(ps *pose, st *stageState, m mouthShape) {
 	f, now := &u.face, u.now()
 	ps.mouth = mouthSing
-	ps.open = float32(math.Max(0, math.Min(1, (f.vox-0.3)/0.45)))
-	vw, vh := vowelAt(st.lines[st.idx].text, st.fillK)
-	ps.vw, ps.vh = float32(vw), float32(vh)
+	ps.sing = m
 	e := math.Max(0, math.Min(1, (f.voxS-0.35)/0.3))
 	if st.idx != f.lineIdx {
 		f.lineIdx, f.readAt = st.idx, now

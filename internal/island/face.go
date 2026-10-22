@@ -2,9 +2,7 @@ package island
 
 import (
 	"math"
-	"strings"
 	"time"
-	"unicode/utf8"
 )
 
 // ---- the face over time ----
@@ -21,8 +19,7 @@ import (
 //     big jump (1.2 or more) brings a blink with it half the time.
 //   - Lids and eye height ease (lids 70 ms down, 100 up; height 45 ms).
 //   - A mouth closes before it changes and opens into the new shape
-//     (50 ms, then 80 ms); singing, it opens with the voice (attack 35 ms,
-//     release 110 ms) and takes the shape of the vowel being sung.
+//     (50 ms, then 80 ms). Singing, it sings the words (lipsync.go).
 //
 // All of it is a few numbers a frame, integrated over real elapsed time.
 
@@ -46,10 +43,9 @@ type faceState struct {
 	mouth int
 	mk    float64 // how far the mouth is open into its shape, 0..1
 
-	vox    float64 // the voice (the mid band), fast: the singing mouth
-	voxS   float64 // slowly: how hard the song is going, for the lids
-	open   float64
-	vw, vh float64 // the vowel: width and height of the mouth
+	vox  float64 // the mid band, fast
+	voxS float64 // slowly: how hard the song is going, for the lids
+	sing singer  // the singing mouth (lipsync.go)
 
 	// the dance face, chosen at each phrase
 	phrase  int
@@ -113,7 +109,7 @@ func (u *UI) faceStep(ps *pose, now time.Time) {
 	if !f.init || dt < 0 { // the first frame, or the clock went back: the face is what it should be
 		md, mdAt := f.md, f.mdAt
 		*f = faceState{md: md, mdAt: mdAt, init: true, eyes: ps.eyes, eyeH: float64(ps.eyeH), lid: float64(ps.lid), fixX: float64(ps.lookX), fixY: float64(ps.lookY),
-			x: float64(ps.lookX), y: float64(ps.lookY), mouth: ps.mouth, mk: 1, vw: 1, vh: 1, lineIdx: -3, winked: now.Add(-time.Hour)}
+			x: float64(ps.lookX), y: float64(ps.lookY), mouth: ps.mouth, mk: 1, lineIdx: -3, winked: now.Add(-time.Hour)}
 		dt = 0
 	}
 	f.at = now
@@ -235,43 +231,4 @@ func (u *UI) faceStep(ps *pose, now time.Time) {
 	if f.mouth == mouthNone {
 		ps.mouthK = 0
 	}
-	f.open = approach(f.open, float64(ps.open), 0.03, dt)
-	f.vw = approach(f.vw, float64(ps.vw), 0.06, dt)
-	f.vh = approach(f.vh, float64(ps.vh), 0.06, dt)
-	ps.open, ps.vw, ps.vh = float32(f.open), float32(f.vw), float32(f.vh)
-}
-
-// vowelAt is the shape of the mouth singing text at k (0..1 of the way
-// through): the next vowel's width and height. "a" is wide and tall, "o"
-// and "u" round, "e" and "i" wide and flat; between vowels the lips close
-// a little. Text it can't read (not Latin) sings a round, middling vowel.
-func vowelAt(text string, k float64) (w, h float64) {
-	n := utf8.RuneCountInString(text)
-	if n == 0 {
-		return 1, 0.8
-	}
-	i := int(k * float64(n))
-	j := 0
-	for _, r := range strings.ToLower(text) {
-		if j < i {
-			j++
-			continue
-		}
-		switch r {
-		case 'a':
-			return 1.15, 1
-		case 'o', 'u':
-			return 0.8, 0.95
-		case 'e', 'i', 'y':
-			return 1.3, 0.55
-		}
-		if r > 0x24f { // not Latin
-			return 1, 0.8
-		}
-		j++
-		if j > i+4 {
-			break
-		}
-	}
-	return 1, 0.7
 }
