@@ -16,6 +16,8 @@ file, the commands and the plugin protocol are the public surface.
   syllable starts, and shapes its mouth for it: lips closing on m, b and p, teeth on f and v, the tongue on l and th,
   wide on "ah", round on "oh" and "oo", flowing from one to the next and holding a held note. It reads English,
   Hindi in Devanagari and in Latin letters, and has a go at Arabic and Japanese kana.
+- When a song's words are early or late, Ember hears it after a few lines and moves them itself, and remembers it
+  for the next play. A nudge you give the words (scroll over them) always wins.
 - Its idle breath no longer jumps when its mood changes.
 
 **Vibe**
