@@ -23,7 +23,8 @@ import (
 type osdCase struct {
 	label string
 	setup func(t *testing.T, g *galleryScene)
-	press func(g *galleryScene) // the change; a volume key by default
+	build func(t *testing.T) *galleryScene // a scene made its own way (a stage)
+	press func(g *galleryScene)            // the change; a volume key by default
 	crop  func(u *UI) image.Rectangle
 }
 
@@ -35,7 +36,8 @@ func osdPillCrop(*UI) image.Rectangle { return image.Rect(surfW/2-230, 0, surfW/
 func osdTopCrop(u *UI) image.Rectangle {
 	b := u.shape.bounds()
 	cx := (b.Min.X + b.Max.X) / 2
-	return image.Rect(cx-235, 0, cx+235, min(b.Max.Y+16, 190))
+	hw := max(235, (b.Dx()+28)/2)
+	return image.Rect(cx-hw, 0, cx+hw, min(b.Max.Y+16, 150))
 }
 
 func osdCases() []osdCase {
@@ -77,16 +79,21 @@ func osdCases() []osdCase {
 			g.run(500 * time.Millisecond)
 			g.a.ui.openDash("edge")
 		}, crop: osdTopCrop},
-		{label: "vibe stage", setup: func(t *testing.T, g *galleryScene) {
-			vg, _ := buildVibe(t, vibeScenes()[0])
-			*g = *vg
+		{label: "vibe stage", build: func(t *testing.T) *galleryScene {
+			g, _ := buildVibe(t, vibeScenes()[0])
+			return g
 		}, crop: osdTopCrop},
 	}
 }
 
 func renderOSDCase(t *testing.T, c osdCase) galleryShot {
-	g := newScene()
-	c.setup(t, g)
+	var g *galleryScene
+	if c.build != nil {
+		g = c.build(t)
+	} else {
+		g = newScene()
+		c.setup(t, g)
+	}
 	g.run(2500 * time.Millisecond)
 	press := c.press
 	if press == nil {

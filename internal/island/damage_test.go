@@ -4,6 +4,8 @@ import (
 	"image"
 	"testing"
 	"time"
+
+	"github.com/Tejas242/ember/internal/source"
 )
 
 // What reaches the screen is only each frame's damage. After any sequence of
@@ -47,6 +49,17 @@ func TestDamageLeavesNoGhosts(t *testing.T) {
 		"wide music to a narrow pill": {
 			{0, func(g *galleryScene) { g.music(true); g.a.ui.focus, g.a.ui.focusAt = "music", g.clock }},
 			{time.Second, func(g *galleryScene) { g.a.ui.focus, g.a.ui.focusAt = "clock", g.clock }},
+		},
+		"a volume key with the card open": {
+			{0, func(g *galleryScene) { g.work("k", "kinvault", "fix the race in the compaction path", 3); g.a.ui.pinned = true }},
+			{time.Second, func(g *galleryScene) { g.a.handle(source.Volume{V: 0.5, OK: true}) }},
+			{1200 * time.Millisecond, func(g *galleryScene) { g.a.handle(source.Volume{V: 0.55, OK: true}) }},
+		},
+		"a volume key over a request": {
+			{0, func(g *galleryScene) {
+				g.a.ui.AddCard(&Card{ID: "p", Kind: "perm", Mood: moodWait, Eyebrow: "kinvault wants to run", Title: "Run the tests", Buttons: []Button{{Key: "allow", Label: "Allow", Primary: true}}})
+			}},
+			{time.Second, func(g *galleryScene) { g.a.handle(source.Brightness{V: 0.3}) }},
 		},
 		"hover swell": {
 			{0, func(g *galleryScene) { g.music(true) }},

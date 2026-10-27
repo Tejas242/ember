@@ -124,7 +124,7 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 
 	// Ember (blinks, glances, gliding to a new spot) and other live parts only
 	// need their own rectangles repainted: that's the cheap path below.
-	full := u.dirty || !settled || p < 1 || leaving > 0 || sliding || flashing || u.tweening
+	full := u.dirty || !settled || p < 1 || leaving > 0 || sliding || flashing || u.tweening || (v != vCompact && u.stripMoving(now))
 	u.lastFull = full
 	if full {
 		u.dirty, u.tweening = false, false
@@ -167,6 +167,9 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 			if u.dashboards[u.dash].Draw(u, fx, float32(tw), now.Sub(u.dashAt)) {
 				u.tweening = true
 			}
+		}
+		if v != vCompact && u.drawStrip(now) { // a key pressed: its OSD drops in along the top
+			u.tweening = true
 		}
 		if u.prevAlive && leaving > 0 { // the old view leaves quickly, drifting up
 			composite(u.cv, u.prev, u.shape, leaving, 0, -int(math.Round(3*(1-leaving/math.Max(u.prevK, 0.01)))))
