@@ -85,7 +85,8 @@ type moment struct {
 	batt  bool        // a battery glyph
 	pct   float64     // its fill, 0..1
 	thumb *image.RGBA // a screenshot preview instead of the icon
-	osd   bool        // you just pressed a key: shows over everything but a card
+	osd   bool        // you just pressed a key: shows over everything, a strip in an open view
+	held  bool        // news that arrived during an OSD: it waits under it, and Ember answers it when it shows
 	at    time.Time   // when it appeared
 	cheer cheer       // a Done's celebration: how big, earned, an eye-roll first
 	ext   string      // a plugin's: "<name>\x00<target>", for a click

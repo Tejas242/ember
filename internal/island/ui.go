@@ -305,6 +305,10 @@ func (u *UI) expire() bool {
 			if m.until.Sub(now) < 2*time.Second {
 				m.until = now.Add(2 * time.Second) // long enough to read
 			}
+			if m.held { // news that waited: it arrives now
+				m.held, m.at = false, now
+				u.momentAct(*m)
+			}
 			u.moment = m
 		}
 	}
@@ -316,6 +320,13 @@ func (u *UI) expire() bool {
 func (u *UI) Moment(m moment) {
 	if cur := u.moment; m.osd && cur != nil && !cur.osd && cur.until.After(u.now()) {
 		u.under = cur
+	}
+	// and news doesn't cost you the OSD while you're pressing: it waits
+	// under it (the newest news), and shows when the OSD is done
+	if cur := u.moment; !m.osd && cur != nil && cur.osd && cur.until.After(u.now()) {
+		m.held = true
+		u.under = &m
+		return
 	}
 	if u.moment == nil || u.moment.key != m.key {
 		u.mind.notice(u.now(), 0.6) // Ember looks at the news

@@ -57,3 +57,29 @@ func TestOSDStripInOpenCard(t *testing.T) {
 		t.Fatal("the card's top isn't back after the OSD")
 	}
 }
+
+// Claude finishing while you press a volume key doesn't take the OSD from
+// under your finger: the Done waits, then shows (and Ember cheers it then).
+func TestNewsWaitsUnderTheOSD(t *testing.T) {
+	g := newScene()
+	g.work("k", "kinvault", "fix the race", 3)
+	g.run(time.Second)
+	g.a.handle(source.Volume{V: 0.6, OK: true})
+	g.run(150 * time.Millisecond)
+	hookAt(g.a, "Stop", "k", "kinvault", map[string]any{"last_assistant_message": "All 42 tests pass."})
+	if m := g.a.ui.moment; m == nil || m.key != "osd:volume" {
+		t.Fatalf("the Done took the OSD's place: %+v", m)
+	}
+	if u := g.a.ui.under; u == nil || u.verb != "Done" || !u.held {
+		t.Fatalf("the Done should wait under the OSD, got %+v", u)
+	}
+	g.clock = g.clock.Add(g.a.ui.cfg.OSDFor)
+	g.a.ui.expire()
+	m := g.a.ui.moment
+	if m == nil || m.verb != "Done" || m.held || !m.at.Equal(g.clock) {
+		t.Fatalf("the Done should show once the OSD is done, got %+v", m)
+	}
+	if !m.until.After(g.clock.Add(time.Second)) {
+		t.Fatal("the Done should stay long enough to read")
+	}
+}
