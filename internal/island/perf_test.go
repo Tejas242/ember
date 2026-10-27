@@ -58,3 +58,45 @@ func BenchmarkOpenMorph(b *testing.B) {
 		u.renderDamage()
 	}
 }
+
+// the card open while a key's OSD holds in its strip: steady frames cost
+// what the card's do
+func BenchmarkBriefOSDSteady(b *testing.B) {
+	clock := time.Date(2026, 10, 13, 15, 0, 0, 0, time.Local)
+	a := briefApp(&clock)
+	u := a.ui
+	u.pinned = true
+	for i := 0; i < 120; i++ {
+		clock = clock.Add(time.Second / 60)
+		u.renderDamage()
+	}
+	u.Moment(moment{key: "osd:volume", icon: "volume", tint: u.pal.fg, meter: true, level: 0.6, right: "60", osd: true, until: clock.Add(time.Hour)})
+	for i := 0; i < 60; i++ {
+		clock = clock.Add(time.Second / 60)
+		u.renderDamage()
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		clock = clock.Add(time.Second / 60)
+		u.renderDamage()
+	}
+}
+
+// a fullscreen window: Ember folded away under it
+func BenchmarkUnderFullscreen(b *testing.B) {
+	clock := time.Date(2026, 10, 13, 15, 0, 0, 0, time.Local)
+	a := briefApp(&clock)
+	u := a.ui
+	u.full = true
+	for i := 0; i < 120; i++ {
+		clock = clock.Add(time.Second / 60)
+		u.renderDamage()
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		clock = clock.Add(time.Second / 60)
+		u.renderDamage()
+	}
+}
