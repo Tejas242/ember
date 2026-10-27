@@ -33,7 +33,21 @@ func (a *app) handle(e source.Event) {
 		a.deskChanged()
 	case source.NiriWindowClosed:
 		delete(a.desk.windows, e.ID)
-		a.quiet = true
+		a.quiet = !a.fullChanged()
+	case source.NiriLayouts:
+		for id, l := range e.Layouts {
+			if w, ok := a.desk.windows[id]; ok {
+				w.Layout = l
+				a.desk.windows[id] = w
+			}
+		}
+		a.quiet = !a.fullChanged()
+	case source.NiriWorkspaces:
+		a.desk.workspaces = e.Outputs
+		a.quiet = !a.fullChanged()
+	case source.NiriOutputs:
+		a.desk.outputs = e.Sizes
+		a.quiet = !a.fullChanged()
 	case source.NiriFocus:
 		a.desk.focused = e.ID
 		a.deskChanged()
@@ -41,6 +55,7 @@ func (a *app) handle(e source.Event) {
 		a.castsChanged(e.N)
 	case source.NiriDown:
 		a.desk.live = false
+		a.fullChanged()
 	case source.Power:
 		p := power{pct: e.Pct, state: e.State, present: e.Present, tte: e.TTE, ttf: e.TTF}
 		prev := a.ui.power

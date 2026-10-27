@@ -131,3 +131,39 @@ func (u *UI) stripMoving(now time.Time) bool {
 	m := u.osdLive()
 	return m != nil && (now.Sub(m.at) < stripIn || m.until.Sub(now) < stripOut)
 }
+
+// ---- over a fullscreen window ----
+//
+// Ember's layer (top) is under a fullscreen window, so a key pressed while
+// you watch a video went unanswered. Now: under a fullscreen window the pill
+// folds up into the top edge and rests (nothing to draw, nothing to wake
+// for). A key brings the island up to the overlay layer, where its OSD drops
+// out of the top edge alone (no satellite, no card), and once the OSD is
+// done it folds up again and goes back under.
+
+// foldAway is how long before the OSD ends the pill starts folding up
+// into the top edge, the OSD still in it.
+const foldAway = 220 * time.Millisecond
+
+// hiddenUnderFull: a window is fullscreen and no key is being answered (or
+// its answer is folding away).
+func (u *UI) hiddenUnderFull() bool {
+	if !u.full {
+		return false
+	}
+	m := u.osdLive()
+	return m == nil || m.until.Sub(u.now()) < foldAway
+}
+
+// wantOverlay says which layer the island should be on after this frame: up
+// for a key's OSD over a fullscreen window, and until it has folded away.
+// (Going fullscreen doesn't bring it up: it folds away underneath.)
+func (u *UI) wantOverlay() bool {
+	switch {
+	case u.full && u.osdLive() != nil:
+		u.overlay = true
+	case !u.full || (u.sh.settled(0) && u.sh.x < 0.5):
+		u.overlay = false
+	}
+	return u.overlay
+}

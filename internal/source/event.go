@@ -19,12 +19,29 @@ type Emit func(Event)
 
 // Window is a window as niri reports it.
 type Window struct {
-	ID      int    `json:"id"`
-	Title   string `json:"title"`
-	AppID   string `json:"app_id"`
-	Pid     int    `json:"pid"`
-	Focused bool   `json:"is_focused"`
+	ID        int          `json:"id"`
+	Title     string       `json:"title"`
+	AppID     string       `json:"app_id"`
+	Pid       int          `json:"pid"`
+	Focused   bool         `json:"is_focused"`
+	Workspace int          `json:"workspace_id"`
+	Layout    WindowLayout `json:"layout"`
 }
+
+// WindowLayout is where niri has put a window; its size is what tells a
+// fullscreen window (as big as its output) from the rest.
+type WindowLayout struct {
+	Size [2]int `json:"window_size"` // logical px
+}
+
+// NiriLayouts is windows resized or moved: their new layouts, by id.
+type NiriLayouts struct{ Layouts map[int]WindowLayout }
+
+// NiriWorkspaces is every workspace's output, by workspace id.
+type NiriWorkspaces struct{ Outputs map[int]string }
+
+// NiriOutputs is every output's logical size, by name.
+type NiriOutputs struct{ Sizes map[string][2]int }
 
 // NiriWindows is every window: the stream (re)started.
 type NiriWindows struct{ Windows []Window }
@@ -48,6 +65,9 @@ type NiriDown struct{}
 // the clipboard.
 type Screenshot struct{ Path string }
 
+func (NiriLayouts) event()      {}
+func (NiriWorkspaces) event()   {}
+func (NiriOutputs) event()      {}
 func (NiriWindows) event()      {}
 func (NiriWindow) event()       {}
 func (NiriWindowClosed) event() {}

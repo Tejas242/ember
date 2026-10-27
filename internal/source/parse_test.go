@@ -27,8 +27,11 @@ func (r *recorder) events() []Event {
 
 func TestParseNiri(t *testing.T) {
 	for line, want := range map[string]Event{
-		`{"WindowsChanged":{"windows":[{"id":3,"title":"✳ Fix it","app_id":"kitty","pid":42,"is_focused":true}]}}`: NiriWindows{[]Window{{ID: 3, Title: "✳ Fix it", AppID: "kitty", Pid: 42, Focused: true}}},
-		`{"WindowOpenedOrChanged":{"window":{"id":5,"title":"vim","pid":7}}}`:                                      NiriWindow{Window{ID: 5, Title: "vim", Pid: 7}},
+		`{"WindowsChanged":{"windows":[{"id":3,"title":"✳ Fix it","app_id":"kitty","pid":42,"is_focused":true}]}}`:                      NiriWindows{[]Window{{ID: 3, Title: "✳ Fix it", AppID: "kitty", Pid: 42, Focused: true}}},
+		`{"WindowOpenedOrChanged":{"window":{"id":5,"title":"vim","pid":7}}}`:                                                           NiriWindow{Window{ID: 5, Title: "vim", Pid: 7}},
+		`{"WindowOpenedOrChanged":{"window":{"id":6,"workspace_id":2,"layout":{"tile_size":[1366.0,768.0],"window_size":[1366,768]}}}}`: NiriWindow{Window{ID: 6, Workspace: 2, Layout: WindowLayout{Size: [2]int{1366, 768}}}},
+		`{"WindowLayoutsChanged":{"changes":[[6,{"window_size":[674,734]}]]}}`:                                                          NiriLayouts{map[int]WindowLayout{6: {Size: [2]int{674, 734}}}},
+		`{"WorkspacesChanged":{"workspaces":[{"id":2,"output":"eDP-1"},{"id":5,"output":null}]}}`:                                       NiriWorkspaces{map[int]string{2: "eDP-1"}},
 		`{"WindowClosed":{"id":5}}`:                                NiriWindowClosed{5},
 		`{"WindowFocusChanged":{"id":3}}`:                          NiriFocus{3},
 		`{"WindowFocusChanged":{"id":null}}`:                       NiriFocus{0},
@@ -36,7 +39,7 @@ func TestParseNiri(t *testing.T) {
 		`{"CastsChanged":{"casts":[]}}`:                            NiriCasts{0},
 		`{"ScreenshotCaptured":{"path":"/home/x/Pictures/s.png"}}`: Screenshot{"/home/x/Pictures/s.png"},
 		`{"ScreenshotCaptured":{"path":null}}`:                     Screenshot{""},
-		`{"WorkspacesChanged":{"workspaces":[]}}`:                  nil,
+		`{"WorkspacesChanged":{"workspaces":[]}}`:                  NiriWorkspaces{map[int]string{}},
 		`not json`: nil,
 	} {
 		if got := parseNiri([]byte(line)); !reflect.DeepEqual(got, want) {
@@ -152,5 +155,15 @@ func TestSourcesInTheSandbox(t *testing.T) {
 	}
 	if err := Levels(r.emit); err == nil || err.Error() != "pactl missing" {
 		t.Errorf("volume: %v", err)
+	}
+}
+
+func TestParseOutputs(t *testing.T) {
+	got, err := parseOutputs([]byte(`{"Ok":{"Outputs":{"eDP-1":{"name":"eDP-1","logical":{"x":0,"y":0,"width":1366,"height":768,"scale":1.0}},"HDMI-A-1":{"logical":null}}}}`))
+	if err != nil || !reflect.DeepEqual(got, map[string][2]int{"eDP-1": {1366, 768}}) {
+		t.Fatalf("got %v, %v", got, err)
+	}
+	if _, err := parseOutputs([]byte(`{"Err":"no"}`)); err == nil {
+		t.Fatal("an error reply should say so")
 	}
 }

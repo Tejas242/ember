@@ -83,3 +83,55 @@ func TestNewsWaitsUnderTheOSD(t *testing.T) {
 		t.Fatal("the Done should stay long enough to read")
 	}
 }
+
+// goFullscreen plays niri's events for one window filling the 1366×768
+// output (h 768), or stopping at the bar (h 740).
+func goFullscreen(g *galleryScene, h int) {
+	g.a.handle(source.NiriWorkspaces{Outputs: map[int]string{2: "eDP-1"}})
+	g.a.handle(source.NiriOutputs{Sizes: map[string][2]int{"eDP-1": {1366, 768}}})
+	g.a.handle(source.NiriWindows{Windows: []source.Window{{ID: 7, Focused: true, Workspace: 2, Layout: source.WindowLayout{Size: [2]int{1366, h}}}}})
+}
+
+// Over a fullscreen window Ember folds away and rests; a key brings it up
+// over the window with the OSD alone, and it goes back under after.
+func TestOSDOverFullscreen(t *testing.T) {
+	g := newScene()
+	g.work("k", "kinvault", "fix the race", 2)
+	g.music(true)
+	goFullscreen(g, 740) // maximized: the bar's still there
+	if g.a.ui.full {
+		t.Fatal("a maximized window isn't fullscreen")
+	}
+	goFullscreen(g, 768)
+	u := g.a.ui
+	if !u.full {
+		t.Fatal("a window as big as its output is fullscreen")
+	}
+	u.AddCard(&Card{ID: "p", Kind: "perm", Mood: moodWait, Title: "Run the tests", Buttons: []Button{{Key: "allow", Label: "Allow", Primary: true}}})
+	g.run(time.Second)
+	if u.wantOverlay() || u.sh.x > 0.5 || u.continuous() {
+		t.Fatalf("under a fullscreen window it should fold away and rest (h %.1f, overlay %v)", u.sh.x, u.overlay)
+	}
+	g.a.handle(source.Volume{V: 0.4, OK: true})
+	if !u.wantOverlay() {
+		t.Fatal("a key should bring it up over the fullscreen window")
+	}
+	g.run(400 * time.Millisecond)
+	if u.lastView != vCompact || u.sh.x < float64(u.BarH)-1 || u.secondary(u.primary()) != "" {
+		t.Fatalf("over the window: the pill's OSD alone (view %v, h %.1f)", u.lastView, u.sh.x)
+	}
+	g.run(u.cfg.OSDFor)
+	u.expire()
+	g.run(time.Second)
+	if u.wantOverlay() || u.sh.x > 0.5 {
+		t.Fatal("after the OSD it should fold away and go back under")
+	}
+	g.a.handle(source.NiriLayouts{Layouts: map[int]source.WindowLayout{7: {Size: [2]int{674, 734}}}})
+	if u.full {
+		t.Fatal("the window left fullscreen")
+	}
+	g.run(time.Second)
+	if u.lastView != vCard || u.sh.x < 40 {
+		t.Fatalf("the request should be back once the window isn't fullscreen (view %v)", u.lastView)
+	}
+}

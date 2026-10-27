@@ -12,8 +12,11 @@ import (
 // Layer is a layer-shell layer (wlr-layer-shell-unstable-v1).
 type Layer uint32
 
-// LayerTop is above windows, with the bars.
+// LayerTop is above windows, with the bars (but under a fullscreen window).
 const LayerTop Layer = 2
+
+// LayerOverlay is above everything, a fullscreen window too.
+const LayerOverlay Layer = 3
 
 const (
 	anchorTop    = 1
@@ -55,7 +58,7 @@ type Window struct {
 	enterSerial                        uint32
 	px, py                             float64
 	scroll                             float64
-	layerKind                          uint32
+	layerKind, layerVer                uint32
 	retire                             func() // the surface a raise replaced, to destroy once the new one shows
 	marginTop                          int
 	idleMgr, idleVer                   uint32
@@ -90,6 +93,7 @@ func Open(w, h, marginTop int, layer Layer) (*Window, error) {
 		case "wl_shm":
 			win.shm = bind(1, nil)
 		case "zwlr_layer_shell_v1":
+			win.layerVer = min(ver, 4)
 			win.layerShell = bind(4, nil)
 		case "wp_cursor_shape_manager_v1":
 			win.cursorMgr = bind(1, nil)
@@ -190,6 +194,21 @@ func (win *Window) Raise() {
 	}
 	win.createSurface()
 	c.flush()
+}
+
+// SetLayer moves the surface to another layer (layer-shell v2's
+// set_layer), committed at once; false if the compositor can't.
+func (win *Window) SetLayer(l Layer) bool {
+	if uint32(l) == win.layerKind {
+		return true
+	}
+	if win.layerVer < 2 {
+		return false
+	}
+	win.layerKind = uint32(l)           // a raise remakes the surface on it too
+	win.c.send(win.layer, 8, uint32(l)) // zwlr_layer_surface_v1.set_layer
+	win.c.send(win.surface, 6)          // commit
+	return true
 }
 
 func (win *Window) onSeat(op uint16, d *dec) {

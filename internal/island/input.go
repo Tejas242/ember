@@ -147,6 +147,8 @@ func (u *UI) press(k string, button int) {
 	c := u.top()
 	u.flash(k)
 	switch {
+	case k == "pill" && u.full: // over a fullscreen window the OSD only answers: a click puts it away
+		u.moment = nil
 	case k == "pill":
 		// a waiting session or a "done" moment: go to it; otherwise open now
 		if ss := u.sessionList(); len(ss) > 0 && ss[0].State == "wait" {

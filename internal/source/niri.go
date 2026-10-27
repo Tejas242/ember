@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/Tejas242/ember/internal/xdg"
 )
@@ -46,10 +47,19 @@ func Niri(emit Emit) error {
 	}
 	sc := bufio.NewScanner(c)
 	sc.Buffer(make([]byte, 64<<10), 8<<20)
+	sizes := map[string][2]int{}
 	for sc.Scan() {
-		if e := parseNiri(sc.Bytes()); e != nil {
-			emit(e)
+		e := parseNiri(sc.Bytes())
+		if e == nil {
+			continue
 		}
+		if ws, ok := e.(NiriWorkspaces); ok && unknownOutput(ws, sizes) { // a new output: ask its size (once)
+			if s, err := niriOutputs(sock); err == nil {
+				sizes = s
+				emit(NiriOutputs{s})
+			}
+		}
+		emit(e)
 	}
 	if err := sc.Err(); err != nil {
 		return err
@@ -65,6 +75,15 @@ func parseNiri(line []byte) Event {
 		}
 		WindowOpenedOrChanged *struct {
 			Window Window `json:"window"`
+		}
+		WindowLayoutsChanged *struct {
+			Changes [][2]json.RawMessage `json:"changes"`
+		}
+		WorkspacesChanged *struct {
+			Workspaces []struct {
+				ID     int     `json:"id"`
+				Output *string `json:"output"`
+			} `json:"workspaces"`
 		}
 		WindowClosed *struct {
 			ID int `json:"id"`
@@ -87,6 +106,24 @@ func parseNiri(line []byte) Event {
 		return NiriWindows{ev.WindowsChanged.Windows}
 	case ev.WindowOpenedOrChanged != nil:
 		return NiriWindow{ev.WindowOpenedOrChanged.Window}
+	case ev.WindowLayoutsChanged != nil:
+		ls := map[int]WindowLayout{}
+		for _, ch := range ev.WindowLayoutsChanged.Changes {
+			var id int
+			var l WindowLayout
+			if json.Unmarshal(ch[0], &id) == nil && json.Unmarshal(ch[1], &l) == nil {
+				ls[id] = l
+			}
+		}
+		return NiriLayouts{ls}
+	case ev.WorkspacesChanged != nil:
+		outs := map[int]string{}
+		for _, w := range ev.WorkspacesChanged.Workspaces {
+			if w.Output != nil {
+				outs[w.ID] = *w.Output
+			}
+		}
+		return NiriWorkspaces{outs}
 	case ev.WindowClosed != nil:
 		return NiriWindowClosed{ev.WindowClosed.ID}
 	case ev.WindowFocusChanged != nil:
@@ -105,4 +142,59 @@ func parseNiri(line []byte) Event {
 		return Screenshot{path}
 	}
 	return nil
+}
+
+func unknownOutput(ws NiriWorkspaces, sizes map[string][2]int) bool {
+	for _, o := range ws.Outputs {
+		if _, ok := sizes[o]; !ok {
+			return true
+		}
+	}
+	return false
+}
+
+// niriOutputs asks niri each output's logical size (a request of its own:
+// the event stream doesn't carry them).
+func niriOutputs(sock string) (map[string][2]int, error) {
+	c, err := net.Dial("unix", sock)
+	if err != nil {
+		return nil, err
+	}
+	defer c.Close()
+	c.SetDeadline(time.Now().Add(2 * time.Second))
+	if _, err := c.Write([]byte("\"Outputs\"\n")); err != nil {
+		return nil, err
+	}
+	sc := bufio.NewScanner(c)
+	sc.Buffer(make([]byte, 64<<10), 4<<20)
+	if !sc.Scan() {
+		return nil, errors.New("niri didn't answer Outputs")
+	}
+	return parseOutputs(sc.Bytes())
+}
+
+func parseOutputs(line []byte) (map[string][2]int, error) {
+	var r struct {
+		Ok *struct {
+			Outputs map[string]struct {
+				Logical *struct {
+					W int `json:"width"`
+					H int `json:"height"`
+				} `json:"logical"`
+			}
+		}
+	}
+	if err := json.Unmarshal(line, &r); err != nil {
+		return nil, err
+	}
+	if r.Ok == nil {
+		return nil, errors.New("niri: Outputs failed")
+	}
+	sizes := map[string][2]int{}
+	for name, o := range r.Ok.Outputs {
+		if o.Logical != nil {
+			sizes[name] = [2]int{o.Logical.W, o.Logical.H}
+		}
+	}
+	return sizes, nil
 }

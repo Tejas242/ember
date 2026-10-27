@@ -79,6 +79,8 @@ type worldState struct {
 	power      *power  // the battery, if there is one
 	casting    bool    // the screen is being shared, and [privacy] dot says so
 	shared     bool    // the screen is being shared, dot or not
+	full       bool    // the focused window is fullscreen: Ember keeps out of sight and only answers keys
+	overlay    bool    // it's up on the overlay layer, over the fullscreen window, for a key's OSD
 	vol        level   // the default output
 	light      float64 // screen brightness 0..1, -1 if there's no backlight
 	bond       *bond   // what Ember remembers about you
@@ -139,6 +141,7 @@ type pointerState struct {
 // the cross-fade between views.
 type motionState struct {
 	sw, sh, bub spring
+	shaped      bool    // the shape has had its first size
 	swell       spring  // the pill's anticipation under the pointer, 0..1
 	prevK       float64 // how visible the view we're leaving was when we left it
 	prevAt      time.Time
@@ -499,6 +502,8 @@ func (u *UI) secondary(primary string) string {
 	ss := u.sessionList()
 	working := u.cfg.Claude && len(ss) > 0 && (ss[0].status() == "work" || ss[0].State == "wait")
 	switch {
+	case u.full: // over a fullscreen window the OSD stands alone
+		return ""
 	case primary != "music" && u.track != nil && u.track.Playing && u.cfg.Music:
 		return "music"
 	case primary != "claude" && working:
@@ -529,6 +534,9 @@ func (u *UI) cycle(dir int) {
 const leaveGrace = 200 * time.Millisecond
 
 func (u *UI) currentView() view {
+	if u.full { // over a fullscreen window: only the pill, and only for a key
+		return vCompact
+	}
 	if u.top() != nil {
 		return vCard
 	}
@@ -648,6 +656,9 @@ func (u *UI) stepEmber(dt float64, now time.Time) {
 
 // continuous: something animates at full rate (Ember flickering, music, a card).
 func (u *UI) continuous() bool {
+	if u.hiddenUnderFull() && u.sh.settled(0) { // out of sight, folded away: nothing to animate
+		return false
+	}
 	if u.lastView != vCompact {
 		return true
 	}

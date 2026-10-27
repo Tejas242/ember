@@ -68,8 +68,8 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 		swell = 1
 	}
 	u.swell.stepK(swell, dt, 700, 42)
-	if u.sw.x == 0 {
-		u.sw.x, u.sh.x = tw, th
+	if !u.shaped { // the first frame starts at its size; later a pill folded to nothing grows back out
+		u.sw.x, u.sh.x, u.shaped = tw, th, true
 	}
 	// opening, the width leads without overshoot and the drop overshoots a
 	// little; closing, the card folds up first, critically damped
@@ -155,8 +155,15 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 		fx := (float32(u.W) - float32(tw)) / 2
 		switch v {
 		case vCompact: // the pill's ends ride the live shape: words never sit where the shape isn't
+			if u.hiddenUnderFull() && u.osdLive() == nil { // folded up into the top edge
+				u.spot = emberSpot{x: float32(u.W) / 2, y: 0, s: 0, show: true}
+				break
+			}
 			u.hits = append(u.hits, hit{u.shape.bounds(), "pill"})
-			u.drawCompact((float32(u.W)-float32(u.sw.x))/2, float32(u.sw.x), float32(th))
+			u.drawCompact((float32(u.W)-float32(u.sw.x))/2, float32(u.sw.x), max(float32(th), u.BarH))
+			if u.hiddenUnderFull() { // the OSD folding away over a fullscreen window: Ember ducks into the edge with it
+				u.spot.y, u.spot.s, u.spot.travel = 0, 0, false
+			}
 		case vCard:
 			u.drawCard(u.top(), fx, float32(tw))
 		case vExpanded:

@@ -20,10 +20,39 @@ import (
 type deskWindow = source.Window
 
 type desktop struct {
-	live    bool // the stream is up
-	windows map[int]deskWindow
-	focused int
-	casts   int
+	live       bool // the stream is up
+	windows    map[int]deskWindow
+	focused    int
+	casts      int
+	workspaces map[int]string    // each workspace's output
+	outputs    map[string][2]int // each output's logical size
+}
+
+// fullscreen: the focused window fills its output. niri says no more than
+// its size (a window at the output's size, bar and all, is fullscreen; a
+// maximized one stops at the bar).
+func (d *desktop) fullscreen() bool {
+	w, ok := d.windows[d.focused]
+	if !ok || !d.live {
+		return false
+	}
+	size, ok := d.outputs[d.workspaces[w.Workspace]]
+	if !ok || size[0] == 0 {
+		return false
+	}
+	near := func(a, b int) bool { return a-b <= 1 && b-a <= 1 } // fractional scales round
+	return near(w.Layout.Size[0], size[0]) && near(w.Layout.Size[1], size[1])
+}
+
+// fullChanged: a window went fullscreen or came back. Over a fullscreen
+// window Ember keeps out of sight and only answers keys (see osd.go).
+func (a *app) fullChanged() bool {
+	full := a.desk.fullscreen()
+	if full == a.ui.full {
+		return false
+	}
+	a.ui.full = full
+	return true
 }
 
 // sessionTitle is the topic Claude Code puts in its terminal's title
@@ -90,6 +119,9 @@ func (a *app) deskChanged() {
 				a.ui.moment, changed = nil, true
 			}
 		}
+	}
+	if a.fullChanged() {
+		changed = true
 	}
 	a.quiet = !changed
 }

@@ -3,8 +3,8 @@
 package island
 
 import (
+	"fmt"
 	"image"
-	"image/color"
 	"image/draw"
 	"os"
 	"testing"
@@ -124,18 +124,77 @@ func TestOSD(t *testing.T) {
 	for _, c := range osdCases() {
 		shots = append(shots, renderOSDCase(t, c))
 	}
-	shots = append(shots, galleryShot{"fullscreen video (Ember's top layer is under it)", fullscreenShot(nil)})
+	shots = append(shots, galleryShot{"fullscreen video, a volume key", fullscreenPress(t, 400*time.Millisecond)})
 	sheet(t, "osd-cases", shots, 2)
 }
 
-// fullscreenFrame stands in for a fullscreen video: no bar, a dark frame.
+// fullscreenPress: a video fullscreen, music playing and Claude at work
+// behind it; a volume key, and what's on screen d later.
+func fullscreenPress(t *testing.T, d time.Duration) *image.RGBA {
+	g := newScene()
+	g.work("k", "kinvault", "fix the race", 2)
+	g.music(true)
+	goFullscreen(g, 768)
+	g.run(time.Second)
+	g.a.handle(source.Volume{V: 0.64, OK: true})
+	g.run(d)
+	u := g.a.ui
+	if !u.wantOverlay() || os.Getenv("EMBER_OSD_BEFORE") != "" { // on the top layer: under the window
+		return fullscreenShot(nil)
+	}
+	return fullscreenShot(u)
+}
+
+// TestOSDMotion: filmstrips of the strip dropping into an open card and of
+// the OSD over a fullscreen window, from the press to after it's gone.
+func TestOSDMotion(t *testing.T) {
+	if os.Getenv("EMBER_PREVIEW") == "" {
+		t.Skip("set EMBER_PREVIEW")
+	}
+	t.Setenv("HOME", t.TempDir())
+	at := []time.Duration{0, 50, 100, 180, 600, 1480, 1540, 1600, 1700}
+	var card, full []galleryShot
+	for _, ms := range at {
+		d := ms * time.Millisecond
+		g := newScene()
+		g.work("k", "kinvault", "fix the race in the store's compaction path and make the tests pass", 4)
+		g.a.ui.pinned = true
+		g.run(2500 * time.Millisecond)
+		g.a.handle(source.Volume{V: 0.64, OK: true})
+		g.run(d)
+		g.a.ui.expire()
+		card = append(card, galleryShot{fmt.Sprintf("+%dms", ms), onDesktop(g.a.ui, image.Rect(surfW/2-expW/2-14, 0, surfW/2+expW/2+14, 70))})
+		full = append(full, galleryShot{fmt.Sprintf("+%dms", ms), fullscreenPressExpiring(d)})
+	}
+	sheet(t, "osd-motion-card", card, 3)
+	sheet(t, "osd-motion-fullscreen", full, 3)
+}
+
+func fullscreenPressExpiring(d time.Duration) *image.RGBA {
+	g := newScene()
+	g.work("k", "kinvault", "fix the race", 2)
+	g.music(true)
+	goFullscreen(g, 768)
+	g.run(time.Second)
+	g.a.handle(source.Volume{V: 0.64, OK: true})
+	for end := g.clock.Add(d); g.clock.Before(end); {
+		g.run(time.Second / 60)
+		g.a.ui.expire()
+	}
+	if !g.a.ui.wantOverlay() {
+		return fullscreenShot(nil)
+	}
+	return fullscreenShot(g.a.ui)
+}
+
+// fullscreenFrame stands in for a fullscreen video: no bar, a sunset.
 func fullscreenFrame() *image.RGBA {
 	img := image.NewRGBA(image.Rect(0, 0, surfW, 46))
 	for y := 0; y < 46; y++ {
 		for x := 0; x < surfW; x++ {
-			img.Pix[img.PixOffset(x, y)+0] = uint8(18 + x/40)
-			img.Pix[img.PixOffset(x, y)+1] = uint8(26 + y/3)
-			img.Pix[img.PixOffset(x, y)+2] = uint8(34 + x/30)
+			img.Pix[img.PixOffset(x, y)+0] = uint8(150 + x/6)
+			img.Pix[img.PixOffset(x, y)+1] = uint8(90 + y + x/12)
+			img.Pix[img.PixOffset(x, y)+2] = uint8(70 + x/10)
 			img.Pix[img.PixOffset(x, y)+3] = 255
 		}
 	}
@@ -154,5 +213,3 @@ func fullscreenShot(u *UI) *image.RGBA {
 	}
 	return out.SubImage(image.Rect(surfW/2-230, 0, surfW/2+230, 46)).(*image.RGBA)
 }
-
-var _ = color.NRGBA{}

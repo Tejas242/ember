@@ -8,6 +8,8 @@ import (
 	"math"
 	"os"
 	"time"
+
+	"github.com/Tejas242/ember/internal/wayland"
 )
 
 // The island's loop: one goroutine owns the app and the UI. It wakes for
@@ -51,6 +53,11 @@ func (a *app) loop(ctx context.Context) error {
 	draw := func() {
 		var damage image.Rectangle
 		f.animating, damage = a.ui.renderDamage()
+		if a.ui.wantOverlay() { // a key's OSD over a fullscreen window: up above it, until it has folded away
+			win.SetLayer(wayland.LayerOverlay)
+		} else {
+			win.SetLayer(wayland.LayerTop)
+		}
 		if a.ui.lastFull {
 			st.full++
 		} else {
@@ -188,6 +195,8 @@ func (a *app) nextWake(animating bool) time.Duration {
 				next = minTime(next, now.Add(rest))
 			}
 		}
+	} else if u.hiddenUnderFull() {
+		next = now.Add(time.Minute) // folded away under a fullscreen window: a key, or the window, wakes it
 	} else if u.mind.asleep {
 		next = now.Add(time.Second / 4) // slow breaths, drifting z's
 	} else if u.glancing() {

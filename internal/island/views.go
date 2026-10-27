@@ -482,6 +482,9 @@ func (u *UI) measure(v view) (float64, float64) {
 		w, h := u.dashboards[u.dash].Size(u)
 		return w, math.Min(h, float64(u.H-14))
 	}
+	if u.hiddenUnderFull() { // folded up into the top edge
+		return 0, 0
+	}
 	return u.compactWidth(u.compactLine()), float64(u.BarH)
 }
 
