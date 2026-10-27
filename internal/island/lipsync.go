@@ -118,6 +118,8 @@ type singer struct {
 	seq     uint64
 	frames  [source.VoiceFrames]source.VoiceFrame
 	heard   bool    // the voice is being heard
+	byEar   int     // syllables begun on an onset heard, in all
+	byClock int     // ... and by the clock alone (none heard in time, or no audio)
 	env     float64 // the voice, smoothed
 
 	segs [16]segment
@@ -128,6 +130,7 @@ type singer struct {
 	asked    bool // this line has proposed
 	proposed bool // a line's proposals wait to be taken
 	props    [offProps]offProp
+	rise     riseCurve
 	nprops   int
 
 	// the mouth: where it is and how fast it's going
@@ -183,6 +186,7 @@ func (s *singer) plan(l singLine) {
 func (s *singer) propose(off float64) {
 	s.asked, s.proposed = true, true
 	s.nprops = s.gaps.propose(s.start, off, &s.props)
+	s.gaps.rise(s.start, &s.rise)
 }
 
 // mu is syllable j's expected length.
@@ -269,6 +273,7 @@ func (s *singer) planned(t float64) {
 		at += float64(y.w) * s.rate
 	}
 	if j > s.cur {
+		s.byClock += j - s.cur
 		s.cur, s.curAt = j, at-float64(s.syls[j].w)*s.rate
 	}
 }
@@ -480,10 +485,15 @@ func (s *singer) follow(tf float64, o, flux, env float64) {
 	n := len(s.syls)
 	peakAt, po := tf-0.02, s.oHist[1]
 	isPeak := po >= followThr && po >= s.oHist[2] && po > s.oHist[0]
-	advance := func(at float64) {
+	advance := func(at float64, ear bool) {
 		j := s.cur + 1
 		if j >= n {
 			return
+		}
+		if ear {
+			s.byEar++
+		} else {
+			s.byClock++
 		}
 		if s.cur >= 0 {
 			d := at - s.curAt
@@ -498,9 +508,9 @@ func (s *singer) follow(tf float64, o, flux, env float64) {
 	switch {
 	case s.cur < 0:
 		if isPeak && peakAt >= s.start-0.1 && peakAt <= s.start+1.5 {
-			advance(peakAt)
+			advance(peakAt, true)
 		} else if tf > s.start+0.6 {
-			advance(s.start + 0.6)
+			advance(s.start+0.6, false)
 		}
 	case isPeak:
 		d := peakAt - s.curAt
@@ -513,13 +523,13 @@ func (s *singer) follow(tf float64, o, flux, env float64) {
 		}
 		k := math.Max(0, math.Min(1, (d/mu-0.25)/0.3))
 		if po*k >= followThr {
-			advance(peakAt)
+			advance(peakAt, true)
 		}
 	case s.fHist[1] >= 0.6 && s.fHist[1] >= s.fHist[2] && s.fHist[1] > s.fHist[0] && peakAt-s.curAt > 1.1*s.mu(s.cur):
-		advance(peakAt) // overdue, and the spectrum turned without a dip: vowel to vowel (ga-o)
+		advance(peakAt, true) // overdue, and the spectrum turned without a dip: vowel to vowel (ga-o)
 	default:
 		if tf-s.curAt > 2.2*s.mu(s.cur)+0.25 && s.cur+1 < n {
-			advance(tf)
+			advance(tf, false)
 		}
 	}
 }

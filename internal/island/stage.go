@@ -955,7 +955,7 @@ func (u *UI) stagePose(ps *pose) {
 			if s := &u.face.sing; s.proposed {
 				s.proposed = false
 				if sw.text.Clock == nil {
-					u.learnOffset(sw.text.MediaKey, s.props[:s.nprops]) // where the line's first syllable came: the song's offset
+					u.learnOffset(sw.text.MediaKey, s.props[:s.nprops], &s.rise) // where the line's first syllable came: the song's offset
 				}
 			}
 			if st.fillK >= 0 || u.face.sing.singing(l) {

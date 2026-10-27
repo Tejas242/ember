@@ -209,7 +209,7 @@ func TestOffsetLearnerAgrees(t *testing.T) {
 		offLine(0.52, 1.3, -0.4), offLine(0.48, 0.9), offLine(0.55, -1.1, 1.2), offLine(0.50, 0.2, 1.25), offLine(0.47),
 	}
 	for i, l := range lines {
-		o.add(l)
+		o.add(l, nil)
 		if i < 3 && o.conf {
 			t.Fatalf("believed after %d lines", i+1)
 		}
@@ -219,14 +219,14 @@ func TestOffsetLearnerAgrees(t *testing.T) {
 		t.Fatalf("target %v %v (est %v, %d lines agree)", v, ok, o.est, o.support)
 	}
 	// a wrong line now and then doesn't move it
-	o.add(offLine(-0.9, 1.1))
+	o.add(offLine(-0.9, 1.1), nil)
 	if v2, _ := o.target(); math.Abs(v2-v) > 0.03 {
 		t.Fatalf("an outlier moved it: %v -> %v", v, v2)
 	}
 	// two clusters as heavy as each other: not believed
 	var p offsetLearner
 	for i := 0; i < 6; i++ {
-		p.add([]offProp{{0.3, 1}, {-0.6, 1}})
+		p.add([]offProp{{0.3, 1}, {-0.6, 1}}, nil)
 	}
 	if p.conf {
 		t.Fatal("believed with two clusters")
@@ -234,7 +234,7 @@ func TestOffsetLearnerAgrees(t *testing.T) {
 	// small and huge
 	var q offsetLearner
 	for i := 0; i < 5; i++ {
-		q.add(offLine(0.07))
+		q.add(offLine(0.07), nil)
 	}
 	if v, ok := q.target(); !ok || v != 0 {
 		t.Fatalf("a few tens of ms should be left alone: %v", v)
@@ -296,7 +296,7 @@ func TestLearntOffsetAndNudges(t *testing.T) {
 	u := g.a.ui
 	key := mediaKey(u.track)
 	for i := 0; i < 5; i++ {
-		u.learnOffset(key, offLine(-0.3, 1.0))
+		u.learnOffset(key, offLine(-0.3, 1.0), nil)
 	}
 	g.clock = g.clock.Add(5 * time.Second) // eased in
 	want := time.Duration((0.3 + offBias) * float64(time.Second))
@@ -312,7 +312,7 @@ func TestLearntOffsetAndNudges(t *testing.T) {
 		t.Fatalf("nudged %v", n)
 	}
 	for i := 0; i < 8; i++ {
-		u.learnOffset(key, offLine(0.6))
+		u.learnOffset(key, offLine(0.6), nil)
 	}
 	g.clock = g.clock.Add(5 * time.Second)
 	if n := u.wordsNudge(key); (n - want - 250*time.Millisecond).Abs() > time.Millisecond {

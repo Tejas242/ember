@@ -29,8 +29,19 @@ import (
 //     that are wrong): around each proposal, the lines with one within
 //     ±80 ms, each weighing its likeliest such proposal's weight (its score
 //     over the line's best); the heaviest such window, its median.
-//     It's believed once at least 4 lines agree and they outweigh any other
-//     cluster (more than 160 ms away) by one line's worth. The line is
+//     It's believed once at least 4 lines agree, they outweigh any other
+//     cluster (more than 160 ms away) by one line's worth, and they stand
+//     well above chance: proposals spread at random put offAgree/offWin of
+//     their weight λ in any window, so it must weigh λ + 3√λ + 1 (on a
+//     dense mix where the voice never really drops, the proposals are
+//     near uniform, and without this a song of 60 lines found a cluster of
+//     10 by chance), and at least 3 lines, and a fifth of them, have it as
+//     their likeliest. And a second witness must agree: over all the lines,
+//     how much the voice rises across their times moved by d (the 400 ms
+//     after minus the 400 ms before) must be, at that lag (±100 ms), at
+//     least half its most anywhere in ±1.5 s. It peaks at the voice's lag
+//     whatever the mix (a song where the voting found a cluster at −1.1 s
+//     rose most at +0.3 s: not believed). The line is
 //     then set 40 ms before that onset: the flux peaks on the vowel, about
 //     80 ms after a line's first consonant (the test song), and the
 //     syllable follower forgives a line that's late better than one that's
@@ -69,6 +80,39 @@ type gapFinder struct {
 	n     int
 	cands [64]gapCand
 	nc    int
+	hist  [256]struct{ raw, env float32 } // the voice's loudness, the last 5 s (for riseCurve)
+	nh    int
+}
+
+// riseCurve is how much the voice rises across a line's time moved by d
+// (the 400 ms after minus the 400 ms before, d from −offWin by riseStep;
+// NaN where it wasn't heard).
+type riseCurve [riseN]float32
+
+const (
+	riseStep = 0.05
+	riseN    = int(2*offWin/riseStep) + 1
+)
+
+// rise is the line at start's riseCurve (start on the player's clock, as raw times are).
+func (g *gapFinder) rise(start float64, dst *riseCurve) {
+	for k := range dst {
+		d := start - offWin + float64(k)*riseStep
+		var a, b, na, nb float32
+		for i := max(0, g.nh-len(g.hist)); i < g.nh; i++ {
+			h := g.hist[i%len(g.hist)]
+			switch r := float64(h.raw) - d; {
+			case r >= 0 && r < 0.4:
+				a, na = a+h.env, na+1
+			case r >= -0.4 && r < 0:
+				b, nb = b+h.env, nb+1
+			}
+		}
+		dst[k] = float32(math.NaN())
+		if na >= 10 && nb >= 10 {
+			dst[k] = a/na - b/nb
+		}
+	}
 }
 
 type gapCand struct{ raw, score float64 }
@@ -88,6 +132,8 @@ func (g *gapFinder) take(tf, off float64, f source.VoiceFrame) {
 		g.n = 0
 	}
 	g.lastT = tf
+	g.hist[g.nh%len(g.hist)] = struct{ raw, env float32 }{float32(tf - off), f.Env}
+	g.nh++
 	g.ring[g.n%gapRing] = struct{ raw, env, flux float64 }{tf - off, float64(f.Env), float64(f.Flux)}
 	g.n++
 	if g.n < gapRing {
@@ -148,6 +194,7 @@ type offsetLearner struct {
 	key   string
 	props [offLines][offProps]offProp
 	np    [offLines]int
+	rises [offLines]riseCurve
 	lines int // lines heard in all
 
 	est     float64 // the onsets' lag behind the lines' times (s)
@@ -215,14 +262,68 @@ func (o *offsetLearner) estimate() {
 			}
 		}
 	}
+	// lines that propose at random agree by chance too, more the more there
+	// are: a window holds offAgree/offWin of all the weight on average
+	var total float64
+	for i := 0; i < min(o.lines, offLines); i++ {
+		for _, p := range o.props[i][:o.np[i]] {
+			total += p.w
+		}
+	}
+	chance := total * offAgree / offWin
+	tops, heard := 0, min(o.lines, offLines) // and it's what lines found likeliest, in a fair share of them
+	for i := 0; i < heard; i++ {
+		if o.np[i] > 0 && math.Abs(o.props[i][0].r-bestC) <= offAgree {
+			tops++
+		}
+	}
 	o.est, o.support = med, bestN
-	o.conf = bestN >= offMinLines && bestW >= other+offMargin
+	o.conf = bestN >= offMinLines && bestW >= other+offMargin && bestW >= chance+3*math.Sqrt(chance)+1 &&
+		tops >= max(3, heard/5) && o.risesAt(med)
+}
+
+// risesAt: the voice, over all the lines, rises across their times moved by
+// lag nearly as much as anywhere (half the most, within 100 ms), or there's
+// nothing heard to say otherwise.
+func (o *offsetLearner) risesAt(lag float64) bool {
+	var c riseCurve
+	most, seen := float32(math.Inf(-1)), false
+	for k := range c {
+		var sum, n float32
+		for i := 0; i < min(o.lines, offLines); i++ {
+			if v := o.rises[i][k]; v == v {
+				sum, n = sum+v, n+1
+			}
+		}
+		c[k] = float32(math.NaN())
+		if n > 0 {
+			c[k], seen = sum/n, true
+			most = max(most, c[k])
+		}
+	}
+	if !seen {
+		return true
+	}
+	at := int(math.Round((lag + offWin) / riseStep))
+	here := float32(math.Inf(-1))
+	for k := max(0, at-2); k <= min(riseN-1, at+2); k++ {
+		if c[k] == c[k] {
+			here = max(here, c[k])
+		}
+	}
+	return here > 0 && here >= most/2
 }
 
 // add takes in a line's proposals.
-func (o *offsetLearner) add(props []offProp) {
+func (o *offsetLearner) add(props []offProp, rise *riseCurve) {
 	i := o.lines % offLines
 	o.np[i] = copy(o.props[i][:], props)
+	for k := range o.rises[i] {
+		o.rises[i][k] = float32(math.NaN())
+		if rise != nil {
+			o.rises[i][k] = rise[k]
+		}
+	}
 	o.lines++
 	o.estimate()
 }
@@ -267,7 +368,7 @@ func (u *UI) learnedOffset(key string) time.Duration {
 }
 
 // learnOffset takes a sung line's proposals for the song key.
-func (u *UI) learnOffset(key string, props []offProp) {
+func (u *UI) learnOffset(key string, props []offProp, rise *riseCurve) {
 	n := u.nudges()
 	if _, manual := n.Ms[key]; manual || key == "" {
 		return // you set this song's: yours wins
@@ -277,7 +378,7 @@ func (u *UI) learnOffset(key string, props []offProp) {
 		v := float64(n.Learned[key]) / 1000
 		*o = offsetLearner{key: key, from: v, to: v}
 	}
-	o.add(props)
+	o.add(props, rise)
 	v, ok := o.target()
 	if !ok {
 		return
