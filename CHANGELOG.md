@@ -3,7 +3,15 @@
 Each release's section here becomes its notes on GitHub. Versions follow [semver](https://semver.org): the config
 file, the commands and the plugin protocol are the public surface.
 
-## Unreleased
+## 1.1.0
+
+**Lighter**
+- The service no longer caps Go's memory at 16 MiB. The runtime needs about half of that for itself, so the garbage
+  collector ran back to back and Ember's CPU crept from a few percent to a quarter of a core or more the longer it
+  ran. It now stays around 4%. Run `ember install` (or `make install`) to rewrite the unit.
+- A dance and its face ride their 24 fps instead of asking for 60; the island sends the compositor only the
+  rectangles that changed (an open card: 13 times fewer pixels a second); a frame no longer allocates for arcs,
+  shaded fills or the session order.
 
 **Ember, more natural**
 - It dances on the beat: its knees bend into each beat (it used to land about 80 ms late), its weight steps from foot
