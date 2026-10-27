@@ -51,7 +51,10 @@ func TestDamageLeavesNoGhosts(t *testing.T) {
 			{time.Second, func(g *galleryScene) { g.a.ui.focus, g.a.ui.focusAt = "clock", g.clock }},
 		},
 		"a volume key with the card open": {
-			{0, func(g *galleryScene) { g.work("k", "kinvault", "fix the race in the compaction path", 3); g.a.ui.pinned = true }},
+			{0, func(g *galleryScene) {
+				g.work("k", "kinvault", "fix the race in the compaction path", 3)
+				g.a.ui.pinned = true
+			}},
 			{time.Second, func(g *galleryScene) { g.a.handle(source.Volume{V: 0.5, OK: true}) }},
 			{1200 * time.Millisecond, func(g *galleryScene) { g.a.handle(source.Volume{V: 0.55, OK: true}) }},
 		},
