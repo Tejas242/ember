@@ -236,3 +236,28 @@ func stageLevels() [][3]float64 {
 	}
 	return lv
 }
+
+func TestWholeSecondPlayhead(t *testing.T) {
+	var w wholeWatch
+	start := time.Unix(5000, 0) // the song really started here
+	read := func(after time.Duration) time.Duration {
+		at := start.Add(after)
+		return w.refine("k", after.Truncate(time.Second), at, true) // a browser: whole seconds, cut down
+	}
+	if p := read(3300 * time.Millisecond); p != 3*time.Second {
+		t.Fatalf("a first reading is taken as it is: %v", p)
+	}
+	var p time.Duration
+	for _, ms := range []int{8900, 14050, 19600, 24250, 29750} { // the poll, every five seconds or so
+		p = read(time.Duration(ms) * time.Millisecond)
+		if e := p - time.Duration(ms)*time.Millisecond; ms > 19000 && e.Abs() > 120*time.Millisecond {
+			t.Fatalf("at %d ms it says %v", ms, p)
+		}
+	}
+	if p := w.refine("k", 3*time.Second, start.Add(40*time.Second), true); p != 3*time.Second { // a seek back: over
+		t.Fatalf("after a seek %v", p)
+	}
+	if p := w.refine("k", 3217*time.Millisecond, start, true); p != 3217*time.Millisecond { // a finer player: as it is
+		t.Fatal(p)
+	}
+}

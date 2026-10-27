@@ -32,6 +32,7 @@ func (u *UI) heardPlayhead() {
 		*w, u.stuck = playheadWatch{}, ""
 		return
 	}
+	t.Position = u.whole.refine(u.trackKey(t), t.Position, t.PosAt, t.Playing)
 	key, at := mediaKey(t), t.PosAt
 	if w.key != key { // a new song: trusted until it shows otherwise
 		*w = playheadWatch{key: key, pos: t.Position, at: at, moved: at, start: at.Add(-t.Position)}
@@ -82,4 +83,40 @@ func (u *UI) songElapsed(now time.Time) time.Duration {
 		d = min(d, t.Length)
 	}
 	return d
+}
+
+// A browser says its playhead in whole seconds, cut down: the song is
+// somewhere in [pos, pos+1 s), so words timed to it run up to a second
+// late, and jump each time it's read again (Firefox, measured: it moves
+// once a second, on the second). Each such reading bounds when the song
+// started; readings that agree narrow that down (the intersection), so a
+// few reads at the poll's five seconds put the playhead within about a
+// tenth of a second. One that doesn't agree (a seek, a pause) starts over;
+// a first one is taken as it is.
+
+// wholeWatch is what whole-second readings say of when the song started:
+// in (lo, hi].
+type wholeWatch struct {
+	key    string
+	lo, hi time.Time
+}
+
+// refine is the playhead pos read at at, made finer when it's whole seconds.
+func (w *wholeWatch) refine(key string, pos time.Duration, at time.Time, playing bool) time.Duration {
+	if !playing || pos%time.Second != 0 {
+		*w = wholeWatch{}
+		return pos
+	}
+	lo, hi := at.Add(-pos-time.Second), at.Add(-pos)
+	if w.key != key || !hi.After(w.lo) || !lo.Before(w.hi) { // the first (a player with finer times may say a whole second now and then)
+		*w = wholeWatch{key, lo, hi}
+		return pos
+	}
+	if lo.After(w.lo) {
+		w.lo = lo
+	}
+	if hi.Before(w.hi) {
+		w.hi = hi
+	}
+	return at.Sub(w.lo.Add(w.hi.Sub(w.lo) / 2))
 }

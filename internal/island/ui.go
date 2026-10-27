@@ -130,6 +130,7 @@ type pointerState struct {
 	offset                  offsetLearner              // the playing song's offset, learnt by ear (lipsync_offset.go)
 	stuck                   string                     // the song whose player's playhead doesn't advance (its media key)
 	playhead                playheadWatch              // what the player has said of its playhead, to tell when it's stuck
+	whole                   wholeWatch                 // ... and, said in whole seconds, when the song started
 	openCtx                 string                     // the desk when the card opened
 	openAt                  time.Time
 }
