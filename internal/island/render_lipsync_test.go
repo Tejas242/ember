@@ -148,6 +148,8 @@ type lsTick struct {
 }
 
 func TestLipSync(t *testing.T) {
+	learnOffsets = true // the harness measures the learner too
+	defer func() { learnOffsets = false }()
 	dir, out := os.Getenv("EMBER_LIPSYNC"), os.Getenv("EMBER_LIPSYNC_OUT")
 	if dir == "" || out == "" {
 		t.Skip("set EMBER_LIPSYNC and EMBER_LIPSYNC_OUT")

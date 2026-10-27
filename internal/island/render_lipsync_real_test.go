@@ -102,6 +102,8 @@ func realWords(dir, title, artist string) string {
 }
 
 func TestLipSyncReal(t *testing.T) {
+	learnOffsets = true // the harness measures the learner too
+	defer func() { learnOffsets = false }()
 	dir, lyr := os.Getenv("EMBER_REAL"), os.Getenv("EMBER_REAL_LYRICS")
 	if dir == "" || lyr == "" {
 		t.Skip("set EMBER_REAL and EMBER_REAL_LYRICS")

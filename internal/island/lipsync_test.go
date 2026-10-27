@@ -291,6 +291,8 @@ func TestGapFinderProposes(t *testing.T) {
 }
 
 func TestLearntOffsetAndNudges(t *testing.T) {
+	learnOffsets = true
+	defer func() { learnOffsets = false }()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	g := stageScene(t, testLines, mediaKey, "synced", "ready")
 	u := g.a.ui

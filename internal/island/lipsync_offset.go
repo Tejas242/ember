@@ -359,8 +359,15 @@ func (o *offsetLearner) glide(v float64, now time.Time) {
 	o.dur = math.Max(0.5, math.Abs(v-o.from)/offRate)
 }
 
+// learnOffsets turns the offset learner on. It is off until it stops guessing
+// wrong on dense mixes (one real song got +1.17 s where the voice said +0.3 s).
+var learnOffsets = false
+
 // learnedOffset is the offset Ember has learnt for the song (+ the words earlier).
 func (u *UI) learnedOffset(key string) time.Duration {
+	if !learnOffsets {
+		return 0
+	}
 	if o := &u.offset; o.key == key {
 		return time.Duration(o.value(u.now()) * float64(time.Second))
 	}
@@ -369,6 +376,9 @@ func (u *UI) learnedOffset(key string) time.Duration {
 
 // learnOffset takes a sung line's proposals for the song key.
 func (u *UI) learnOffset(key string, props []offProp, rise *riseCurve) {
+	if !learnOffsets {
+		return
+	}
 	n := u.nudges()
 	if _, manual := n.Ms[key]; manual || key == "" {
 		return // you set this song's: yours wins
