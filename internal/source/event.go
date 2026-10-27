@@ -84,8 +84,13 @@ type Volume struct {
 	First     bool
 }
 
-// Mic is the default input muted or not.
-type Mic struct{ Muted bool }
+// Mic is the default input: muted or not, and its level (0..1, more when
+// boosted). Level says it's the level that changed, not the mute.
+type Mic struct {
+	Muted bool
+	V     float64
+	Level bool
+}
 
 // Brightness is the backlight, 0..1. First is the reading at start.
 type Brightness struct {

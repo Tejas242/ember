@@ -155,6 +155,29 @@ func (a *app) micChanged(muted bool) {
 	a.ui.Moment(m)
 }
 
+// micLevel: the microphone's level moved (its gain, from a key or a mixer).
+func (a *app) micLevel(l level) {
+	if !a.ui.cfg.OSD {
+		return
+	}
+	m := moment{key: "osd:mic", icon: "mic", tint: a.ui.pal.green, meter: true, level: min(l.v, 1), right: strconv.Itoa(int(l.v*100 + 0.5)),
+		until: a.ui.now().Add(a.ui.cfg.OSDFor), osd: true}
+	if l.muted {
+		m.icon, m.tint, m.right = "mic-off", a.ui.pal.muted, "Muted"
+	}
+	a.ui.Moment(m)
+}
+
+// playerVolume: you scrolled on the music row, which sets the player's own
+// volume (not the system's): it shows as the song's, with a note for an icon.
+func (a *app) playerVolume(v float64) {
+	if !a.ui.cfg.OSD {
+		return
+	}
+	a.ui.Moment(moment{key: "osd:player", icon: "note", tint: a.ui.accent(a.ui.pal.fg), meter: true, level: v,
+		right: strconv.Itoa(int(v*100 + 0.5)), until: a.ui.now().Add(a.ui.cfg.OSDFor), osd: true})
+}
+
 // ---- brightness and screenshots ----
 
 func (a *app) brightnessChanged(v float64) {

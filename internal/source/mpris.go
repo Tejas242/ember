@@ -236,8 +236,9 @@ func (m *MPRIS) Seek(player string, delta time.Duration) {
 	go conn.Object(player, "/org/mpris/MediaPlayer2").Call("org.mpris.MediaPlayer2.Player.Seek", 0, int64(delta/time.Microsecond))
 }
 
-// NudgeVolume changes the player's volume by d (0..1 scale), if it has one.
-func (m *MPRIS) NudgeVolume(player string, d float64) {
+// NudgeVolume changes the player's volume by d (0..1 scale), if it has
+// one, and tells then the new volume (on its own goroutine).
+func (m *MPRIS) NudgeVolume(player string, d float64, then func(v float64)) {
 	conn, _ := m.bus()
 	if conn == nil || player == "" {
 		return
@@ -249,6 +250,9 @@ func (m *MPRIS) NudgeVolume(player string, d float64) {
 			return
 		}
 		cur, _ := v.Value().(float64)
-		obj.SetProperty("org.mpris.MediaPlayer2.Player.Volume", dbus.MakeVariant(math.Max(0, math.Min(1, cur+d))))
+		nv := math.Max(0, math.Min(1, cur+d))
+		if obj.SetProperty("org.mpris.MediaPlayer2.Player.Volume", dbus.MakeVariant(nv)) == nil && then != nil {
+			then(nv)
+		}
 	}()
 }

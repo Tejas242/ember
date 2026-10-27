@@ -58,7 +58,11 @@ func (a *app) handle(e source.Event) {
 			a.volumeChanged(l)
 		}
 	case source.Mic:
-		a.micChanged(e.Muted)
+		if e.Level {
+			a.micLevel(level{v: e.V, muted: e.Muted, ok: true})
+		} else {
+			a.micChanged(e.Muted)
+		}
 	case source.Brightness:
 		if e.First {
 			a.ui.light = e.V

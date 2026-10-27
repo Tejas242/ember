@@ -24,8 +24,11 @@ type osdCase struct {
 	label string
 	setup func(t *testing.T, g *galleryScene)
 	build func(t *testing.T) *galleryScene // a scene made its own way (a stage)
-	press func(g *galleryScene)            // the change; a volume key by default
-	crop  func(u *UI) image.Rectangle
+	// unheard: a change Ember didn't hear before; EMBER_OSD_BEFORE=1 leaves
+	// it out, to picture what you saw then (nothing)
+	unheard bool
+	press   func(g *galleryScene) // the change; a volume key by default
+	crop    func(u *UI) image.Rectangle
 }
 
 func pressVolume(g *galleryScene) { g.a.handle(source.Volume{V: 0.64, OK: true}) }
@@ -62,6 +65,12 @@ func osdCases() []osdCase {
 			g.run(150 * time.Millisecond)
 			hookAt(g.a, "Stop", "k", "kinvault", map[string]any{"last_assistant_message": "All 42 tests pass."})
 		}, crop: osdPillCrop},
+		{label: "microphone level (Ember never heard it)", setup: func(t *testing.T, g *galleryScene) {}, unheard: true,
+			press: func(g *galleryScene) { g.a.handle(source.Mic{V: 0.45, Level: true}) }, crop: osdPillCrop},
+		{label: "card open, scrolling the music row (the player's volume)", setup: func(t *testing.T, g *galleryScene) {
+			g.music(true)
+			g.a.ui.pinned = true
+		}, unheard: true, press: func(g *galleryScene) { g.a.playerVolume(0.35) }, crop: osdTopCrop},
 		{label: "card open", setup: func(t *testing.T, g *galleryScene) {
 			g.work("k", "kinvault", "fix the race in the store's compaction path and make the tests pass", 4)
 			g.music(true)
@@ -99,7 +108,9 @@ func renderOSDCase(t *testing.T, c osdCase) galleryShot {
 	if press == nil {
 		press = pressVolume
 	}
-	press(g)
+	if !c.unheard || os.Getenv("EMBER_OSD_BEFORE") == "" {
+		press(g)
+	}
 	g.run(400 * time.Millisecond)
 	return galleryShot{c.label, onDesktop(g.a.ui, c.crop(g.a.ui))}
 }

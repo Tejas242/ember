@@ -42,7 +42,9 @@ func (a *app) key(k string) {
 		a.music.Seek(a.ui.track.Player, time.Duration(d))
 	case strings.HasPrefix(k, "music:volume:") && a.ui.track != nil:
 		d, _ := strconv.Atoi(strings.TrimPrefix(k, "music:volume:"))
-		a.music.NudgeVolume(a.ui.track.Player, float64(d)*0.05)
+		a.music.NudgeVolume(a.ui.track.Player, float64(d)*0.05, func(v float64) {
+			a.posts <- func(a *app) { a.playerVolume(v) }
+		})
 	case strings.HasPrefix(k, "music:") && a.ui.track != nil:
 		if method := map[string]string{"music:prev": "Previous", "music:toggle": "PlayPause", "music:next": "Next"}[k]; method != "" {
 			a.music.Control(a.ui.track.Player, method)

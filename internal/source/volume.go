@@ -40,7 +40,7 @@ func levelEvent(ln string) bool {
 	return strings.Contains(ln, "'change' on sink #") || strings.Contains(ln, "'change' on source #") || strings.Contains(ln, "on server")
 }
 
-// Levels follows the default output's volume and the default input's mute
+// Levels follows the default output's volume and the default input's mute and level
 // until `pactl subscribe` ends (the sound server restarted). Without pactl
 // and wpctl it returns at once.
 func Levels(emit Emit) error {
@@ -85,8 +85,11 @@ func Levels(emit Emit) error {
 		if ns.OK && (ns.V != sink.V || ns.Muted != sink.Muted) {
 			emit(ns)
 		}
-		if nm.OK && src.OK && nm.Muted != src.Muted {
-			emit(Mic{Muted: nm.Muted})
+		switch {
+		case nm.OK && src.OK && nm.Muted != src.Muted:
+			emit(Mic{Muted: nm.Muted, V: nm.V})
+		case nm.OK && src.OK && nm.V != src.V: // its level: Noctalia leaves this OSD to us too
+			emit(Mic{Muted: nm.Muted, V: nm.V, Level: true})
 		}
 		sink, src = ns, nm
 	}
