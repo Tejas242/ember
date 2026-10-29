@@ -191,6 +191,7 @@ type Item struct {
 	Mark    string   `json:"mark,omitempty"`    // list: done | skip | fail | none, an outcome instead of an icon
 	Target  *float64 `json:"target,omitempty"`  // bars: a ghost of what it asks
 	Today   bool     `json:"today,omitempty"`   // bars: this one is now
+	Key     string   `json:"key,omitempty"`     // list, agenda: pressing the row sends this action (needs the item drawn as pressable)
 	AtMs    int64    `json:"at_ms,omitempty"`   // agenda: when
 	Tag     string   `json:"tag,omitempty"`     // agenda: a quiet word at the right
 	TagMood string   `json:"tag_mood,omitempty"`
