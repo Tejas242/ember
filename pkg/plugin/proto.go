@@ -13,6 +13,7 @@ import (
 	"math"
 	"regexp"
 	"slices"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -21,6 +22,10 @@ const Version = 1
 
 // MaxLine is the longest line either side may send, newline included.
 const MaxLine = 64 << 10
+
+// KeyMax is the longest key a button or a pressable row may carry: room for
+// an action and a long id ("giveup:lc:<a LeetCode slug>").
+const KeyMax = 128
 
 // Moods.
 const (
@@ -191,7 +196,7 @@ type Item struct {
 	Mark    string   `json:"mark,omitempty"`    // list: done | skip | fail | none, an outcome instead of an icon
 	Target  *float64 `json:"target,omitempty"`  // bars: a ghost of what it asks
 	Today   bool     `json:"today,omitempty"`   // bars: this one is now
-	Key     string   `json:"key,omitempty"`     // list, agenda: pressing the row sends this action (needs the item drawn as pressable)
+	Key     string   `json:"key,omitempty"`     // list, agenda: ≤ KeyMax, pressing the row sends it as a dashboard button
 	AtMs    int64    `json:"at_ms,omitempty"`   // agenda: when
 	Tag     string   `json:"tag,omitempty"`     // agenda: a quiet word at the right
 	TagMood string   `json:"tag_mood,omitempty"`
@@ -592,14 +597,26 @@ func into[T any](line []byte) (*T, error) {
 
 // Cut shortens s to n characters, the last an ellipsis, and makes it valid
 // UTF-8 without control characters.
-func Cut(s string, n int) string {
+func Cut(s string, n int) string { return cut(s, n, false) }
+
+// CutLines is Cut for text that keeps its line breaks: a card's body, in
+// paragraphs. "\r\n" reads as "\n".
+func CutLines(s string, n int) string {
+	return cut(strings.ReplaceAll(s, "\r\n", "\n"), n, true)
+}
+
+func cut(s string, n int, lines bool) string {
 	if !utf8.ValidString(s) {
 		s = string([]rune(s)) // invalid bytes become U+FFFD
 	}
 	rs := []rune(s)
 	out := rs[:0]
 	for _, r := range rs {
-		if r == '\n' || r == '\t' || r == '\r' {
+		switch {
+		case r == '\n' && lines:
+			out = append(out, r)
+			continue
+		case r == '\n' || r == '\t' || r == '\r':
 			r = ' '
 		}
 		if r >= 0x20 && r != 0x7f {
@@ -643,7 +660,7 @@ func buttons(bs []Button, n int) []Button {
 	}
 	out := bs[:0]
 	for _, b := range bs {
-		if b.Key, b.Label = Cut(b.Key, 32), Cut(b.Label, 24); b.Key != "" && b.Label != "" {
+		if b.Key, b.Label = Cut(b.Key, KeyMax), Cut(b.Label, 24); b.Key != "" && b.Label != "" {
 			out = append(out, b)
 		}
 	}
@@ -714,7 +731,7 @@ func (c *Card) fit() error {
 	if c.ID == "" || c.Title == "" {
 		return errors.New("needs an id and a title")
 	}
-	c.Eyebrow, c.Body, c.Mood = Cut(c.Eyebrow, 32), Cut(c.Body, 280), mood(c.Mood, Nudge)
+	c.Eyebrow, c.Body, c.Mood = Cut(c.Eyebrow, 32), CutLines(c.Body, 280), mood(c.Mood, Nudge)
 	c.Buttons = buttons(c.Buttons, 3)
 	switch {
 	case c.TTLs == 0 && len(c.Buttons) > 0:
@@ -919,6 +936,8 @@ func (w *Widget) fit(top bool) bool {
 	items := w.Items[:0]
 	for _, it := range w.Items {
 		num, isNum := it.Value.(float64)
+		key := it.Key
+		it.Key = "" // only a list's or an agenda's rows press
 		switch w.Kind {
 		case "stats":
 			it.Label, it.Caption, it.Mood = Cut(it.Label, 20), Cut(it.Caption, 24), mood(it.Mood, Quiet)
@@ -948,12 +967,14 @@ func (w *Widget) fit(top bool) bool {
 			}
 		case "list":
 			it.Title, it.Sub, it.Icon, it.Mood = Cut(it.Title, 40), Cut(it.Sub, 60), icon(it.Icon), mood(it.Mood, Quiet)
+			it.Key = Cut(key, KeyMax)
 			it.Mark = enum(it.Mark, "", "", "done", "skip", "fail", "none")
 			if it.Title == "" {
 				continue
 			}
 		case "agenda":
 			it.Title, it.Tag, it.TagMood, it.Chips = Cut(it.Title, 40), Cut(it.Tag, 14), mood(it.TagMood, Quiet), chips(it.Chips)
+			it.Key = Cut(key, KeyMax)
 			if len(it.Chips) > 4 {
 				it.Chips = it.Chips[:4]
 			}

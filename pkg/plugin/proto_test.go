@@ -206,3 +206,29 @@ func TestDecodeDashboardWidgets(t *testing.T) {
 		t.Fatalf("line %+v", ln)
 	}
 }
+
+// A card's body keeps its paragraphs; every other text field is one line.
+func TestCardBodyKeepsLines(t *testing.T) {
+	m, err := Decode([]byte(`{"type":"card","id":"x","title":"A\nB","body":"WA on test 3.\r\nGive up\tand learn it?\n"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Card.Body != "WA on test 3.\nGive up and learn it?\n" || m.Card.Title != "A B" {
+		t.Fatalf("%q %q", m.Card.Body, m.Card.Title)
+	}
+}
+
+// A list's and an agenda's rows carry a key; other widgets' items don't.
+func TestItemKeys(t *testing.T) {
+	m, err := Decode([]byte(`{"type":"dashboard","widgets":[
+		{"kind":"list","items":[{"title":"a","key":"open:1"}]},
+		{"kind":"agenda","items":[{"title":"b","at_ms":1,"key":"upsolve:cf:2261` + strings.Repeat("9", 140) + `"}]},
+		{"kind":"bars","items":[{"label":"c","value":1,"key":"x"}]}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws := m.Dashboard.Widgets
+	if ws[0].Items[0].Key != "open:1" || utf8.RuneCountInString(ws[1].Items[0].Key) != KeyMax || ws[2].Items[0].Key != "" {
+		t.Fatalf("%q %q %q", ws[0].Items[0].Key, ws[1].Items[0].Key, ws[2].Items[0].Key)
+	}
+}

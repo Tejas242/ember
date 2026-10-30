@@ -167,7 +167,7 @@ A new `status` replaces the last. `{"type":"remove","what":"status"}` takes it b
 | `progress` | number 0..1 | a thin bar under the row |
 | `target` | string | a `[targets]` name for a click on the row |
 | `ring` | `{value 0..1, mood, sweep}` or `{start_ms, end_ms, mood}` | a ring on the card's rail instead of the icon: filled to `value` (sweeping in, unless `sweep` is false: a state, not progress), or emptying from `start_ms` to `end_ms` |
-| `buttons` | ≤ 2 × `{key ≤ 32, label ≤ 24, primary bool}` | small buttons at the row's end; a press sends `button` with `"card":"row"` |
+| `buttons` | ≤ 2 × `{key ≤ 128, label ≤ 24, primary bool}` | small buttons at the row's end; a press sends `button` with `"card":"row"` |
 | `chips` | ≤ 9 × `{label ≤ 4, state}` | letters in chips after the title |
 | `badge` | icon | a small amber icon after the title (`lock`) |
 | `flame` | string, ≤ 40 | the end of `sub` that a small live flame goes before ("4-day streak") |
@@ -188,10 +188,10 @@ after them, and at most 3 of a plugin's are open at once (a fourth is dropped, a
 | `id` | string, ≤ 64 | required: a card with the same id replaces it |
 | `eyebrow` | string, ≤ 32 | the small capitals above; default the plugin's name |
 | `title` | string, ≤ 60 | required |
-| `body` | string, ≤ 280 | |
+| `body` | string, ≤ 280 | wrapped to two lines; `"\n"` starts a paragraph on its own line, and a body in paragraphs gets up to four |
 | `mood` | mood | default `nudge` |
-| `buttons` | ≤ 3 × `{key ≤ 32, label ≤ 24, primary bool}` | a pick sends `button` and closes the card |
-| `ttl_s` | number 5..600 | default 180 with buttons, 7 without |
+| `buttons` | ≤ 3 × `{key ≤ 128, label ≤ 24, primary bool}` | a pick sends `button` and closes the card |
+| `ttl_s` | number 5..600 | how long it stays (and its buttons can act): default 180 with buttons, 7 without |
 | `urgent` | bool | before Claude's own requests (the `critical` grant) |
 
 `{"type":"remove","what":"card","id":"break"}` takes it back. You can always close one yourself (right-click).

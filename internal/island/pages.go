@@ -346,6 +346,16 @@ const (
 	titleLineH   = 19
 )
 
+// cardBody is a card's body in lines w wide: two, or up to four for a
+// plugin's card written in paragraphs ("\n"), each starting a line.
+func cardBody(c *Card, w float32) []string {
+	n := 2
+	if c.Kind == "plugin" && strings.Contains(c.Body, "\n") {
+		n = 4
+	}
+	return wrap(fCaption(), c.Body, w, n)
+}
+
 func (u *UI) cardHeight(c *Card) int {
 	if c == nil {
 		return 60
@@ -353,7 +363,7 @@ func (u *UI) cardHeight(c *Card) int {
 	inner := float32(cardW - 2*pad)
 	h := cardTitleTop + titleLineH*len(u.cardTitle(c))
 	if c.Body != "" {
-		h += 2 + 15*len(wrap(fCaption(), c.Body, cardW-textX-pad, 2))
+		h += 2 + 15*len(cardBody(c, cardW-textX-pad))
 	}
 	if c.Code != "" {
 		h += 10 + 12 + 15*len(codeLines(c.Code, inner-20))
@@ -435,7 +445,7 @@ func (u *UI) drawCard(c *Card, x, w float32) {
 	i++
 	y += th
 	if c.Body != "" {
-		body := wrap(fCaption(), c.Body, right-tx, 2)
+		body := cardBody(c, right-tx)
 		bh := float32(2 + 15*len(body))
 		u.item("c:body", i, x, w, y, bh, func(y float32) {
 			for j, ln := range body {

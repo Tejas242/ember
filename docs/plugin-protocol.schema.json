@@ -98,7 +98,7 @@
         },
         "key": {
           "type": "string",
-          "maxLength": 32
+          "maxLength": 128
         }
       },
       "required": [
@@ -405,7 +405,7 @@
             "properties": {
               "key": {
                 "type": "string",
-                "maxLength": 32
+                "maxLength": 128
               },
               "label": {
                 "type": "string",
@@ -481,7 +481,8 @@
         },
         "body": {
           "type": "string",
-          "maxLength": 280
+          "maxLength": 280,
+          "description": "\\n starts a new paragraph"
         },
         "mood": {
           "$ref": "#/$defs/mood"
@@ -499,7 +500,7 @@
             "properties": {
               "key": {
                 "type": "string",
-                "maxLength": 32
+                "maxLength": 128
               },
               "label": {
                 "type": "string",
@@ -739,7 +740,7 @@
                 "properties": {
                   "key": {
                     "type": "string",
-                    "maxLength": 32
+                    "maxLength": 128
                   },
                   "label": {
                     "type": "string",
@@ -995,6 +996,10 @@
                       "fail",
                       "none"
                     ]
+                  },
+                  "key": {
+                    "type": "string",
+                    "maxLength": 128
                   }
                 },
                 "required": [
@@ -1061,6 +1066,10 @@
                 "properties": {
                   "at_ms": {
                     "type": "integer"
+                  },
+                  "key": {
+                    "type": "string",
+                    "maxLength": 128
                   },
                   "title": {
                     "type": "string",
