@@ -53,6 +53,45 @@ func shown(e *Status) bool {
 	return e != nil && (e.Task != "" || e.Closed || e.Need > 0 || e.Round != nil)
 }
 
+// roundLeads: the round takes the pill and the row. A task you're working
+// on keeps them until 15 minutes before the round, and after it.
+func roundLeads(e *Status, r *Round, now time.Time) bool {
+	if !e.active() {
+		return true
+	}
+	switch r.phase(now) {
+	case "live":
+		return true
+	case "soon":
+		return r.start().Sub(now) <= 15*time.Minute
+	}
+	return false
+}
+
+// judging is a submission being judged, in words: "judging · test 9".
+func judging(j string) string {
+	if j == "" || j == "queue" {
+		return "judging"
+	}
+	return "judging · " + j
+}
+
+// taskNews is what's new about the task you're on: a submission being
+// judged, the last rejection, or a round coming up.
+func taskNews(e *Status, now time.Time) (string, string) {
+	switch {
+	case e.Paused || e.Stopped:
+	case e.Judging != "":
+		return judging(e.Judging), plugin.Wait
+	case e.LastVerdict != "":
+		return e.LastVerdict, plugin.Fail
+	}
+	if r := e.Round; r != nil && r.phase(now) == "soon" {
+		return r.Short + " " + until(now, r.start()), ""
+	}
+	return "", ""
+}
+
 // Line is edge's line in the pill, nil when it has nothing to say.
 func Line(e *Status, now time.Time) *plugin.Status {
 	if !shown(e) {
@@ -63,7 +102,7 @@ func Line(e *Status, now time.Time) *plugin.Status {
 		s.BadgeClock = "lock" // the clock says Claude is locked, too
 	}
 	sal := func(v float64) { s.Salience = plugin.Float(v) }
-	if r := e.Round; r != nil {
+	if r := e.Round; r != nil && roundLeads(e, r, now) {
 		s.Text = r.Short
 		switch r.phase(now) {
 		case "soon":
@@ -102,11 +141,27 @@ func Line(e *Status, now time.Time) *plugin.Status {
 		return s
 	}
 	sal(0)
-	if e.StartedMs > 0 || e.Closed {
+	if e.active() || e.Closed {
 		sal(0.55)
 	}
-	if e.StartedMs > 0 && !e.Pending { // practising
-		s.Text, s.Mood, s.SinceMs, s.Satellite = short(e.Task), plugin.Work, e.StartedMs, true
+	if e.active() { // practising: the clock is work, and runs only while edge counts it
+		s.Text, s.Mood = e.label(), plugin.Work
+		w := e.workAt(now)
+		switch {
+		case e.Paused:
+			s.Mood, s.Value = plugin.Quiet, "paused · "+mins(w)
+			sal(0.2)
+		case e.ticking():
+			s.SinceMs, s.Satellite = e.AsOfMs-int64(e.WorkSec)*1000, true
+		default:
+			s.Value = mins(w)
+		}
+		if sub, mood := taskNews(e, now); sub != "" {
+			s.Sub = sub
+			if mood != "" {
+				s.Mood = mood
+			}
+		}
 		return s
 	}
 	s.Text, s.Mood = fmt.Sprintf("Today %d/%d", e.Today, e.Need), plugin.Nudge
@@ -114,23 +169,67 @@ func Line(e *Status, now time.Time) *plugin.Status {
 		s.Badge = "lock"
 	}
 	if e.Task != "" {
-		s.Value = short(e.Task)
+		s.Value = e.label()
 	}
 	return s
 }
 
-// FromStats is edge's day as its stats say, before its first status.
+// FromStats is edge's day as its stats say, before its first status: the
+// task too, so a restart doesn't lose it.
 func FromStats(st *Stats) *Status {
 	if st == nil {
 		return &Status{}
 	}
-	return &Status{Today: st.Today.Got, Need: st.Today.Need, Streak: st.Streak.Current, Closed: st.Today.Gate == "closed"}
+	e := &Status{Today: st.Today.Got, Need: st.Today.Need, Streak: st.Streak.Current, Closed: st.Today.Gate == "closed", GiveUpInSec: -1}
+	if c := st.Current; c != nil {
+		e.Task, e.TaskID, e.Kind, e.URL, e.WorkSec, e.Short = taskName(c), c.ID, c.Kind, c.URL, c.WorkSec, taskShort(c)
+		if c.HintsAllowed > 0 || c.NextHintSec > 0 {
+			e.Policy = "ladder"
+		}
+		if c.started() {
+			e.StartedMs, e.GiveUpInSec, e.NextHintSec = c.Started.UnixMilli(), c.GiveUpInSec, c.NextHintSec
+			e.HintsReady = c.HintsAllowed > c.Hints
+			e.CanSkip = c.Kind == "upsolve" || (c.Kind == "new" && c.WorkSec < 600)
+		} else {
+			e.Pending = true
+		}
+	}
+	if r := st.Rounds; r != nil {
+		for _, q := range r.Upsolves.Queue {
+			if st.Current != nil && q.ID == st.Current.ID {
+				e.DueMs = q.Due.UnixMilli()
+			}
+			if n := len(e.Owed); n > 0 && e.Owed[n-1].Round == q.Round {
+				e.Owed[n-1].Indexes = append(e.Owed[n-1].Indexes, q.Index)
+				continue
+			}
+			e.Owed = append(e.Owed, Owed{Round: q.Round, Short: q.Short, Indexes: []string{q.Index}, DueMs: q.Due.UnixMilli()})
+		}
+	}
+	if len(st.Health) > 0 {
+		e.Health = st.Health[0].Msg
+	}
+	if !st.Daemon.Seen.IsZero() {
+		e.SeenMs = st.Daemon.Seen.UnixMilli()
+	}
+	return e
+}
+
+// owedNow is the owed round to offer: the oldest one not lapsed.
+func owedNow(e *Status, now time.Time) *Owed {
+	for i := range e.Owed {
+		if o := &e.Owed[i]; o.DueMs == 0 || time.UnixMilli(o.DueMs).After(now) {
+			return o
+		}
+	}
+	return nil
 }
 
 // Row is edge's row in the card: its goal (or the round's clock) on the
-// rail, the task or the round, where it stands, and the one thing to do.
+// rail, the task or the round, where it stands, and the one thing to do
+// (one button: two crush the words).
 func Row(e *Status, now time.Time) plugin.Row {
-	if r := e.Round; r != nil {
+	if r := e.Round; r != nil && roundLeads(e, r, now) {
 		return roundRow(r, now)
 	}
 	goal := 0.0
@@ -141,22 +240,44 @@ func Row(e *Status, now time.Time) plugin.Row {
 	if goal >= 1 {
 		ring.Mood = plugin.Done
 	}
-	row := plugin.Row{Title: e.Task, Ring: ring, Sub: fmt.Sprintf("%d/%d today · %d-day streak", e.Today, e.Need, e.Streak)}
+	row := plugin.Row{Title: e.Task, Ring: ring, Sub: fmt.Sprintf("%d/%d today", e.Today, e.Need)}
+	if e.Streak > 0 {
+		row.Sub += fmt.Sprintf(" · %d-day streak", e.Streak)
+		row.Flame = fmt.Sprintf("%d-day streak", e.Streak) // the streak gets its little flame
+	}
 	switch {
-	case e.StartedMs > 0 && !e.Pending:
-		row.Sub = "Practising · " + mins(now.Sub(time.UnixMilli(e.StartedMs)))
-		row.Buttons = []plugin.Button{{Key: "hint", Label: "Hint", Primary: true}}
+	case e.active():
+		row.Flame = ""
+		w := e.workAt(now)
+		row.Sub = "Practising · " + mins(w)
+		if e.Paused {
+			row.Sub = "Paused · " + mins(w)
+		}
+		row.Buttons = []plugin.Button{{Key: key("start", e.TaskID), Label: "Open", Primary: true}}
+		if e.HintsReady {
+			row.Buttons = []plugin.Button{{Key: key("hint", e.TaskID), Label: "Hint", Primary: true}}
+		}
+		if sub, _ := taskNews(e, now); sub != "" {
+			row.Sub += " · " + sub
+		} else if !e.HintsReady && e.NextHintSec > 0 && !e.Paused {
+			row.Sub += " · hint in " + mins(time.Duration(e.NextHintSec)*time.Second)
+		}
+		if e.Stopped {
+			row.Sub += " · edge is stopped"
+		}
 	case e.Task != "":
-		row.Buttons = []plugin.Button{{Key: "start", Label: "Start", Primary: true}}
+		row.Buttons = []plugin.Button{{Key: key("start", e.TaskID), Label: "Start", Primary: true}}
 		if e.Closed {
-			row.Sub = "Claude is locked until you practise"
+			row.Sub, row.Flame = fmt.Sprintf("%d/%d · locked", e.Today, e.Need), ""
+		}
+	default:
+		if o := owedNow(e, now); o != nil {
+			row.Title = "Upsolve " + o.Short + " " + strings.Join(o.Indexes, " ")
+			row.Buttons = []plugin.Button{{Key: key("upsolve", o.Round), Label: "Upsolve", Primary: true}}
 		}
 	}
 	if row.Title == "" {
 		row.Title = "Practice"
-	}
-	if streak := fmt.Sprintf("%d-day streak", e.Streak); e.Streak > 0 && strings.HasSuffix(row.Sub, " · "+streak) {
-		row.Flame = streak // the streak gets its little flame
 	}
 	return row
 }
@@ -166,7 +287,7 @@ var still = new(bool)
 
 func roundRow(r *Round, now time.Time) plugin.Row {
 	row := plugin.Row{Title: r.Short}
-	open := []plugin.Button{{Key: "skipround:" + r.ID, Label: "Can't make it"}, {Key: "openround:" + r.ID, Label: "Open", Primary: true}}
+	open := []plugin.Button{{Key: "openround:" + r.ID, Label: "Open", Primary: true}} // "Can't make it" stays on its card
 	switch r.phase(now) {
 	case "soon":
 		row.Ring = &plugin.Ring{Value: plugin.Float(1), Mood: plugin.Nudge, Sweep: still}
@@ -201,7 +322,7 @@ func roundRow(r *Round, now time.Time) plugin.Row {
 		}
 		if up := upsolves(r.Problems); up != "" {
 			row.Sub += " · upsolve " + up
-			row.Buttons = []plugin.Button{{Key: "upsolve", Label: "Upsolve", Primary: true}}
+			row.Buttons = []plugin.Button{{Key: key("upsolve", r.ID), Label: "Upsolve", Primary: true}}
 		}
 	}
 	return row
@@ -214,7 +335,7 @@ func Cardify(c *Card) (plugin.Card, bool) {
 	if mood == "" {
 		mood = plugin.Quiet
 	}
-	out := plugin.Card{ID: c.ID, Eyebrow: "Practice", Title: c.Title, Body: c.Body, Mood: mood, Urgent: c.Urgent}
+	out := plugin.Card{ID: c.ID, Eyebrow: "Practice", Title: c.Title, Body: c.Body, Mood: mood, Urgent: c.Urgent, TTLs: c.TTLs}
 	for _, b := range c.Buttons {
 		out.Buttons = append(out.Buttons, plugin.Button{Key: b.Key, Label: b.Label, Primary: b.Primary})
 	}

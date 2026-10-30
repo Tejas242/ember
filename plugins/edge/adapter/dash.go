@@ -21,27 +21,32 @@ func dayOf(t time.Time, ends string) time.Time {
 	if err != nil {
 		return t
 	}
-	if t.Hour()*60+t.Minute() <= hm.Hour()*60+hm.Minute() {
+	if t.Hour()*60+t.Minute() < hm.Hour()*60+hm.Minute() {
 		return t.AddDate(0, 0, -1)
 	}
 	return t
+}
+
+// late: the last hour before the day ends, from 23:00 until day_ends.
+func late(now time.Time, ends string) bool {
+	return now.Hour() >= 23 || dayOf(now, ends).YearDay() != now.YearDay()
 }
 
 // when says how far off t is, the way the agenda does: "in 1h 07m", "18:35",
 // "Sun night", "Mon 20:05", "Thu 29".
 func when(now, t time.Time, ends string) string {
 	d := t.Sub(now)
-	day := func(x time.Time) time.Time { return dayOf(x, ends) }
+	td, nd := dayOf(t.Add(-time.Minute), ends), dayOf(now, ends) // a deadline at day_ends is the night before's
 	switch {
 	case d < 0:
 		return "now"
 	case d < 3*time.Hour:
-		return "in " + mins(d)
-	case day(t).YearDay() == day(now).YearDay() && day(t).Year() == day(now).Year():
+		return "in " + mins(d.Round(time.Minute)) // rounded, as a live round's time left is
+	case td.YearDay() == nd.YearDay() && td.Year() == nd.Year():
 		return t.Format("15:04")
 	case d < 6*24*time.Hour:
-		if ends != "" && day(t).YearDay() != t.YearDay() {
-			return day(t).Format("Mon") + " night"
+		if ends != "" && td.YearDay() != t.YearDay() {
+			return td.Format("Mon") + " night"
 		}
 		return t.Format("Mon 15:04")
 	}
@@ -59,10 +64,24 @@ func taskName(t *Task) string {
 	return t.Title
 }
 
-func gateWords(st *Stats) string {
+// taskShort is the pill's label for a task in the stats: "2261C", "LC 3542".
+func taskShort(t *Task) string {
+	if t.Source == "cf" {
+		return strings.TrimPrefix(t.ID, "cf:")
+	}
+	return shortTask(t.Title)
+}
+
+func gateWords(st *Stats, e *Status) string {
 	t := st.Today
 	switch t.Gate {
 	case "closed":
+		switch {
+		case e.active():
+			return "Claude unlocks when it's solved"
+		case e.Task != "":
+			return "Claude is locked · start to unlock"
+		}
 		return "Claude is locked until you practise"
 	case "off":
 		return "The gate is off"
@@ -82,12 +101,23 @@ func gateWords(st *Stats) string {
 
 func milestone(n int) bool { return n == 7 || n == 30 || n == 100 || n == 365 }
 
-// Dashboard is edge's page for this moment.
-func Dashboard(st *Stats, now time.Time) plugin.Dashboard {
+// Dashboard is edge's page for this moment, from its stats alone.
+func Dashboard(st *Stats, now time.Time) plugin.Dashboard { return DashboardFor(st, nil, now) }
+
+// DashboardFor is edge's page for this moment. e is what edge last said
+// (the task's controls, owed upsolves, explain-back, debrief, health); nil
+// reads it all from the stats.
+func DashboardFor(st *Stats, e *Status, now time.Time) plugin.Dashboard {
+	if e == nil {
+		e = FromStats(st)
+	}
 	ends := st.Today.DayEnds
-	late := now.Hour() >= 23 || now.Hour() < 4
+	late := late(now, ends)
 	cur := st.Current
-	working := cur != nil && !cur.Started.IsZero() && cur.Outcome == ""
+	if cur != nil && e.TaskID != "" && cur.ID != e.TaskID {
+		cur = nil // the stats are behind edge's word
+	}
+	working := e.active()
 	var live *StatsRound
 	if st.Rounds != nil && st.Rounds.Live != nil {
 		live = st.Rounds.Live
@@ -101,6 +131,44 @@ func Dashboard(st *Stats, now time.Time) plugin.Dashboard {
 		h.Stat = &plugin.HeroStat{Value: fmt.Sprint(st.Streak.Current), Caption: "day streak"}
 	}
 	stepKey := "" // what the agenda mustn't repeat
+	// after is the step when there's no task: an explain-back, a debrief,
+	// an owed upsolve; else (the day done) a re-solve or the next round, or
+	// (not done) the day's problem early.
+	after := func() {
+		switch o := owedNow(e, now); {
+		case e.Explain != "":
+			step.Tag, step.TagMood, step.Text = "Explain", plugin.Done, "Explain-back · "+explainName(st, e.Explain)
+			step.Facts = "say how you solved it"
+			h.Buttons = []plugin.Button{{Key: key("explain", e.Explain), Label: "Explain", Primary: true}}
+		case e.Debrief != "":
+			step.Tag, step.TagMood, step.Text = "Debrief", plugin.Done, "Debrief "+roundShort(st, e.Debrief)
+			step.Facts = "one lesson for the next round"
+			h.Buttons = []plugin.Button{{Key: key("debrief", e.Debrief), Label: "Debrief", Primary: true}}
+		case o != nil && !late:
+			step.Tag, step.Text = "Owed", "Upsolve "+strings.Join(o.Indexes, " ")+" from "+o.Short
+			if o.DueMs > 0 {
+				step.Facts = "lapses " + when(now, time.UnixMilli(o.DueMs), ends)
+			}
+			h.Buttons = []plugin.Button{{Key: key("upsolve", o.Round), Label: "Upsolve", Primary: true}}
+			stepKey = "upsolve:" + o.Round
+		case !st.Today.Done && e.Task == "":
+			step.Tag, step.Text = "Next", "Today's problem"
+			step.Facts = "opens at " + st.Today.StudyFrom
+			label := "Start early"
+			if st.Today.StudyTime {
+				step.Facts, label = "edge hasn't picked one", "Get one"
+			}
+			h.Buttons = []plugin.Button{{Key: "next", Label: label, Primary: true}}
+		case st.Today.Done && len(st.Resolves.Upcoming) > 0 && !late:
+			rs := st.Resolves.Upcoming[0]
+			step.Tag, step.TagMood, step.Text, step.Facts = "Next", plugin.Wait, "Cold re-solve · "+rs.Title, when(now, rs.Due, ends)
+			stepKey = "resolve:" + rs.Title
+		case st.Today.Done && st.Rounds != nil && st.Rounds.Next != nil:
+			n := st.Rounds.Next
+			step.Tag, step.TagMood, step.Text, step.Facts = "Next", plugin.Quiet, roundName(n.Short, n.Kind), when(now, n.Start, ends)+" · you're in"
+			stepKey = "round:" + n.ID
+		}
+	}
 	switch {
 	case live != nil: // the round is the day
 		h.Ring = &plugin.HeroRing{Mode: "countdown", StartMs: live.Start.UnixMilli(), EndMs: live.End.UnixMilli(), Mood: plugin.Nudge}
@@ -145,25 +213,10 @@ func Dashboard(st *Stats, now time.Time) plugin.Dashboard {
 			h.Ember.Mood, h.Ember.Pose = plugin.Quiet, "sleepy"
 			h.Sub = "Next problem tomorrow at " + st.Today.StudyFrom
 		}
-		r := st.Rounds
-		switch { // after the day: what's owed, else what's next
-		case r != nil && len(r.Upsolves.Queue) > 0 && !late:
-			q := r.Upsolves.Queue[0]
-			step.Tag, step.Text, step.Facts = "Extra", "Upsolve "+q.Index+" from "+q.Short, "lapses "+when(now, q.Due, ends)
-			h.Buttons = []plugin.Button{{Key: "upsolve", Label: "Upsolve", Primary: true}}
-			stepKey = "upsolve:" + q.Short
-		case len(st.Resolves.Upcoming) > 0 && !late:
-			rs := st.Resolves.Upcoming[0]
-			step.Tag, step.TagMood, step.Text, step.Facts = "Next", plugin.Wait, "Cold re-solve · "+rs.Title, when(now, rs.Due, ends)
-			stepKey = "resolve:" + rs.Title
-		case r != nil && r.Next != nil:
-			n := r.Next
-			step.Tag, step.TagMood, step.Text, step.Facts = "Next", plugin.Quiet, roundName(n.Short, n.Kind), when(now, n.Start, ends)+" · you're in"
-			stepKey = "round:" + n.ID
-		}
+		after()
 	default:
 		h.Title = fmt.Sprintf("%d to go today", st.Today.Need-st.Today.Got)
-		h.Sub = gateWords(st)
+		h.Sub = gateWords(st, e)
 		if st.Today.Gate == "closed" {
 			h.SubIcon, h.SubMood = "lock", plugin.Nudge
 		}
@@ -171,41 +224,23 @@ func Dashboard(st *Stats, now time.Time) plugin.Dashboard {
 			h.Sub, h.SubMood = "The day ends at "+ends, plugin.Nudge
 		}
 		switch {
+		case working && e.Paused:
+			h.Title, h.Aside = "Paused", mins(e.workAt(now))
 		case working:
 			h.Ember.Mood, h.Ember.Pose = plugin.Work, "attentive"
-			h.Title, h.Aside = "Practising", mins(time.Duration(cur.WorkSec)*time.Second)
+			h.Title, h.Aside = "Practising", mins(e.workAt(now))
 		case st.Today.Gate == "closed" || late:
 			h.Ember.Mood, h.Ember.Pose = plugin.Nudge, "sidelong"
 		}
+		if e.Task == "" {
+			after()
+		}
 	}
-	if cur != nil && live == nil && !st.Today.Done { // the problem: the next step
-		step.Tag, step.Text = kindTag(cur.Kind), taskName(cur)
-		if cur.Rating > 0 {
-			step.Meta = fmt.Sprint(cur.Rating)
+	if e.Task != "" && live == nil && !st.Today.Done { // the problem: the next step
+		taskStep(&h, step, st, cur, e, now)
+		if e.Kind == "upsolve" {
+			stepKey = "upsolve:" + upsolveRound(st, e.TaskID)
 		}
-		var facts []string
-		if working {
-			switch {
-			case cur.HintsAllowed > cur.Hints:
-				facts = append(facts, "hint ready")
-			case cur.NextHintSec > 0:
-				facts = append(facts, "hint in "+mins(time.Duration(cur.NextHintSec)*time.Second))
-			}
-			if cur.Fails > 0 {
-				facts = append(facts, plural(cur.Fails, "wrong"))
-			}
-			step.Dots = &plugin.Dots{Used: cur.Hints, Ready: cur.HintsAllowed, Total: 3, Next: math.Max(0.08, 1-float64(cur.NextHintSec)/900)}
-			h.Buttons = []plugin.Button{{Key: "open", Label: "Open", Primary: true}}
-			if cur.HintsAllowed > cur.Hints {
-				h.Buttons = []plugin.Button{{Key: "hint", Label: "Hint", Primary: true}}
-			}
-		} else {
-			if cur.Kind == "upsolve" && st.Rounds != nil && len(st.Rounds.Upsolves.Queue) > 0 {
-				facts = append(facts, "lapses "+when(now, st.Rounds.Upsolves.Queue[0].Due, ends))
-			}
-			h.Buttons = []plugin.Button{{Key: "start", Label: "Start", Primary: true}}
-		}
-		step.Facts = strings.Join(facts, " · ")
 	}
 	if step.Text != "" {
 		h.Step = step
@@ -249,17 +284,14 @@ func Dashboard(st *Stats, now time.Time) plugin.Dashboard {
 		if live != nil {
 			evs = append(evs, ev{"", plugin.Item{AtMs: live.End.UnixMilli(), Title: "Round ends · debrief after"}})
 		}
-		owed, dues, order := map[string][]Problem{}, map[string]time.Time{}, []string{}
-		for _, q := range r.Upsolves.Queue {
-			if owed[q.Short] == nil {
-				order = append(order, q.Short)
-			}
-			owed[q.Short] = append(owed[q.Short], Problem{Index: q.Index, State: "upsolve"})
-			dues[q.Short] = q.Due
+	}
+	var owed []ev // owed upsolves: always on the agenda, pressable
+	for _, o := range e.Owed {
+		var ps []Problem
+		for _, i := range o.Indexes {
+			ps = append(ps, Problem{Index: i, State: "upsolve"})
 		}
-		for _, s := range order {
-			evs = append(evs, ev{"upsolve:" + s, plugin.Item{AtMs: dues[s].UnixMilli(), Title: s + " upsolves lapse", Chips: chips(owed[s])}})
-		}
+		owed = append(owed, ev{"upsolve:" + o.Round, plugin.Item{AtMs: o.DueMs, Title: o.Short + " upsolves lapse", Chips: chips(ps), Key: key("upsolve", o.Round)}})
 	}
 	for i, rs := range st.Resolves.Upcoming {
 		if i == 2 {
@@ -268,15 +300,16 @@ func Dashboard(st *Stats, now time.Time) plugin.Dashboard {
 		evs = append(evs, ev{"resolve:" + rs.Title, plugin.Item{AtMs: rs.Due.UnixMilli(), Title: "Re-solve · " + rs.Title, Tag: "cold", TagMood: plugin.Wait}})
 	}
 	sort.SliceStable(evs, func(i, j int) bool { return evs[i].it.AtMs < evs[j].it.AtMs })
-	for _, e := range evs {
-		if stepKey != "" && e.key == stepKey { // the hero's next step already says it
+	for _, x := range append(owed, evs...) {
+		if stepKey != "" && x.key == stepKey { // the hero's next step already says it
 			continue
 		}
-		if time.UnixMilli(e.it.AtMs).Before(now) || len(ag.Items) == 4 {
+		if time.UnixMilli(x.it.AtMs).Before(now) || len(ag.Items) == 4 {
 			continue
 		}
-		ag.Items = append(ag.Items, e.it)
+		ag.Items = append(ag.Items, x.it)
 	}
+	sort.SliceStable(ag.Items, func(i, j int) bool { return ag.Items[i].AtMs < ag.Items[j].AtMs })
 
 	// ---- am I improving ----
 	cf := st.Sources["cf"]
@@ -291,7 +324,7 @@ func Dashboard(st *Stats, now time.Time) plugin.Dashboard {
 	if cf.BandHi > cf.BandLo {
 		ln.Band = &plugin.Band{Lo: float64(cf.BandLo), Hi: float64(cf.BandHi), Label: fmt.Sprintf("problems %d–%d", cf.BandLo, cf.BandHi)}
 	}
-	if n := len(vals); n >= 2 {
+	if n := len(vals); n >= 2 && now.Sub(cf.RatingHistory[len(cf.RatingHistory)-1].At) <= 7*24*time.Hour { // last week's change only
 		d := int(vals[n-1] - vals[n-2])
 		ln.Delta, ln.DeltaMood = fmt.Sprintf("+%d", d), plugin.Done
 		if d < 0 {
@@ -322,9 +355,13 @@ func Dashboard(st *Stats, now time.Time) plugin.Dashboard {
 		wsec += d.WorkSec
 	}
 	focus := plugin.Item{Label: "Focus", Mood: plugin.Nudge, Value: float64(wsec), Unit: "s", Caption: "this week"}
-	rounds := plugin.Item{Label: "Rounds", Mood: plugin.Fail, Value: "–", Caption: "none held yet"}
+	rounds := plugin.Item{Label: "Rounds", Mood: plugin.Quiet, Value: "–", Caption: "none held yet"}
 	if r := st.Rounds; r != nil && r.Record.Held > 0 {
-		rounds.Value, rounds.Caption = fmt.Sprintf("%d/%d", r.Record.Sat, r.Record.Held), "held sat"
+		rounds.Value, rounds.Caption = fmt.Sprintf("%d of %d", r.Record.Sat, r.Record.Held), "sat"
+		rounds.Mood = plugin.Nudge // the dot follows the record
+		if 4*r.Record.Sat >= 3*r.Record.Held {
+			rounds.Mood = plugin.Done
+		}
 	}
 	stats := plugin.Widget{Kind: "stats", Cols: 2, CountUp: true, Items: []plugin.Item{solo, ret, focus, rounds}}
 
@@ -380,16 +417,20 @@ func Dashboard(st *Stats, now time.Time) plugin.Dashboard {
 	}
 	ls.Caption = fmt.Sprintf("%d of %d finished", fin, len(ls.Items))
 
-	// ---- the experiment, or edge's trouble ----
+	// ---- edge's trouble, or the experiment when it moved ----
 	note := plugin.Widget{Kind: "note", Icon: "chart", Mood: plugin.Quiet}
-	e := st.Experiment
-	if e.Status == "decided" {
-		note.Text = "Hint styles: " + e.Verdict + " wins"
-	} else {
-		note.Text = fmt.Sprintf("Hint experiment · ladder %d, instant %d of %d each · too early to call", e.Arms["ladder"].New, e.Arms["instant"].New, e.Target)
+	if x := st.Experiment; expMoved(st, now) {
+		if x.Status == "decided" {
+			note.Text = "Hint styles: " + x.Verdict + " wins"
+		} else {
+			note.Text = fmt.Sprintf("Hint experiment · ladder %d, instant %d of %d each · too early to call", x.Arms["ladder"].New, x.Arms["instant"].New, x.Target)
+		}
 	}
-	if len(st.Health) > 0 {
-		note = plugin.Widget{Kind: "note", Icon: "warning", Text: st.Health[0].Msg, Mood: plugin.Fail}
+	switch {
+	case e.Stopped:
+		note = plugin.Widget{Kind: "note", Icon: "warning", Text: "edge is stopped · nothing is being counted", Mood: plugin.Fail}
+	case e.Health != "":
+		note = plugin.Widget{Kind: "note", Icon: "warning", Text: e.Health, Mood: plugin.Fail}
 	}
 
 	// ---- what's needed now; the rest folds to a line ----
@@ -405,8 +446,140 @@ func Dashboard(st *Stats, now time.Time) plugin.Dashboard {
 		record.Fold = true
 	}
 	ws := []plugin.Widget{h, {Kind: "columns", Split: 0.42, A: &wk, B: &ag}, improving, record}
-	if !(live != nil || late) {
+	if note.Text != "" && (note.Mood == plugin.Fail || !(live != nil || late)) {
 		ws = append(ws, note)
 	}
 	return plugin.Dashboard{Title: "edge", Widgets: ws}
+}
+
+// taskStep is the hero's step for the task: what it is, where it stands,
+// and its buttons: Hint (when one is ready) or Open, then Give up or Skip.
+func taskStep(h *plugin.Widget, step *plugin.Step, st *Stats, cur *Task, e *Status, now time.Time) {
+	step.Tag, step.Text = kindTag(e.Kind), e.Task
+	if cur != nil {
+		step.Tag, step.Text = kindTag(cur.Kind), taskName(cur)
+		if cur.Rating > 0 {
+			step.Meta = fmt.Sprint(cur.Rating)
+		}
+	}
+	var facts []string
+	id := e.TaskID
+	if !e.active() {
+		switch {
+		case e.Lapsed:
+			facts = append(facts, "lapsed")
+		case e.Kind == "upsolve" && e.DueMs > 0:
+			facts = append(facts, "lapses "+when(now, time.UnixMilli(e.DueMs), st.Today.DayEnds))
+		}
+		h.Buttons = []plugin.Button{{Key: key("start", id), Label: "Start", Primary: true}}
+		if e.CanSkip {
+			h.Buttons = append([]plugin.Button{{Key: key("skip", id), Label: "Skip"}}, h.Buttons...)
+		}
+		step.Facts = strings.Join(facts, " · ")
+		return
+	}
+	switch {
+	case e.Judging != "" && !e.Paused:
+		facts = append(facts, judging(e.Judging))
+		step.TagMood = plugin.Wait
+	case e.LastVerdict != "":
+		facts = append(facts, e.LastVerdict)
+		step.TagMood = plugin.Fail
+	case cur != nil && cur.Fails > 0:
+		facts = append(facts, plural(cur.Fails, "wrong answer"))
+	}
+	hinted := e.Policy == "ladder" || e.Policy == "instant"
+	switch {
+	case e.HintsReady:
+		facts = append(facts, "hint ready")
+	case e.NextHintSec > 0:
+		facts = append(facts, "hint in "+mins(time.Duration(e.NextHintSec)*time.Second))
+	case !hinted:
+		facts = append(facts, "no hints")
+	}
+	if e.GiveUpInSec > 0 {
+		facts = append(facts, "give up in "+mins(time.Duration(e.GiveUpInSec)*time.Second))
+	}
+	if e.Kind == "upsolve" && e.DueMs > 0 {
+		facts = append(facts, "lapses "+when(now, time.UnixMilli(e.DueMs), st.Today.DayEnds))
+	}
+	if e.Stopped {
+		facts = append(facts, "edge is stopped")
+	}
+	step.Facts = strings.Join(facts, " · ")
+	if hinted && cur != nil {
+		gap := 900.0 // the ladder's rungs: 20, 35, 50 minutes of work
+		if cur.HintsAllowed == 0 {
+			gap = 1200
+		}
+		step.Dots = &plugin.Dots{Used: cur.Hints, Ready: cur.HintsAllowed, Total: 3, Next: math.Max(0.08, 1-float64(e.NextHintSec)/gap)}
+	}
+	open := plugin.Button{Key: key("start", id), Label: "Open", Primary: true}
+	main, second := open, plugin.Button{}
+	if e.HintsReady {
+		main, second = plugin.Button{Key: key("hint", id), Label: "Hint", Primary: true}, plugin.Button{Key: open.Key, Label: "Open"}
+	}
+	switch {
+	case e.GiveUpInSec == 0:
+		second = plugin.Button{Key: key("giveup", id), Label: "Give up"}
+	case e.CanSkip:
+		second = plugin.Button{Key: key("skip", id), Label: "Skip"}
+	}
+	h.Buttons = []plugin.Button{main}
+	if second.Key != "" {
+		h.Buttons = []plugin.Button{second, main}
+	}
+}
+
+// upsolveRound is the round an owed task belongs to.
+func upsolveRound(st *Stats, id string) string {
+	if st.Rounds != nil {
+		for _, q := range st.Rounds.Upsolves.Queue {
+			if q.ID == id {
+				return q.Round
+			}
+		}
+	}
+	return ""
+}
+
+// explainName is the finished task waiting for its explain-back, by name.
+func explainName(st *Stats, id string) string {
+	for i := range st.Recent {
+		if t := &st.Recent[i]; t.ID == id {
+			if t.Source == "cf" {
+				return strings.TrimPrefix(t.ID, "cf:")
+			}
+			return shortTask(t.Title)
+		}
+	}
+	if i := strings.Index(id, ":"); i >= 0 {
+		return id[i+1:]
+	}
+	return id
+}
+
+// roundShort is a round's short name, from what the stats know.
+func roundShort(st *Stats, id string) string {
+	if r := st.Rounds; r != nil {
+		for _, rs := range [][]StatsRound{r.Recent, r.Upcoming} {
+			for _, x := range rs {
+				if x.ID == id && x.Short != "" {
+					return x.Short
+				}
+			}
+		}
+	}
+	return id
+}
+
+// expMoved: the hint experiment's numbers changed in the last day (a new
+// problem finished), so its note is news.
+func expMoved(st *Stats, now time.Time) bool {
+	for _, t := range st.Recent {
+		if t.Kind == "new" && !t.Finished.IsZero() && now.Sub(t.Finished) < 24*time.Hour {
+			return true
+		}
+	}
+	return false
 }
