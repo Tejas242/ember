@@ -66,6 +66,7 @@ type adapter struct {
 	p      *plugin.Plugin
 	o      Options
 	status *Status
+	reread func() // the stats file, read now (set by run; a "stats" ping without a body asks for it)
 	stats  *Stats
 	heard  time.Time         // edge's last word (a push)
 	open   bool              // the dashboard is open
@@ -116,6 +117,7 @@ func Run(p *plugin.Plugin, o Options) error {
 			}
 		}
 	}
+	a.reread = poll
 	poll()
 	a.show()
 	statsT, refresh := time.NewTicker(fallback), time.NewTicker(o.Every)
@@ -185,10 +187,14 @@ func (a *adapter) message(m Message) {
 		a.status = m.Status
 		a.show()
 	case "stats":
-		if m.Stats != nil && m.Stats.Version >= 1 {
+		switch {
+		case m.Stats != nil && m.Stats.Version >= 1:
 			a.heard = a.o.Now()
 			a.stats = m.Stats
 			a.show()
+		case m.Stats == nil && a.reread != nil: // a ping: the stats are too big to push, read the file
+			a.heard = a.o.Now()
+			a.reread()
 		}
 	case "card":
 		if m.Card != nil {
