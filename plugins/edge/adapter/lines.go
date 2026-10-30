@@ -144,15 +144,29 @@ func Line(e *Status, now time.Time) *plugin.Status {
 	if e.active() || e.Closed {
 		sal(0.55)
 	}
+	if trialOn(e.Phase, nil) && repLine(e, now, s) {
+		return s
+	}
 	if e.active() { // practising: the clock is work, and runs only while edge counts it
 		s.Text, s.Mood = e.label(), plugin.Work
 		w := e.workAt(now)
+		left, rep := repLeft(e, now) // a trial's rep: its interview countdown instead
+		if rep {
+			s.Text = repName(e)
+		}
 		switch {
+		case e.Paused && rep:
+			s.Mood, s.Value = plugin.Quiet, "paused · "+clockLeft(left)+" left"
+			sal(0.2)
 		case e.Paused:
 			s.Mood, s.Value = plugin.Quiet, "paused · "+mins(w)
 			sal(0.2)
+		case e.ticking() && rep:
+			s.UntilMs, s.Satellite = e.DeadlineMs, true
 		case e.ticking():
 			s.SinceMs, s.Satellite = e.AsOfMs-int64(e.WorkSec)*1000, true
+		case rep:
+			s.Value = clockLeft(left) + " left"
 		default:
 			s.Value = mins(w)
 		}
@@ -180,7 +194,10 @@ func FromStats(st *Stats) *Status {
 	if st == nil {
 		return &Status{}
 	}
-	e := &Status{Today: st.Today.Got, Need: st.Today.Need, Streak: st.Streak.Current, Closed: st.Today.Gate == "closed", GiveUpInSec: -1}
+	e := &Status{Today: st.Today.Got, Need: st.Today.Need, Streak: st.Streak.Current, Closed: st.Today.Gate == "closed", GiveUpInSec: -1, Phase: st.Phase}
+	if c := st.Consistency; c != nil {
+		e.Chain, e.Missed, e.SkipTokens = c.Chain, c.Missed, c.SkipTokens
+	}
 	if c := st.Current; c != nil {
 		e.Task, e.TaskID, e.Kind, e.URL, e.WorkSec, e.Short = taskName(c), c.ID, c.Kind, c.URL, c.WorkSec, taskShort(c)
 		if c.HintsAllowed > 0 || c.NextHintSec > 0 {
@@ -241,7 +258,20 @@ func Row(e *Status, now time.Time) plugin.Row {
 		ring.Mood = plugin.Done
 	}
 	row := plugin.Row{Title: e.Task, Ring: ring, Sub: fmt.Sprintf("%d/%d today", e.Today, e.Need)}
-	if e.Streak > 0 {
+	trial := trialOn(e.Phase, nil)
+	switch {
+	case trial && e.RepDone:
+		row.Sub = "Rep done"
+	case trial && e.CueMs > 0:
+		row.Sub = "Rep at " + cueAt(e)
+	case trial:
+		row.Sub = "Tonight's rep"
+	}
+	switch {
+	case trial && e.Chain > 0:
+		row.Flame = chainWord(e.Chain) // the chain gets the little flame
+		row.Sub += " · " + row.Flame
+	case !trial && e.Streak > 0:
 		row.Sub += fmt.Sprintf(" · %d-day streak", e.Streak)
 		row.Flame = fmt.Sprintf("%d-day streak", e.Streak) // the streak gets its little flame
 	}
@@ -249,9 +279,16 @@ func Row(e *Status, now time.Time) plugin.Row {
 	case e.active():
 		row.Flame = ""
 		w := e.workAt(now)
-		row.Sub = "Practising · " + mins(w)
+		clk := mins(w)
+		if left, ok := repLeft(e, now); ok {
+			clk = minsLeft(left)
+		}
+		if e.Drill {
+			row.Title = "Drill · " + e.Task
+		}
+		row.Sub = "Practising · " + clk
 		if e.Paused {
-			row.Sub = "Paused · " + mins(w)
+			row.Sub = "Paused · " + clk
 		}
 		row.Buttons = []plugin.Button{{Key: key("start", e.TaskID), Label: "Open", Primary: true}}
 		if e.HintsReady {
@@ -259,15 +296,15 @@ func Row(e *Status, now time.Time) plugin.Row {
 		}
 		switch sub, _ := taskNews(e, now); { // the news first: the row is narrow
 		case e.Stopped:
-			row.Sub = "edge is stopped · " + mins(w)
+			row.Sub = "edge is stopped · " + clk
 		case sub != "":
-			row.Sub = sub + " · " + mins(w)
+			row.Sub = sub + " · " + clk
 		case !e.HintsReady && e.NextHintSec > 0 && !e.Paused:
-			row.Sub = mins(w) + " · hint in " + mins(time.Duration(e.NextHintSec)*time.Second)
+			row.Sub = clk + " · hint in " + mins(time.Duration(e.NextHintSec)*time.Second)
 		}
 	case e.Task != "":
 		row.Buttons = []plugin.Button{{Key: key("start", e.TaskID), Label: "Start", Primary: true}}
-		if e.Closed {
+		if e.Closed && !trial {
 			row.Sub, row.Flame = fmt.Sprintf("%d/%d · locked", e.Today, e.Need), ""
 		}
 	default:
@@ -338,6 +375,9 @@ func Cardify(c *Card) (plugin.Card, bool) {
 	out := plugin.Card{ID: c.ID, Eyebrow: "Practice", Title: c.Title, Body: c.Body, Mood: mood, Urgent: c.Urgent, TTLs: c.TTLs}
 	for _, b := range c.Buttons {
 		out.Buttons = append(out.Buttons, plugin.Button{Key: b.Key, Label: b.Label, Primary: b.Primary})
+	}
+	for _, b := range c.Chips {
+		out.Chips = append(out.Chips, plugin.Button{Key: b.Key, Label: b.Label})
 	}
 	return out, c.Bounce
 }

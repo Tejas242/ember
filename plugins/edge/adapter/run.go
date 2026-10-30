@@ -184,6 +184,9 @@ func (a *adapter) message(m Message) {
 		for _, c := range News(a.status, m.Status) {
 			a.p.Cheer(c)
 		}
+		if mo := Moment(a.status, m.Status); mo != nil {
+			a.p.Moment(*mo) // sendCap drops it without the capability
+		}
 		a.status = m.Status
 		a.show()
 	case "stats":

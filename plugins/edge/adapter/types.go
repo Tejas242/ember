@@ -47,6 +47,20 @@ type Status struct {
 	Health      string `json:"health"`      // one plain sentence when a judge is down
 	SeenMs      int64  `json:"seenMs"`      // edge's heartbeat
 
+	// contract v2.1 (the trials); an older edge leaves them zero
+	Phase      string `json:"phase"`      // baseline | trial1 | trial2
+	CueMs      int64  `json:"cueMs"`      // tonight's rep time, once set
+	RepDone    bool   `json:"repDone"`    // today's rep counts
+	Chain      int    `json:"chain"`      // days in the chain (one miss doesn't break it)
+	Missed     int    `json:"missed"`     // misses in a row right now: 0 or 1
+	SkipTokens int    `json:"skipTokens"` // skips left this week
+	DeadlineMs int64  `json:"deadlineMs"` // the rep's interview countdown ends then (as of AsOfMs while not working)
+	Pattern    string `json:"pattern"`    // the task's interview pattern
+	Drill      bool   `json:"drill"`      // the task is the weekly drill
+	ReadyPct   int    `json:"readyPct"`   // interview readiness, 0..100 (trial2)
+	ReadyLo    int    `json:"readyLo"`    // its 80% interval
+	ReadyHi    int    `json:"readyHi"`
+
 	Stopped bool `json:"-"` // the adapter's: edge hasn't been heard from in 90 s
 }
 
@@ -147,7 +161,11 @@ type Card struct {
 		Label   string `json:"label"`
 		Primary bool   `json:"primary"`
 	} `json:"buttons"`
-	TTLs float64 `json:"ttl_s"` // how long its buttons stay valid
+	TTLs  float64 `json:"ttl_s"` // how long its buttons stay valid
+	Chips []struct {
+		Key   string `json:"key"`
+		Label string `json:"label"`
+	} `json:"chips"` // v2.1: small choice chips under the body
 }
 
 // Message is one of edge's messages over Ember's socket.
@@ -272,7 +290,10 @@ type Stats struct {
 	Daemon struct {
 		Seen time.Time `json:"seen"`
 	} `json:"daemon"`
-	Rounds *struct {
+	Phase       string       `json:"phase"`       // v2.1: baseline | trial1 | trial2
+	Consistency *Consistency `json:"consistency"` // Trial 1's numbers
+	Readiness   *Readiness   `json:"readiness"`   // Trial 2's model (in shadow before it)
+	Rounds      *struct {
 		Live     *StatsRound  `json:"live"`
 		Next     *StatsRound  `json:"next"`
 		Upcoming []StatsRound `json:"upcoming"`

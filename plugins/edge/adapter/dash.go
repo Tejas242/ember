@@ -445,8 +445,56 @@ func DashboardFor(st *Stats, e *Status, now time.Time) plugin.Dashboard {
 	case !st.Today.Done && st.Today.Gate == "closed":
 		record.Fold = true
 	}
+	if phase := phaseOf(st, e); trialOn(phase, st) {
+		return trialDashboard(st, e, cur, h, ag, ln, note, live != nil, now)
+	}
 	ws := []plugin.Widget{h, {Kind: "columns", Split: 0.42, A: &wk, B: &ag}, improving, record}
 	if note.Text != "" && (note.Mood == plugin.Fail || !(live != nil || late)) {
+		ws = append(ws, note)
+	}
+	if phaseOf(st, e) == "baseline" || (st.Consistency != nil && st.Consistency.Reverted) {
+		if pn, ok := phaseNote(st, now); ok && !(live != nil || late) {
+			ws = append(ws, pn)
+		}
+	}
+	return plugin.Dashboard{Title: "edge", Widgets: ws}
+}
+
+// trialDashboard is the page in a trial, in the order it's read: tonight's
+// rep, the chain, readiness (Trial 2), the commonest mistake, then contests
+// and the rating, folded small.
+func trialDashboard(st *Stats, e *Status, cur *Task, h plugin.Widget, ag, ln, note plugin.Widget, live bool, now time.Time) plugin.Dashboard {
+	if !live {
+		trialHero(&h, st, cur, e, now)
+	}
+	ws := []plugin.Widget{h}
+	c := st.Consistency
+	if c == nil {
+		c = &Consistency{}
+	}
+	ws = append(ws, chainWidget(c, e))
+	r := st.Readiness
+	if r != nil && phaseOf(st, e) == "trial2" && len(r.Patterns) > 0 {
+		ws = append(ws, readinessWidget(r))
+	}
+	if r != nil && phaseOf(st, e) == "trial2" {
+		if m, ok := mistakeNote(r); ok {
+			ws = append(ws, m)
+		}
+	}
+	contest := plugin.Widget{Kind: "columns", Title: "Contests", Split: 0.56, A: &ag, B: &ln, Fold: !live,
+		Summary: "CF " + ln.Value}
+	if ln.Delta != "" {
+		contest.Summary += " " + ln.Delta
+	}
+	if len(ag.Items) > 0 {
+		contest.Summary += " · next: " + ag.Items[0].Title + " " + when(now, time.UnixMilli(ag.Items[0].AtMs), st.Today.DayEnds)
+	}
+	if live {
+		ws[1].Fold = true
+	}
+	ws = append(ws, contest)
+	if note.Text != "" && note.Mood == plugin.Fail { // edge's trouble only: the hint experiment is over
 		ws = append(ws, note)
 	}
 	return plugin.Dashboard{Title: "edge", Widgets: ws}
