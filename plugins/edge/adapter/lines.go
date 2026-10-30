@@ -257,13 +257,13 @@ func Row(e *Status, now time.Time) plugin.Row {
 		if e.HintsReady {
 			row.Buttons = []plugin.Button{{Key: key("hint", e.TaskID), Label: "Hint", Primary: true}}
 		}
-		if sub, _ := taskNews(e, now); sub != "" {
-			row.Sub += " · " + sub
-		} else if !e.HintsReady && e.NextHintSec > 0 && !e.Paused {
-			row.Sub += " · hint in " + mins(time.Duration(e.NextHintSec)*time.Second)
-		}
-		if e.Stopped {
-			row.Sub += " · edge is stopped"
+		switch sub, _ := taskNews(e, now); { // the news first: the row is narrow
+		case e.Stopped:
+			row.Sub = "edge is stopped · " + mins(w)
+		case sub != "":
+			row.Sub = sub + " · " + mins(w)
+		case !e.HintsReady && e.NextHintSec > 0 && !e.Paused:
+			row.Sub = mins(w) + " · hint in " + mins(time.Duration(e.NextHintSec)*time.Second)
 		}
 	case e.Task != "":
 		row.Buttons = []plugin.Button{{Key: key("start", e.TaskID), Label: "Start", Primary: true}}

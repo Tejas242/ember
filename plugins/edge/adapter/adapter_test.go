@@ -65,7 +65,7 @@ func TestRow(t *testing.T) {
 		t.Fatalf("day %+v", r)
 	}
 	r = Row(practising(), clock)
-	if r.Sub != "Practising · 23m · hint in 4m" || len(r.Buttons) != 1 || r.Buttons[0].Key != "start:cf:2257C" || r.Ring.Mood != plugin.Done || r.Flame != "" {
+	if r.Sub != "23m · hint in 4m" || len(r.Buttons) != 1 || r.Buttons[0].Key != "start:cf:2257C" || r.Ring.Mood != plugin.Done || r.Flame != "" {
 		t.Fatalf("practising %+v", r)
 	}
 	r = Row(&Status{Round: round("soon")}, clock)
