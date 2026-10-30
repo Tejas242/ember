@@ -348,3 +348,42 @@ func TestExtGrants(t *testing.T) {
 		t.Fatalf("primary %s, satellite %s", p, s)
 	}
 }
+
+// A post that changes nothing on screen doesn't redraw: the same line again,
+// a row while the card is closed, a page that isn't open or didn't change.
+func TestExtQuietPosts(t *testing.T) {
+	g := newScene()
+	post := func(line string) bool { // reports whether it redraws
+		g.a.quiet = false
+		g.a.applyExt("edge", extMsg(t, line))
+		return !g.a.quiet
+	}
+	st := `{"type":"status","text":"2277C","sub":"18m","mood":"work"}`
+	if !post(st) || post(st) || !post(`{"type":"status","text":"2277C","sub":"19m","mood":"work"}`) {
+		t.Fatal("status")
+	}
+	row := `{"type":"row","title":"2277C","sub":"18m"}`
+	if post(row) || post(`{"type":"row","title":"2277C","sub":"19m"}`) {
+		t.Fatal("a row while the card is closed")
+	}
+	dash := `{"type":"dashboard","widgets":[{"kind":"note","text":"a"}]}`
+	if !post(dash) {
+		t.Fatal("the first page: its row gets a chevron")
+	}
+	if post(`{"type":"dashboard","widgets":[{"kind":"note","text":"b"}]}`) {
+		t.Fatal("a page while it's closed")
+	}
+	g.a.ui.pinned = true
+	g.run(600 * time.Millisecond)
+	if !post(row) || post(row) {
+		t.Fatal("a row in the open card")
+	}
+	g.a.ui.openDash("edge")
+	g.run(600 * time.Millisecond)
+	if !post(dash) || post(dash) {
+		t.Fatal("the open page")
+	}
+	if post(`{"type":"remove","what":"status"}`) == false || post(`{"type":"remove","what":"status"}`) {
+		t.Fatal("remove")
+	}
+}

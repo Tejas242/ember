@@ -5,6 +5,7 @@ import (
 	"image"
 	"log"
 	"math"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -90,6 +91,7 @@ func (a *app) applyExt(name string, m proto.Message) {
 	now := u.now()
 	switch m.Type {
 	case "status":
+		a.quiet = reflect.DeepEqual(x.status, m.Status) // the same line again: nothing to redraw
 		x.status, x.statusEnd = m.Status, time.Time{}
 		if m.Status.TTLs > 0 {
 			x.statusEnd = now.Add(time.Duration(m.Status.TTLs * float64(time.Second)))
@@ -107,10 +109,15 @@ func (a *app) applyExt(name string, m proto.Message) {
 		}
 		u.Moment(mm)
 	case "row":
+		// rows show only in the open card: one that changes while it's closed, or doesn't change, redraws nothing
+		a.quiet = !u.rowsShown() || reflect.DeepEqual(x.row, m.Row)
 		x.row = m.Row
 	case "card":
 		a.extCard(name, m.Card)
 	case "dashboard":
+		_, had := u.dashboards[name]
+		// a page that isn't open, or the same page again, redraws nothing (its row's chevron is there already)
+		a.quiet = had && (u.dash != name || reflect.DeepEqual(x.dash, m.Dashboard))
 		x.dash = m.Dashboard
 		if u.dashboards == nil {
 			u.dashboards = map[string]Dashboard{}
@@ -128,8 +135,10 @@ func (a *app) applyExt(name string, m proto.Message) {
 	case "remove":
 		switch m.Remove.What {
 		case "status":
+			a.quiet = x.status == nil
 			x.status = nil
 		case "row":
+			a.quiet = x.row == nil || !u.rowsShown()
 			x.row = nil
 		case "dashboard":
 			x.dash = nil
@@ -396,6 +405,10 @@ func (u *UI) extLine(act string) (line, bool) {
 const extH = 34
 
 // extRows are the plugins with a row in the card.
+// rowsShown: the open card, where the plugins' rows are, is on screen (or
+// just leaving it).
+func (u *UI) rowsShown() bool { return u.lastView == vExpanded || u.currentView() == vExpanded }
+
 func (u *UI) extRows() []*extPlugin {
 	var out []*extPlugin
 	for _, n := range u.extNames() {
