@@ -85,7 +85,7 @@ func heroKeys(d plugin.Dashboard) []string {
 }
 
 func TestV2Dashboard(t *testing.T) {
-	night := time.Date(2026, 10, 20, 21, 58, 0, 0, time.Local)
+	night := time.Date(2026, 10, 20, 21, 58, 0, 0, ist)
 	st := loadStats(t)
 	st.Today.StudyTime, st.Today.Gate = true, "closed"
 	st.Current = &Task{ID: "cf:2277C", Source: "cf", Kind: "new", Title: "Edge Addeleting", Started: night.Add(-time.Hour), WorkSec: 1200, Fails: 2}
@@ -162,7 +162,7 @@ func TestV2Quiet(t *testing.T) {
 			t.Fatalf("the experiment hasn't moved: %+v", w)
 		}
 	}
-	if dayOf(time.Date(2026, 10, 21, 4, 0, 30, 0, time.Local), "04:00").Day() != 21 || !late(time.Date(2026, 10, 21, 3, 59, 0, 0, time.Local), "04:00") {
+	if dayOf(time.Date(2026, 10, 21, 4, 0, 30, 0, ist), "04:00").Day() != 21 || !late(time.Date(2026, 10, 21, 3, 59, 0, 0, ist), "04:00") {
 		t.Fatal("04:00 starts the new day")
 	}
 }

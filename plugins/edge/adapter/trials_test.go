@@ -12,7 +12,7 @@ import (
 )
 
 // evening is a trial weekday at 19:10, the cue at 19:30.
-var evening = time.Date(2026, 11, 10, 19, 10, 0, 0, time.Local)
+var evening = time.Date(2026, 11, 10, 19, 10, 0, 0, ist)
 
 // tonight is a trial evening before the rep: tonight's pick, a cue set.
 func tonight() *Status {

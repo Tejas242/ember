@@ -12,7 +12,7 @@ import (
 	"github.com/Tejas242/ember/pkg/plugin"
 )
 
-var clock = time.Date(2026, 10, 20, 17, 24, 0, 0, time.Local)
+var clock = time.Date(2026, 10, 20, 17, 24, 0, 0, ist)
 
 func round(phase string) *Round {
 	r := &Round{ID: "cf:2261", Short: "CF 1128", Plan: "in", Problems: []Problem{{Index: "A", State: "solved"}, {Index: "B", State: "tried"}, {Index: "C", State: "upsolve"}}}
@@ -108,7 +108,7 @@ func loadStats(t *testing.T) *Stats {
 
 func TestDashboard(t *testing.T) {
 	st := loadStats(t)
-	morning := time.Date(2026, 10, 20, 10, 26, 0, 0, time.Local)
+	morning := time.Date(2026, 10, 20, 10, 26, 0, 0, ist)
 	d := Dashboard(st, morning)
 	line, err := plugin.Line("dashboard", d)
 	if err != nil || len(line) > plugin.MaxLine {
