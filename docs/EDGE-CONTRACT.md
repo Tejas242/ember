@@ -27,3 +27,21 @@ Undelivered cards are kept and resent when Ember is back (edge sees the next ok:
 
 Cards: Body may contain "\n" (Ember keeps line breaks). Cards with buttons carry `ttl_s` = how long their action
 stays valid (default 600); edge sends `{"type":"remove","id":…}` when the card's task ends.
+
+The full key list is `ActionKeys` (actions.go); `TestEveryActionKeyIsHandled` checks edge answers every one.
+Errors are one sentence on stderr ("Finish 2277C first."); a stale id says which task is current now.
+
+Added by fix/core (fields only): `emberCard.ttl_s`; `Task.work_days` (work by edge day, state.json); `Round.plan_was`
+(the plan before "Can't make it", for its undo); stats `current.due` / `current.lapsed`. Card ids stay the event slot
+(offer, hint, giveup, cold, drift, fail, late, ac, lapsed, undo, round…), so `remove` takes the same ids.
+`giveUpInSec` is -1 when there's no started task. `health` is a plain sentence; the raw error is in the journal.
+
+## v2.1 (v2/base): the trials
+
+- `phase` (trial.go): baseline until 2026-11-05, trial1 from 11-06, trial2 from 11-20. Status and stats carry it.
+- Trial 1 lives in consistency.go (`State.Cons`, `consistencyStats`, `consistencyStatus`, `consistencyAction`).
+- Trial 2 lives in readiness.go (`State.Ready`, `readinessStats`, `readinessStatus`, `readinessAction`).
+- New status fields: phase, cueMs, repDone, chain, missed, skipTokens, deadlineMs, pattern, drill, readyPct/Lo/Hi.
+- Unknown action keys fall through to consistencyAction, then readinessAction. Add new keys to ActionKeys.
+- Ember v2.1: `Card.Chips` (≤ 6 small choice chips under the body; a press sends the chip's key) and bars
+  `Item.Lo`/`Item.Hi` (an interval band drawn behind the bar, same 0..max scale).

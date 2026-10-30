@@ -177,6 +177,7 @@ type Card struct {
 	Body    string   `json:"body,omitempty"`
 	Mood    string   `json:"mood,omitempty"`
 	Buttons []Button `json:"buttons,omitempty"`
+	Chips   []Button `json:"chips,omitempty"` // up to 6 small choice chips under the body; a press sends the chip's key (v2.1)
 	TTLs    float64  `json:"ttl_s,omitempty"`
 	Urgent  bool     `json:"urgent,omitempty"` // before Claude's requests (granted)
 }
@@ -197,6 +198,8 @@ type Item struct {
 	Target  *float64 `json:"target,omitempty"`  // bars: a ghost of what it asks
 	Today   bool     `json:"today,omitempty"`   // bars: this one is now
 	Key     string   `json:"key,omitempty"`     // list, agenda: ≤ KeyMax, pressing the row sends it as a dashboard button
+	Lo      *float64 `json:"lo,omitempty"`      // bars: an interval band's low end, same scale as Value (v2.1)
+	Hi      *float64 `json:"hi,omitempty"`      // bars: its high end
 	AtMs    int64    `json:"at_ms,omitempty"`   // agenda: when
 	Tag     string   `json:"tag,omitempty"`     // agenda: a quiet word at the right
 	TagMood string   `json:"tag_mood,omitempty"`
