@@ -313,9 +313,9 @@ func trialHero(h *plugin.Widget, st *Stats, cur *Task, e *Status, now time.Time)
 		if e.Paused {
 			h.Title += " · paused"
 		}
-		h.Sub, h.SubIcon, h.SubMood = "Counts at 25 focused minutes or a submit", "", plugin.Quiet
+		h.Sub, h.SubIcon, h.SubMood = "Counts at 25 focused minutes, or a submit after 15", "", plugin.Quiet
 		if e.Missed > 0 {
-			h.Sub = "Counts at 20 focused minutes or a submit"
+			h.Sub = "Counts at 20 focused minutes, or a submit after 15"
 		}
 		if d, ok := repLeft(e, now); ok {
 			h.Aside = minsLeft(d)
