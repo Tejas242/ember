@@ -516,6 +516,32 @@
             ]
           }
         },
+        "chips": {
+          "type": "array",
+          "maxItems": 6,
+          "description": "small choice chips under the body; a press sends button with the chip's key and closes the card (v2.1)",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "label": {
+                "type": "string",
+                "maxLength": 18
+              },
+              "primary": {
+                "type": "boolean",
+                "description": "tinted: the choice that leads"
+              }
+            },
+            "required": [
+              "key",
+              "label"
+            ]
+          }
+        },
         "urgent": {
           "type": "boolean",
           "description": "the critical grant"
@@ -911,6 +937,16 @@
                   },
                   "today": {
                     "type": "boolean"
+                  },
+                  "lo": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "an interval band's low end, on value's scale; needs hi (v2.1)"
+                  },
+                  "hi": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "its high end"
                   },
                   "mood": {
                     "$ref": "#/$defs/mood"

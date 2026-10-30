@@ -27,6 +27,13 @@ const MaxLine = 64 << 10
 // an action and a long id ("giveup:lc:<a LeetCode slug>").
 const KeyMax = 128
 
+// A card's choice chips: at most ChoiceMax, each label at most ChoiceLabelMax
+// characters (v2.1).
+const (
+	ChoiceMax      = 6
+	ChoiceLabelMax = 18
+)
+
 // Moods.
 const (
 	Work  = "work"  // at it
@@ -311,7 +318,7 @@ type Step struct {
 //   - stats: Items (label, value, unit, caption, mood), Cols, CountUp
 //   - sparkline: Values, Caption
 //   - line: Values, Value, Delta, DeltaMood, Extra, Band
-//   - bars: Items (label, value, caption; columns: target, today, mood, state), Layout, Value, Caption
+//   - bars: Items (label, value, caption, target, mood, lo, hi; columns: today, state), Layout, Value, Caption
 //   - chips: Items (label, state), Caption
 //   - list: Items (title, sub, icon, mood, mark), Caption
 //   - heatmap: Days, Weeks, Caption
@@ -670,6 +677,25 @@ func buttons(bs []Button, n int) []Button {
 	return out
 }
 
+// choices are a card's choice chips: up to ChoiceMax with a key (at most
+// KeyMax) and a label, labels cut to ChoiceLabelMax. A chip is never primary-filled; its
+// Primary only tints it, as the one that leads.
+func choices(bs []Button) []Button {
+	out := bs[:0]
+	for _, b := range bs {
+		if len(out) == ChoiceMax {
+			break
+		}
+		if b.Key, b.Label = Cut(b.Key, KeyMax+1), Cut(b.Label, ChoiceLabelMax); b.Key != "" && len([]rune(b.Key)) <= KeyMax && b.Label != "" {
+			out = append(out, b) // a key too long is dropped, not cut: a cut key would send another action
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 func clamp(v, lo, hi float64) float64 {
 	if math.IsNaN(v) {
 		return lo
@@ -735,9 +761,9 @@ func (c *Card) fit() error {
 		return errors.New("needs an id and a title")
 	}
 	c.Eyebrow, c.Body, c.Mood = Cut(c.Eyebrow, 32), CutLines(c.Body, 280), mood(c.Mood, Nudge)
-	c.Buttons = buttons(c.Buttons, 3)
+	c.Buttons, c.Chips = buttons(c.Buttons, 3), choices(c.Chips)
 	switch {
-	case c.TTLs == 0 && len(c.Buttons) > 0:
+	case c.TTLs == 0 && len(c.Buttons)+len(c.Chips) > 0:
 		c.TTLs = 180
 	case c.TTLs == 0:
 		c.TTLs = 7
@@ -939,8 +965,8 @@ func (w *Widget) fit(top bool) bool {
 	items := w.Items[:0]
 	for _, it := range w.Items {
 		num, isNum := it.Value.(float64)
-		key := it.Key
-		it.Key = "" // only a list's or an agenda's rows press
+		key, lo, hi := it.Key, it.Lo, it.Hi
+		it.Key, it.Lo, it.Hi = "", nil, nil // only a list's or an agenda's rows press; only bars have bands
 		switch w.Kind {
 		case "stats":
 			it.Label, it.Caption, it.Mood = Cut(it.Label, 20), Cut(it.Caption, 24), mood(it.Mood, Quiet)
@@ -955,13 +981,18 @@ func (w *Widget) fit(top bool) bool {
 				continue
 			}
 		case "bars":
-			it.Label, it.Caption, it.Mood = Cut(it.Label, 20), Cut(it.Caption, 12), mood(it.Mood, Nudge)
+			it.Label, it.Caption, it.Mood = Cut(it.Label, 20), Cut(it.Caption, 12), mood(it.Mood, "") // none: as the layout draws it
 			it.State = enum(it.State, "", "", "future", "excused")
 			if isNum {
 				it.Num = clamp(num, 0, 1e12)
 			}
 			if t := it.Target; t != nil {
 				*t = clamp(*t, 0, 1e12)
+			}
+			if lo != nil && hi != nil { // a band needs both ends, low first
+				l, h := clamp(*lo, 0, 1e12), clamp(*hi, 0, 1e12)
+				l, h = min(l, h), max(l, h)
+				it.Lo, it.Hi = &l, &h
 			}
 		case "chips":
 			it.Label, it.State = Cut(it.Label, 4), enum(it.State, "todo", ChipStates...)

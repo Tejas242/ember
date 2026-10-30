@@ -232,3 +232,59 @@ func TestItemKeys(t *testing.T) {
 		t.Fatalf("%q %q %q", ws[0].Items[0].Key, ws[1].Items[0].Key, ws[2].Items[0].Key)
 	}
 }
+
+// A card's choice chips: six at most, each with a key and a label of 18
+// characters at most; with chips it's a question, so it waits like one.
+func TestCardChips(t *testing.T) {
+	long := strings.Repeat("k", KeyMax+10)
+	m, err := Decode([]byte(`{"type":"card","id":"cue","title":"Tonight's rep","chips":[
+		{"key":"cue:now","label":"Now","primary":true},{"key":"","label":"no key"},{"key":"x","label":""},
+		{"key":"cue:19:30","label":"19:30"},{"key":"cue:21:00","label":"21:00"},
+		{"key":"skiptonight","label":"Skip tonight (1 left) please"},{"key":"` + long + `","label":"Long"},
+		{"key":"f","label":"F"},{"key":"g","label":"G"}],
+		"buttons":[{"key":"open","label":"Open"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := m.Card
+	if len(c.Chips) != ChoiceMax || len(c.Buttons) != 1 {
+		t.Fatalf("%d chips, %d buttons", len(c.Chips), len(c.Buttons))
+	}
+	if c.Chips[0].Key != "cue:now" || !c.Chips[0].Primary || c.Chips[1].Key != "cue:19:30" || c.Chips[4].Key != "f" || c.Chips[5].Key != "g" {
+		t.Fatalf("%+v", c.Chips)
+	}
+	if l := c.Chips[3].Label; utf8.RuneCountInString(l) != ChoiceLabelMax || !strings.HasSuffix(l, "…") {
+		t.Fatalf("label %q", l)
+	}
+	for _, ch := range c.Chips {
+		if ch.Label == "Long" {
+			t.Fatal("a key over KeyMax is dropped, not cut")
+		}
+	}
+	m, _ = Decode([]byte(`{"type":"card","id":"c","title":"T","chips":[{"key":"a","label":"A"}]}`))
+	if m.Card.TTLs != 180 {
+		t.Fatalf("a card with only chips waits like one with buttons: %v", m.Card.TTLs)
+	}
+	m, _ = Decode([]byte(`{"type":"card","id":"c","title":"T","chips":[{"key":"","label":"A"}]}`))
+	if m.Card.Chips != nil || m.Card.TTLs != 7 {
+		t.Fatalf("no valid chip: %+v", m.Card)
+	}
+}
+
+// Bars may carry an interval band: both ends, low first, never below 0;
+// other widgets' items drop it.
+func TestBarBands(t *testing.T) {
+	m, err := Decode([]byte(`{"type":"dashboard","widgets":[
+		{"kind":"bars","items":[{"label":"a","value":0.6,"lo":0.8,"hi":0.4},{"label":"b","value":0.5,"lo":-3,"hi":0.7},{"label":"c","value":0.5,"lo":0.2}]},
+		{"kind":"stats","items":[{"label":"x","value":1,"lo":0,"hi":2}]}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := m.Dashboard.Widgets[0].Items
+	if *b[0].Lo != 0.4 || *b[0].Hi != 0.8 || *b[1].Lo != 0 || *b[1].Hi != 0.7 || b[2].Lo != nil || b[2].Hi != nil {
+		t.Fatalf("%+v", b)
+	}
+	if s := m.Dashboard.Widgets[1].Items[0]; s.Lo != nil || s.Hi != nil {
+		t.Fatalf("a stat with a band: %+v", s)
+	}
+}
