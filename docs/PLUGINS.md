@@ -183,6 +183,12 @@ after them, and at most 3 of a plugin's are open at once (a fourth is dropped, a
  "mood":"done","ttl_s":120,"buttons":[{"key":"skip","label":"Keep going"},{"key":"break","label":"Break","primary":true}]}
 ```
 
+A question with a few answers takes chips instead (labels short enough to sit three or four to a row):
+
+```json
+{"type":"card","id":"when","title":"Tonight's rep: LC 2779","body":"Sliding window. When?","chips":[{"key":"cue:now","label":"Now","primary":true},{"key":"cue:19:30","label":"19:30"},{"key":"cue:21:00","label":"21:00"},{"key":"skiptonight","label":"Skip (1 left)"}]}
+```
+
 | field | | |
 | --- | --- | --- |
 | `id` | string, ≤ 64 | required: a card with the same id replaces it |
@@ -191,7 +197,8 @@ after them, and at most 3 of a plugin's are open at once (a fourth is dropped, a
 | `body` | string, ≤ 280 | wrapped to two lines; `"\n"` starts a paragraph on its own line, and a body in paragraphs gets up to four |
 | `mood` | mood | default `nudge` |
 | `buttons` | ≤ 3 × `{key ≤ 128, label ≤ 24, primary bool}` | a pick sends `button` and closes the card |
-| `ttl_s` | number 5..600 | how long it stays (and its buttons can act): default 180 with buttons, 7 without |
+| `chips` | ≤ 6 × `{key ≤ 128, label ≤ 18, primary bool}` | small choices under the body, wrapping to a second row: a pick sends `button` with the chip's key and closes the card, like a button. `primary` tints the one that leads. A chip without a key or a label, or with a key over 128, is dropped. A card can have both |
+| `ttl_s` | number 5..600 | how long it stays (and its buttons can act): default 180 with buttons or chips, 7 without |
 | `urgent` | bool | before Claude's own requests (the `critical` grant) |
 
 `{"type":"remove","what":"card","id":"break"}` takes it back. You can always close one yourself (right-click).
@@ -216,10 +223,10 @@ capitals, divided by hairlines.
 | `stats` | `title`, `items`: ≤ 4 × `{label ≤ 20, value ≤ 12 or a number, unit "" \| % \| s, caption ≤ 24, mood}`, `cols` 1..4 (rows wrap), `count_up` (numbers count up as it opens) |
 | `sparkline` | `title`, `values`: ≤ 120 numbers, `caption ≤ 40`: a line, oldest first |
 | `line` | `title`, `values` ≤ 120, `value ≤ 12` (by the title), `delta ≤ 12` with `delta_mood`, `extra ≤ 12`, `band` `{lo, hi, label ≤ 32}`: a line over a shaded range, its last point lit |
-| `bars` | `title`, `items`: ≤ 12 × `{label ≤ 20, value number ≥ 0, caption ≤ 12}`: horizontal bars. With `layout: "columns"`: columns with labels under them, each with `target` (a ghost of what it asks), `today`, `mood` (`done` green, else amber) and `state` (`future`: none yet; `excused`), and `value` and `caption` by the title |
+| `bars` | `title`, `items`: ≤ 12 × `{label ≤ 20, value number ≥ 0, caption ≤ 12, target, mood, lo, hi}`: horizontal bars, `target` a quiet notch at what it asks, `mood` the bar's colour (none or `done`: green; `nudge`, `work`, `fail`: amber, never red; `wait`: blue; `quiet`: grey). They scale to the largest value, but with a `target` or a band the scale is absolute: 0..1 when everything fits in 1, else 0..100 when everything fits in 100, else the largest. With `layout: "columns"`: columns with labels under them, each with `target` (a ghost of what it asks), `today`, `mood` (`done` green, else amber) and `state` (`future`: none yet; `excused`), and `value` and `caption` by the title. In both layouts, `lo` and `hi` (both, on `value`'s scale) draw a soft interval band behind the bar, where the value likely is, with a tick at the value; the scale grows to fit `hi` and `target` |
 | `chips` | `title`, `items`: ≤ 12 × `{label ≤ 4, state}`: letters in chips; `state` is `done` (filled green), `tried` (ringed red), `owed` (ringed amber), `fixed` (filled blue), `gone` (struck), or `todo` (quiet, the default) |
 | `list` | `title`, `items`: ≤ 8 × `{title ≤ 40, sub ≤ 60, icon, mood, key ≤ 128}`; with `mark` (`done`, `skip`, `fail`, `none`) an outcome mark leads each row and `sub` sits at its right end. A row with a `key` is pressable (below) |
-| `heatmap` | `title`, `caption`, `weeks` 4..53, `days`: `{date, level 0..1, mood}` (`done` green as deep as the level, `wait` blue: excused, `quiet` a whisper), Monday on top, today ringed |
+| `heatmap` | `title`, `caption`, `weeks` 4..53, `days`: `{date, level 0..1, mood}` (`done` green as deep as the level, `wait` blue: excused, `quiet` a whisper), Monday on top, today ringed. 8 weeks or fewer get cells up to twice the size (the section grows to fit) |
 | `agenda` | `title`, `caption`, `items`: ≤ 5 × `{at_ms, title ≤ 40, tag ≤ 14, tag_mood, chips ≤ 4, key ≤ 128}`; Ember sorts them, drops what's past, says when ("in 1h 07m", "Sun night", "Mon 20:05", "Thu 29") and brightens what's within a day; `day_ends` ("04:00") makes a time before it the night before; `empty` is said when nothing's coming. A row with a `key` is pressable (below) |
 | `columns` | `split` 0.3..0.7, `a` and `b`: two widgets (not a hero, not columns) side by side, a hairline between |
 | `note` | `icon`, `text ≤ 80`, `mood`: one quiet line |
@@ -291,7 +298,7 @@ milestone): at most once an hour per plugin. Neither is a flourish, and Ember ma
 | --- | --- |
 | `{"type":"hello","v":1,"ember":"v1.4.0","caps":[…],"grants":[…]}` | first, always; `grants` are what the config grants it |
 | `{"type":"click","target":"docs"}` | a click on its moment or row: the target's name, or `"row"` for a row without one |
-| `{"type":"button","card":"break","key":"break"}` | a button on its card; the card has closed |
+| `{"type":"button","card":"break","key":"break"}` | a button or a chip on its card; the card has closed |
 | `{"type":"dash","state":"open"}` | its dashboard opened (`"close"`: it closed, with `reason`: `user`, `pointer`, `media_idle`, `song_end` or `other`) |
 | `{"type":"media","media_key":"8f2c41d07a9e","player":"spotify","title":"…","artist":"…","album":"…","length_ms":204000,"pos_ms":51000,"at_ms":1792234567000,"playing":true,"url":"…","track_id":"…"}` | the song playing (the `media` grant): only while its dashboard is open, once as it opens and then when it changes (a new song, play, pause, a seek); without `media_key`, nothing plays. Nothing else about your listening reaches a plugin |
 | `{"type":"tool","payload":{…}}` | a message from the plugin's own tool (below) |
