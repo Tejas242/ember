@@ -291,10 +291,10 @@ func TestTrialDashboard(t *testing.T) {
 	e = tonight()
 	e.Phase, e.Pattern = "trial2", "Sliding window"
 	d = DashboardFor(st, e, evening)
-	if got := strings.Join(widgetTitles(d), ","); got != "hero:Tonight's rep,columns:Chain,bars:Interview readiness,note:,columns:Contests" {
+	if got := strings.Join(widgetTitles(d), ","); got != "hero:Tonight's rep,columns:Chain,bars:Interview readiness · 62%,note:,columns:Contests" {
 		t.Fatalf("trial2 reads: %s", got)
 	}
-	if f := d.Widgets[0].Step.Facts; !strings.Contains(f, "Sliding window · you're at") {
+	if f := d.Widgets[0].Step.Facts; !strings.Contains(f, "Sliding window · 41% ready") {
 		t.Fatalf("why this: %q", f)
 	}
 	rd := d.Widgets[2]

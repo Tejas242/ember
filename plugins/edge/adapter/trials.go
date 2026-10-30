@@ -237,7 +237,7 @@ func whyThis(st *Stats, cur *Task, e *Status) string {
 	case e.Kind == "reentry":
 		return "a warm-up to get going"
 	case p != nil:
-		return fmt.Sprintf("%s · you're at %d%% here", pat, pct(frac(p.P)*frac(p.R)))
+		return fmt.Sprintf("%s · %d%% ready", pat, pct(frac(p.P)*frac(p.R)))
 	case pat != "":
 		return pat
 	}
@@ -377,7 +377,6 @@ func chainWidget(c *Consistency, e *Status) plugin.Widget {
 		}
 		heat.Days = append(heat.Days, day)
 	}
-	heat.Caption = plural(reps, "rep") + " in 4 weeks"
 	chain, tokens := c.Chain, c.SkipTokens
 	if e != nil && e.Chain > 0 {
 		chain = e.Chain
@@ -410,14 +409,14 @@ func chainWidget(c *Consistency, e *Status) plugin.Widget {
 	if chain > 0 {
 		sum = chainWord(chain)
 	}
-	return plugin.Widget{Kind: "columns", Title: "Chain", Split: 0.42, A: &heat, B: &stats,
-		Summary: sum + " · " + plural(tokens, "skip") + " left · " + heat.Caption}
+	return plugin.Widget{Kind: "columns", Title: "Chain", Split: 0.3, A: &heat, B: &stats,
+		Summary: sum + " · " + plural(tokens, "skip") + " left · " + plural(reps, "rep") + " in 4 weeks"}
 }
 
 // readinessWidget is Trial 2's model: overall readiness with its interval,
 // then each pattern against a 75% target, the weakest first.
 func readinessWidget(r *Readiness) plugin.Widget {
-	w := plugin.Widget{Kind: "bars", Layout: "rows", Title: "Interview readiness", Value: fmt.Sprintf("%d%%", pct(r.R))}
+	w := plugin.Widget{Kind: "bars", Layout: "rows", Title: fmt.Sprintf("Interview readiness · %d%%", pct(r.R)), Value: fmt.Sprintf("%d%%", pct(r.R))}
 	if r.Hi > r.Lo {
 		w.Caption = fmt.Sprintf("likely %d–%d%%", pct(r.Lo), pct(r.Hi))
 	}
@@ -430,7 +429,7 @@ func readinessWidget(r *Readiness) plugin.Widget {
 	}
 	for _, p := range ps {
 		v := 100 * val(p)
-		it := plugin.Item{Label: p.Name, Value: math.Round(v), Num: math.Round(v), Target: plugin.Float(75), Mood: plugin.Nudge}
+		it := plugin.Item{Label: p.Name, Value: math.Round(v), Num: math.Round(v), Caption: fmt.Sprintf("%.0f%%", v), Target: plugin.Float(75), Mood: plugin.Nudge}
 		if v >= 75 {
 			it.Mood = plugin.Done
 		}
@@ -458,7 +457,7 @@ func mistakeNote(r *Readiness) (plugin.Widget, bool) {
 	if r.Drills > 0 && r.Brier != nil {
 		text += fmt.Sprintf(" · drills %d, Brier %.2f", int(r.Drills), *r.Brier)
 	}
-	return plugin.Widget{Kind: "note", Icon: "note", Text: text, Mood: plugin.Quiet}, true
+	return plugin.Widget{Kind: "note", Icon: "search", Text: text, Mood: plugin.Quiet}, true
 }
 
 // phaseNote is a quiet line in the baseline weeks: when Trial 1 starts, or
