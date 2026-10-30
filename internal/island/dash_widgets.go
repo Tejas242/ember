@@ -610,6 +610,9 @@ func (u *UI) columnBarsW(wd *proto.Widget) wbox {
 			if d.Target != nil {
 				t = *d.Target
 			}
+			if d.Hi != nil {
+				t = math.Max(t, *d.Hi)
+			}
 			top = math.Max(top, math.Max(d.Num, t))
 		}
 		slot := w / float32(len(wd.Items))
@@ -623,12 +626,18 @@ func (u *UI) columnBarsW(wd *proto.Widget) wbox {
 				needH = maxH * float32(*d.Target/top)
 				u.dc.roundRect(bx-bw/2, base-needH, bw, needH, bw/2.6, alpha(p.fg, 0.05))
 			}
+			col := p.yellow
+			if d.Mood == proto.Done {
+				col = p.green
+			}
+			band := d.Lo != nil && d.Hi != nil && d.State != "future"
+			if band { // where the value likely is: a soft column, wider than the bar, behind it
+				lo, hi := maxH*float32(*d.Lo/top), maxH*float32(*d.Hi/top)
+				hb := max(hi-lo, 4)
+				u.dc.roundRect(bx-bw/2-4, base-lo-hb, bw+8, hb, min((bw+8)/2.6, hb/2), alpha(col, 0.2*float64(k)))
+			}
 			if d.State != "future" {
 				hh := maxH * float32(d.Num/top) * k
-				col := p.yellow
-				if d.Mood == proto.Done {
-					col = p.green
-				}
 				switch {
 				case d.State == "excused" && d.Num == 0:
 					u.dc.frame(bx-bw/2, base-needH, bw, needH, bw/2.6, 1.2, alpha(p.blue, 0.55*float64(k)))
@@ -637,6 +646,12 @@ func (u *UI) columnBarsW(wd *proto.Widget) wbox {
 				case d.Today && needH > 0:
 					u.dc.frame(bx-bw/2, base-needH, bw, needH, bw/2.6, 1.1, alpha(p.yellow, 0.45))
 				}
+			}
+			if band { // over the band, the value and the target stay sharp: a tick each
+				if d.Target != nil {
+					u.dc.roundRect(bx-bw/2-6, base-needH-0.5, bw+12, 1, 0.5, alpha(p.fg, 0.4))
+				}
+				u.dc.roundRect(bx-bw/2-4, base-maxH*float32(d.Num/top)*k-1, bw+8, 2, 1, mix(col, p.fg, 0.45))
 			}
 			lc, lf := p.faint, fCaption()
 			if d.Today {
@@ -648,6 +663,32 @@ func (u *UI) columnBarsW(wd *proto.Widget) wbox {
 	}}
 }
 
+// rowBarsScale is what a full row bar means: the largest value, but with a
+// target or a band the scale is absolute, so a target reads where it is,
+// not at the end: 0..1 when everything fits in 1, 0..100 when everything
+// fits in 100, else the largest.
+func rowBarsScale(items []proto.Item) float64 {
+	top, asks := 0.0, false
+	for _, it := range items {
+		top = math.Max(top, it.Num)
+		if it.Hi != nil {
+			top, asks = math.Max(top, *it.Hi), true
+		}
+		if it.Target != nil {
+			top, asks = math.Max(top, *it.Target), true
+		}
+	}
+	switch {
+	case top == 0:
+		return 1
+	case asks && top <= 1:
+		return 1
+	case asks && top <= 100:
+		return 100
+	}
+	return top
+}
+
 // rowBarsW: horizontal bars, a label at the left and the value at the right.
 func (u *UI) rowBarsW(wd *proto.Widget) wbox {
 	top := float32(0)
@@ -657,22 +698,41 @@ func (u *UI) rowBarsW(wd *proto.Widget) wbox {
 	return wbox{h: top + float32(len(wd.Items))*20 + 4, draw: func(x, y, w float32, age time.Duration) {
 		p := u.pal
 		u.head(wd, x, y, w, phase(age, 0, 400*time.Millisecond))
-		top0 := 0.0
-		for _, it := range wd.Items {
-			top0 = math.Max(top0, it.Num)
-		}
-		if top0 == 0 {
-			top0 = 1
-		}
+		top0 := rowBarsScale(wd.Items)
 		labelW, valueW := w*0.32, float32(56)
+		barCol := func(m string) color.NRGBA { // its mood's colour: green as ever without one; never red for progress
+			switch m {
+			case proto.Nudge, proto.Work, proto.Fail:
+				return p.yellow
+			case proto.Wait:
+				return p.blue
+			case proto.Quiet:
+				return mix(p.faint, p.fg, 0.2)
+			}
+			return p.green
+		}
 		for j, it := range wd.Items {
 			k := float32(phase(age, time.Duration(50*j)*time.Millisecond, 600*time.Millisecond))
 			ry := y + top + float32(j)*20
 			u.dc.text(fSecond(), ellipsize(fSecond(), it.Label, labelW-8), x, ry+14, p.muted)
 			bx, bw := x+labelW, w-labelW-valueW
 			u.dc.roundRect(bx, ry+7, bw, 6, 3, alpha(p.fg, 0.06))
-			if fw := bw * float32(it.Num/top0) * k; fw > 0.5 {
-				u.dc.roundRect(bx, ry+7, max(fw, 6), 6, 3, p.green)
+			col := barCol(it.Mood)
+			band := it.Lo != nil && it.Hi != nil
+			if band { // where the value likely is: a soft band, taller than the bar, behind it
+				lx, hx := bw*float32(*it.Lo/top0), bw*float32(*it.Hi/top0)
+				u.dc.roundRect(bx+lx, ry+3, max(hx-lx, 6), 14, 7, alpha(col, 0.18*float64(k)))
+			}
+			fw := bw * float32(it.Num/top0) * k
+			if fw > 0.5 {
+				u.dc.roundRect(bx, ry+7, max(fw, 6), 6, 3, col)
+			}
+			if band { // the value, a tick that reads over the band
+				u.dc.roundRect(bx+max(fw, 1)-1, ry+3, 2, 14, 1, mix(col, p.fg, 0.45))
+			}
+			if t := it.Target; t != nil { // a ghost of what it asks: a quiet notch
+				tx := bx + bw*float32(*t/top0)
+				u.dc.roundRect(tx-0.75, ry+2, 1.5, 16, 0.75, alpha(p.fg, 0.38*float64(k)))
 			}
 			v := it.Caption
 			if v == "" {
@@ -771,7 +831,12 @@ func (u *UI) markedListW(name string, wd *proto.Widget) wbox {
 // ---- heatmap: weeks of days, Monday on top, today ringed ----
 
 func (u *UI) heatW(wd *proto.Widget) wbox {
-	return wbox{h: 86, draw: func(x, y, w float32, age time.Duration) {
+	// a few weeks (8 at most) get bigger cells, up to twice the size, so a month reads at a glance
+	most, h := float32(8), float32(86)
+	if wd.Weeks <= 8 {
+		most, h = 16, 24+7*16+18
+	}
+	return wbox{h: h, draw: func(x, y, w float32, age time.Duration) {
 		p := u.pal
 		u.head(wd, x, y, w, 1)
 		cal := wd.Days
@@ -786,8 +851,12 @@ func (u *UI) heatW(wd *proto.Widget) wbox {
 		cols := wd.Weeks
 		n := min(len(cal), (cols-1)*7+lastRow+1)
 		cal = cal[len(cal)-n:]
-		pitch := min(float32(8), w/float32(cols))
+		pitch := min(most, w/float32(cols))
 		cell := pitch - 2
+		rad, ring := float32(1.6), float32(3) // a cell's corners and today's ring: 8-pixel cells' as ever, bigger ones' in proportion
+		if pitch > 8 {
+			rad, ring = 1.6*pitch/8, 3*pitch/8
+		}
 		gx, gy := x+w-pitch*float32(cols)+2, y+24
 		months := map[int]string{}
 		for i, d := range cal {
@@ -814,9 +883,9 @@ func (u *UI) heatW(wd *proto.Widget) wbox {
 			default:
 				c = alpha(p.green, 0.3+0.45*d.Level)
 			}
-			u.dc.roundRect(cx+off, cy+off, sz, sz, 1.6, alpha(c, float64(k)))
+			u.dc.roundRect(cx+off, cy+off, sz, sz, rad, alpha(c, float64(k)))
 			if i == len(cal)-1 {
-				u.dc.frame(cx-1.5, cy-1.5, cell+3, cell+3, 3, 1.1, alpha(p.fg, 0.6*float64(k)))
+				u.dc.frame(cx-1.5, cy-1.5, cell+3, cell+3, ring, 1.1, alpha(p.fg, 0.6*float64(k)))
 			}
 			if t, err := time.Parse("2006-01-02", d.Date); err == nil && t.Day() <= 7 && row == 0 {
 				months[col] = t.Format("Jan")

@@ -89,7 +89,7 @@ func (u *UI) pointer(e pointerEvent) (redraw, hand bool) {
 		u.hoverKey = k
 		redraw = true
 	}
-	for _, pre := range []string{"btn:", "opt:", "focus:", "close:", "music:", "trail", "sys:", "ember"} {
+	for _, pre := range []string{"btn:", "chip:", "opt:", "focus:", "close:", "music:", "trail", "sys:", "ember"} {
 		hand = hand || strings.HasPrefix(k, pre)
 	}
 	return redraw, hand
@@ -235,6 +235,12 @@ func (u *UI) press(k string, button int) {
 		u.key(k)
 		if strings.HasPrefix(k, "music:") {
 			u.used("music")
+		}
+	case strings.HasPrefix(k, "chip:") && c != nil: // a choice chip: picked, like a button
+		u.RemoveCard(c.ID)
+		u.React("nod")
+		if c.OnPick != nil {
+			c.OnPick(strings.TrimPrefix(k, "chip:"), nil)
 		}
 	case strings.HasPrefix(k, "btn:") && c != nil:
 		switch strings.TrimPrefix(k, "btn:") {

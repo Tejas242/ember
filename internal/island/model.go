@@ -30,6 +30,7 @@ type Card struct {
 	Plus     int
 	Minus    int
 	Buttons  []Button
+	Chips    []Button // small choice chips under the body: a press picks the chip's key, like a button
 	Options  []Option
 	Multi    bool
 	Footer   string
@@ -41,7 +42,8 @@ type Card struct {
 	Born     time.Time // when it appeared: the countdown line starts here
 	Shell    bool      // Code is a shell command: tint it
 
-	picked map[int]bool
+	picked   map[int]bool
+	chipKeys []string // the chips' hit keys, "chip:"+key
 }
 
 type Session struct {

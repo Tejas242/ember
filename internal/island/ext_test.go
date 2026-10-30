@@ -1,6 +1,7 @@
 package island
 
 import (
+	"bytes"
 	"context"
 	"image"
 	"os"
@@ -428,5 +429,134 @@ func TestPressableRows(t *testing.T) {
 	bs := h.of("button")
 	if len(bs) != 1 || bs[0].Card != "dash" || bs[0].Key != "upsolve:cf:2261" {
 		t.Fatalf("%+v", bs)
+	}
+}
+
+// A card's choice chips: laid out by the one helper that sizes the card,
+// wrapping to a second row, each hit-tested, lit under the pointer, and a
+// press sends its key as a button and closes the card. Buttons stay.
+func TestCardChoiceChips(t *testing.T) {
+	g := newScene()
+	h := &fakeHost{}
+	g.a.host = h
+	g.a.applyExt("edge", extMsg(t, `{"type":"card","id":"cue","title":"Tonight's rep: LC 2779","body":"Sliding window. When?",
+		"chips":[{"key":"cue:now","label":"Now","primary":true},{"key":"cue:19:30","label":"19:30"},{"key":"cue:21:00","label":"21:00"},
+		{"key":"skiptonight","label":"Skip tonight (1 left)"},{"key":"a","label":"Another choice"},{"key":"b","label":"And one more"}],
+		"buttons":[{"key":"open","label":"Open"}]}`))
+	c := g.a.ui.top()
+	if c == nil || len(c.Chips) != 6 || len(c.Buttons) != 1 {
+		t.Fatalf("%+v", c)
+	}
+	w := float32(cardW - textX - pad)
+	bs, rows := layoutChoices(c.Chips, w)
+	if rows != 2 {
+		t.Fatalf("six chips take %d rows", rows)
+	}
+	for i := range c.Chips {
+		if bs[i].x+bs[i].w > w || (i > 0 && bs[i].row == bs[i-1].row && bs[i].x <= bs[i-1].x+bs[i-1].w) {
+			t.Fatalf("chip %d: %+v", i, bs[:len(c.Chips)])
+		}
+	}
+	plain := &Card{Kind: "plugin", Title: c.Title, Body: c.Body, Buttons: c.Buttons}
+	if d := g.a.ui.cardHeight(c) - g.a.ui.cardHeight(plain); d != int(choicesH(c.Chips, w)) || d != choiceTop+2*choiceH+choiceGap {
+		t.Fatalf("the chips add %d px", d)
+	}
+	if choicesH(nil, w) != 0 {
+		t.Fatal("no chips, no room")
+	}
+	if n := testing.AllocsPerRun(50, func() { choicesH(c.Chips, w) }); n != 0 {
+		t.Fatalf("measuring the chips allocates %v times", n)
+	}
+	g.run(1500 * time.Millisecond)
+	hits := map[string]image.Rectangle{}
+	for _, ht := range g.a.ui.hits {
+		if strings.HasPrefix(ht.key, "chip:") || strings.HasPrefix(ht.key, "btn:") {
+			hits[ht.key] = ht.r
+		}
+	}
+	if len(hits) != 7 {
+		t.Fatalf("%d hits: %v", len(hits), hits)
+	}
+	if hits["chip:a"].Min.Y <= hits["chip:cue:now"].Max.Y || hits["btn:open"].Min.Y <= hits["chip:b"].Max.Y {
+		t.Fatalf("rows out of place: %v", hits)
+	}
+	r := hits["chip:cue:19:30"]
+	cx, cy := float64(r.Min.X+r.Dx()/2), float64(r.Min.Y+r.Dy()/2)
+	if redraw, hand := g.a.ui.pointer(pointerEvent{kind: "motion", x: cx, y: cy}); !redraw || !hand {
+		t.Fatalf("a chip under the pointer: redraw %v, hand %v", redraw, hand)
+	}
+	g.a.ui.pointer(pointerEvent{kind: "press", x: cx, y: cy, button: 1})
+	g.a.ui.pointer(pointerEvent{kind: "release", x: cx, y: cy, button: 1})
+	bsent := h.of("button")
+	if len(bsent) != 1 || bsent[0].Card != "cue" || bsent[0].Key != "cue:19:30" {
+		t.Fatalf("%+v", bsent)
+	}
+	if g.a.ui.top() != nil {
+		t.Fatal("a picked chip closes its card")
+	}
+}
+
+// Bars with an interval band draw it (rows and columns); without one they
+// draw just as before.
+func TestBarBandsDrawn(t *testing.T) {
+	shot := func(items string) []byte {
+		g := newScene()
+		g.a.applyExt("edge", extMsg(t, `{"type":"dashboard","widgets":[{"kind":"bars","title":"Readiness","items":[`+items+`]},
+			{"kind":"bars","layout":"columns","title":"Nightly","items":[`+items+`]}]}`))
+		g.a.ui.openDash("edge")
+		g.run(2500 * time.Millisecond)
+		return append([]byte(nil), g.a.ui.cv.img.Pix...)
+	}
+	plain := shot(`{"label":"Two pointers","value":0.6,"target":0.75},{"label":"DSU","value":0.4,"target":0.75}`)
+	again := shot(`{"label":"Two pointers","value":0.6,"target":0.75},{"label":"DSU","value":0.4,"target":0.75}`)
+	banded := shot(`{"label":"Two pointers","value":0.6,"lo":0.45,"hi":0.8,"target":0.75},{"label":"DSU","value":0.4,"lo":0.2,"hi":0.6,"target":0.75}`)
+	if !bytes.Equal(plain, again) {
+		t.Skip("the page isn't steady enough to compare")
+	}
+	if bytes.Equal(plain, banded) {
+		t.Fatal("the bands aren't drawn")
+	}
+}
+
+// Row bars scale to their largest value; with a target or a band, to 0..1
+// or 0..100 as the numbers fit, else the largest. And a bar's mood is its
+// colour, green without one, never red.
+func TestRowBarsScaleAndMood(t *testing.T) {
+	f := func(v float64) *float64 { return &v }
+	for _, c := range []struct {
+		items []proto.Item
+		want  float64
+	}{
+		{nil, 1},
+		{[]proto.Item{{Num: 7}, {Num: 5}}, 7},
+		{[]proto.Item{{Num: 0.5, Target: f(0.75)}, {Num: 0.4}}, 1},
+		{[]proto.Item{{Num: 0.4, Lo: f(0.2), Hi: f(0.6)}}, 1},
+		{[]proto.Item{{Num: 52, Target: f(75)}}, 100},
+		{[]proto.Item{{Num: 300, Target: f(200)}}, 300},
+		{[]proto.Item{{Num: 0.9, Lo: f(0.8), Hi: f(1.2)}}, 100},
+	} {
+		if got := rowBarsScale(c.items); got != c.want {
+			t.Errorf("%+v: scale %v, want %v", c.items, got, c.want)
+		}
+	}
+	shot := func(mood string) []byte {
+		g := newScene()
+		g.a.applyExt("edge", extMsg(t, `{"type":"dashboard","widgets":[{"kind":"bars","items":[{"label":"Heap","value":0.5,"target":0.75,"mood":"`+mood+`"}]}]}`))
+		g.a.ui.openDash("edge")
+		g.run(2500 * time.Millisecond)
+		return append([]byte(nil), g.a.ui.cv.img.Pix...)
+	}
+	none, done, nudge, fail := shot(""), shot("done"), shot("nudge"), shot("fail")
+	if !bytes.Equal(none, done) || bytes.Equal(none, nudge) || !bytes.Equal(nudge, fail) {
+		t.Fatal("a row bar's colour: green without a mood or done, amber for nudge and fail")
+	}
+}
+
+// A heatmap of 8 weeks or fewer gets bigger cells, and room for them; a
+// longer one is as before.
+func TestShortHeatmapGrows(t *testing.T) {
+	u := newScene().a.ui
+	if short, long := u.heatW(&proto.Widget{Kind: "heatmap", Weeks: 4}).h, u.heatW(&proto.Widget{Kind: "heatmap", Weeks: 26}).h; long != 86 || short != 24+7*16+18 {
+		t.Fatalf("heights %v and %v", short, long)
 	}
 }

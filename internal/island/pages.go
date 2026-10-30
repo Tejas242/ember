@@ -8,6 +8,8 @@ import (
 	"math"
 	"strings"
 	"time"
+
+	proto "github.com/Tejas242/ember/pkg/plugin"
 )
 
 // Rows of the open card (music, the plugins), buttons, and the decision cards:
@@ -280,6 +282,97 @@ func (u *UI) buttonRow(btns []Button, prefix string, x, w, y float32, footer str
 	}
 }
 
+// ---- choice chips ----
+
+// A plugin's card may offer small choices under its body ("Now", "19:30",
+// "Skip tonight"): quieter than buttons, ringed, wrapping to a second row.
+// They are measured and drawn by the same layout, so the card's height and
+// its chips always agree.
+const (
+	choiceH   = 24
+	choiceGap = 6
+	choiceTop = 10 // from the body to the first row
+)
+
+func fChoice() fontFace { return face(fMedium, 11.5) }
+
+// choiceBox is where one chip sits: x from the row's start, its row, its width.
+type choiceBox struct {
+	x, w float32
+	row  int
+}
+
+// layoutChoices lays chips out in order in rows w wide, wrapping when the
+// next doesn't fit. It reports their boxes and how many rows they take.
+// No allocation: it runs as the card draws.
+func layoutChoices(cs []Button, w float32) (bs [proto.ChoiceMax]choiceBox, rows int) {
+	x := float32(0)
+	for i, c := range cs {
+		if i == len(bs) {
+			break
+		}
+		cw := min(measure(fChoice(), c.Label)+22, w)
+		if i == 0 {
+			rows = 1
+		} else if x+choiceGap+cw > w {
+			x, rows = 0, rows+1
+		} else {
+			x += choiceGap
+		}
+		bs[i] = choiceBox{x: x, w: cw, row: rows - 1}
+		x += cw
+	}
+	return bs, rows
+}
+
+// choicesH is the room a card's chips take under its body.
+func choicesH(cs []Button, w float32) float32 {
+	_, rows := layoutChoices(cs, w)
+	if rows == 0 {
+		return 0
+	}
+	return choiceTop + float32(rows)*choiceH + float32(rows-1)*choiceGap
+}
+
+// choiceChips draws a card's chips from x, w wide, their first row choiceTop
+// under y. Each is a hairline-ringed pill that fills under the pointer and
+// sinks while it's held; the one marked primary is tinted in the card's
+// colour. A press sends its key, like a button.
+func (u *UI) choiceChips(c *Card, x, w, y float32, tint color.NRGBA) {
+	p := u.pal
+	f := fChoice()
+	cs := c.Chips
+	if len(c.chipKeys) != len(cs) { // their hit keys, made once: a repaint builds no strings for them
+		c.chipKeys = make([]string, len(cs))
+		for i, ch := range cs {
+			c.chipKeys[i] = "chip:" + ch.Key
+		}
+	}
+	bs, _ := layoutChoices(cs, w)
+	for i, ch := range cs {
+		if i == len(bs) {
+			break
+		}
+		b := bs[i]
+		bx, by := x+b.x, y+choiceTop+float32(b.row)*(choiceH+choiceGap)
+		key := c.chipKeys[i]
+		h, d := u.hl(key), u.pressed(key)
+		fill, ring, txt := alpha(p.fg, 0.03+0.07*h), alpha(p.fg, 0.14+0.1*h), mix(p.muted, p.fg, 0.35+0.65*h)
+		if ch.Primary {
+			fill, ring, txt = alpha(tint, 0.14+0.1*h), alpha(tint, 0.5+0.2*h), mix(p.fg, tint, 0.2)
+		}
+		if d > 0 {
+			fill = mix(fill, alpha(p.fg, 0.2), 0.6*d)
+		}
+		in := float32(1.2 * d)
+		u.dc.roundRect(bx+in, by+in, b.w-2*in, choiceH-2*in, choiceH/2, fill)
+		u.dc.frame(bx+in+0.5, by+in+0.5, b.w-2*in-1, choiceH-2*in-1, choiceH/2-0.5, 1, ring)
+		label := ellipsize(f, ch.Label, b.w-22)
+		u.dc.text(f, label, bx+(b.w-measure(f, label))/2, by+choiceH/2+4, txt)
+		u.hits = append(u.hits, hit{image.Rect(int(bx), int(by), int(bx+b.w), int(by+choiceH)), key})
+	}
+}
+
 // ---- decision cards ----
 
 // cardMeta is the quiet note at the eyebrow's right: a question's place in
@@ -365,6 +458,7 @@ func (u *UI) cardHeight(c *Card) int {
 	if c.Body != "" {
 		h += 2 + 15*len(cardBody(c, cardW-textX-pad))
 	}
+	h += int(choicesH(c.Chips, cardW-textX-pad))
 	if c.Code != "" {
 		h += 10 + 12 + 15*len(codeLines(c.Code, inner-20))
 	}
@@ -453,6 +547,11 @@ func (u *UI) drawCard(c *Card, x, w float32) {
 			}
 		})
 		y += bh
+		i++
+	}
+	if ch := choicesH(c.Chips, right-tx); ch > 0 { // its choices, under the body
+		u.item("c:chips", i, x, w, y, ch, func(y float32) { u.choiceChips(c, tx, right-tx, y, u.primaryOf(c)) })
+		y += ch
 		i++
 	}
 	if c.Code != "" {

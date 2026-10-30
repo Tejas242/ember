@@ -166,6 +166,9 @@ func (a *app) extCard(name string, w *proto.Card) {
 	for _, b := range w.Buttons {
 		c.Buttons = append(c.Buttons, Button{Key: b.Key, Label: b.Label, Primary: b.Primary})
 	}
+	for _, b := range w.Chips {
+		c.Chips = append(c.Chips, Button{Key: b.Key, Label: b.Label, Primary: b.Primary})
+	}
 	id := w.ID
 	c.OnPick = func(k string, _ []int) {
 		if a.host == nil {
