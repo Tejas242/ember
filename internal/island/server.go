@@ -101,8 +101,15 @@ func (s *server) serve(c *net.UnixConn) {
 		}
 		b, _ := json.Marshal(ipc.Reply{Output: out})
 		c.Write(append(b, '\n'))
-	case "edge": // edge's own address, from before plugins
-		s.posts <- func(a *app) { a.toPlugin("edge", m.Payload) }
+	case "edge": // edge's own address, from before plugins: it hears whether the plugin got it
+		ok := make(chan bool, 1)
+		s.posts <- func(a *app) { ok <- a.toPlugin("edge", m.Payload) }
+		select {
+		case v := <-ok:
+			b, _ := json.Marshal(ipc.Ack{OK: v})
+			c.Write(append(b, '\n'))
+		case <-time.After(2 * time.Second):
+		}
 	case "plugin": // a tool talking to its plugin
 		s.posts <- func(a *app) { a.toPlugin(m.Name, m.Payload) }
 	case "note", "line": // `ember note`, `ember status`: a moment, a pill line

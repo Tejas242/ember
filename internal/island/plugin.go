@@ -27,7 +27,7 @@ type Dashboard interface {
 // extHost is what the island asks of the plugin host (package
 // internal/plugin's Host; a test's own).
 type extHost interface {
-	Send(name string, ev proto.Event)
+	Send(name string, ev proto.Event) bool
 	CardClosed(name, id string)
 	Click(name, target string)
 	Has(name string) bool
@@ -52,13 +52,22 @@ func (a *app) reconcile() {
 	a.detectedAt = a.ui.now()
 }
 
-// toPlugin hands a message from a tool to its plugin as a tool event, if
-// that plugin runs.
-func (a *app) toPlugin(name string, payload json.RawMessage) {
+// maxToolPayload: a tool event's line must stay within the protocol's 64 KiB.
+const maxToolPayload = 60 << 10
+
+// toPlugin hands a message from a tool to its plugin as a tool event, and
+// reports whether the plugin's running process took it. A payload over the
+// limit is said once in the log, and not sent.
+func (a *app) toPlugin(name string, payload json.RawMessage) bool {
 	a.quiet = true
-	if a.host != nil && a.host.Has(name) && len(payload) <= 60<<10 {
-		a.host.Send(name, proto.Event{Type: "tool", Payload: payload})
+	if a.host == nil || !a.host.Has(name) {
+		return false
 	}
+	if len(payload) > maxToolPayload {
+		logOnce("toolsize:"+name, "ember: a %d-byte message for the %s plugin is over %d bytes, so it isn't sent (this is said once)", len(payload), name, maxToolPayload)
+		return false
+	}
+	return a.host.Send(name, proto.Event{Type: "tool", Payload: payload})
 }
 
 // startPlugins runs the plugins in ~/.config/ember/plugins until ctx ends

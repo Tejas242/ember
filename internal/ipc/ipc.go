@@ -36,6 +36,11 @@ type Reply struct {
 	Output json.RawMessage `json:"output,omitempty"`
 }
 
+// Ack answers an "edge" message: whether the edge plugin's running process got it.
+type Ack struct {
+	OK bool `json:"ok"`
+}
+
 // Status is what `ember doctor` reports about the running island.
 type Status struct {
 	Version     string   `json:"version"` // the running island's own version

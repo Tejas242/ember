@@ -59,8 +59,28 @@ func AskHook(event string, payload []byte, pids []int) []byte {
 	return r.Output
 }
 
-// Edge sends one message from edge (status, card, remove) to the island.
-func Edge(raw []byte) bool { return oneShot(Msg{Type: "edge", Payload: raw}) }
+// Edge sends one message from edge (status, card, remove) to the island and
+// reports whether the edge plugin got it: the island answers {"ok":…}; an
+// island too old to answer within 300 ms counts as delivered.
+func Edge(raw []byte) bool {
+	c, err := dialIsland()
+	if err != nil {
+		return false
+	}
+	defer c.Close()
+	c.SetDeadline(time.Now().Add(500 * time.Millisecond))
+	b, _ := json.Marshal(Msg{Type: "edge", Payload: raw})
+	if _, err := c.Write(append(b, '\n')); err != nil {
+		return false
+	}
+	c.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+	line, err := bufio.NewReader(c).ReadBytes('\n')
+	var ack Ack
+	if err != nil || json.Unmarshal(line, &ack) != nil {
+		return true
+	}
+	return ack.OK
+}
 
 // Note shows a moment: payload is a protocol moment line.
 func Note(payload []byte) bool { return oneShot(Msg{Type: "note", Payload: payload}) }

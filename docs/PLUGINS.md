@@ -296,7 +296,9 @@ A plugin must keep reading its stdin: a plugin that stops reading may miss event
 **A tool's messages.** A plugin often fronts a tool that has its own daemon. The tool can reach its plugin
 through Ember's socket, `$XDG_RUNTIME_DIR/ember.sock`, with one line, `{"type":"plugin","name":"<plugin>",
 "payload":{…}}`; the plugin gets the payload as a `tool` event. (edge's older `{"type":"edge","payload":…}` is
-the same, for the plugin named edge.) A payload is at most 60 KiB.
+the same, for the plugin named edge, and is answered with one line: `{"ok":true}` when the edge plugin's running
+process took it, `{"ok":false}` when no edge plugin is running or the payload is over the limit.) A payload is at
+most 60 KiB, so its `tool` event fits in a line; a larger one is not sent, and Ember's log says so once.
 
 ### Grants
 

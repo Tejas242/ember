@@ -171,13 +171,14 @@ func (h *Host) proc(name string) *proc {
 // Has says whether a plugin by that name is installed and on.
 func (h *Host) Has(name string) bool { return h.proc(name) != nil }
 
-// Send tells a plugin about an event. It never blocks: a plugin that isn't
-// reading misses it. A media event goes only to a plugin granted media whose
-// page is open (as the dash events it was sent say).
-func (h *Host) Send(name string, ev proto.Event) {
+// Send tells a plugin about an event, and reports whether its running
+// process took it. It never blocks: a plugin that isn't running or reading
+// misses it. A media event goes only to a plugin granted media whose page is
+// open (as the dash events it was sent say).
+func (h *Host) Send(name string, ev proto.Event) bool {
 	p := h.proc(name)
 	if p == nil {
-		return
+		return false
 	}
 	switch ev.Type {
 	case "button":
@@ -186,10 +187,10 @@ func (h *Host) Send(name string, ev proto.Event) {
 		p.setOpen(ev.State == "open")
 	case "media":
 		if !p.open() || !h.granted(name, proto.GrantMedia) {
-			return
+			return false
 		}
 	}
-	p.send(ev)
+	return p.send(ev)
 }
 
 func (h *Host) granted(name, grant string) bool {

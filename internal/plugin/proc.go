@@ -113,14 +113,24 @@ func (p *proc) logLine(s string) {
 	p.mu.Unlock()
 }
 
-func (p *proc) send(ev proto.Event) {
+// send queues an event for the plugin and reports whether a run took it:
+// one that isn't running, or isn't reading, misses it.
+func (p *proc) send(ev proto.Event) bool {
+	p.mu.Lock()
+	alive := p.alive
+	p.mu.Unlock()
+	if !alive { // the next run starts with an empty queue
+		return false
+	}
 	b, err := proto.Line(ev.Type, ev)
 	if err != nil {
-		return
+		return false
 	}
 	select {
 	case p.out <- b:
+		return true
 	default: // it isn't reading: it misses this one
+		return false
 	}
 }
 

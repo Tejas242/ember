@@ -238,10 +238,10 @@ type vibeBridge struct {
 	applied int
 }
 
-func (b *vibeBridge) Send(name string, ev proto.Event) { b.h.Send(ev) }
-func (b *vibeBridge) CardClosed(string, string)        {}
-func (b *vibeBridge) Click(string, string)             {}
-func (b *vibeBridge) Has(string) bool                  { return true }
+func (b *vibeBridge) Send(name string, ev proto.Event) bool { b.h.Send(ev); return true }
+func (b *vibeBridge) CardClosed(string, string)             {}
+func (b *vibeBridge) Click(string, string)                  {}
+func (b *vibeBridge) Has(string) bool                       { return true }
 func (b *vibeBridge) Opener(c string) (string, string) {
 	if c == "music" {
 		return "vibe", "Vibe"

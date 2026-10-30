@@ -179,7 +179,9 @@ func TestHandshakeAndMessages(t *testing.T) {
 		t.Fatalf("state %s", i.State)
 	}
 	h.Click("fake", "docs")
-	h.Send("fake", proto.Event{Type: "button", Card: "c", Key: "go"})
+	if !h.Send("fake", proto.Event{Type: "button", Card: "c", Key: "go"}) {
+		t.Fatal("a running plugin didn't take an event")
+	}
 	defer func() { t.Logf("info: %+v", info(h)) }()
 	eventually(t, "events reach the plugin", func() bool {
 		l := strings.Join(info(h).Log, "|")
@@ -192,6 +194,9 @@ func TestHandshakeAndMessages(t *testing.T) {
 	h.Stop()
 	if i := info(h); i.State != Stopped {
 		t.Fatalf("after stop: %s", i.State)
+	}
+	if h.Send("fake", proto.Event{Type: "tool"}) {
+		t.Fatal("a stopped plugin took an event")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

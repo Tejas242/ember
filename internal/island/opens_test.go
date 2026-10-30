@@ -15,8 +15,9 @@ type fakeHost struct {
 	opens map[string]string // context → plugin
 }
 
-func (h *fakeHost) Send(name string, ev proto.Event) {
+func (h *fakeHost) Send(name string, ev proto.Event) bool {
 	h.to, h.sent = append(h.to, name), append(h.sent, ev)
+	return true
 }
 func (h *fakeHost) CardClosed(name, id string)       {}
 func (h *fakeHost) Click(name, target string)        {}
