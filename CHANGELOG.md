@@ -3,6 +3,39 @@
 Each release's section here becomes its notes on GitHub. Versions follow [semver](https://semver.org): the config
 file, the commands and the plugin protocol are the public surface.
 
+## 1.2.0
+
+**Volume and brightness, everywhere**
+- A key pressed while the card, a dashboard, a Claude request or the vibe stage is open drops its meter in as a strip
+  along the top, where the pill's would sit; nothing below it moves.
+- Over a fullscreen window Ember folds away and idles (it wakes about once a minute instead of 24–60 times a second).
+  A volume or brightness key brings just the meter up over the window, then it folds back.
+- News that arrives while you press (Claude finishing, say) waits until the meter is done instead of replacing it.
+- The microphone's level and a player's own volume (scroll the music row) get their meters too.
+
+**For plugins**
+- Cards can carry up to six small choice chips under the body, besides their buttons; a chip sends its key.
+- List and agenda rows with a `key` are pressable: a quiet chevron at rest, lit under the pointer, sent like a button.
+- Bars can show an interval band (`lo`/`hi`) behind the value; rows-layout bars follow their `mood` and draw the
+  target as a notch; with a target or a band they scale to 0–1.
+- Card bodies keep their paragraphs. Keys may be 128 characters long.
+- A post that changes nothing on screen (an identical line, a dashboard nobody has open) no longer redraws the island.
+- An `edge` message on the socket is answered `{"ok":true|false}`, so its sender knows whether the plugin got it; an
+  oversized message is logged once and refused instead of vanishing.
+
+**The edge plugin**
+- Its clock is focused work time: it runs while you're on the problem and freezes when you aren't, instead of
+  counting the hours since you pressed Start.
+- Give up and Skip are always on the dashboard; owed upsolves stay listed with an Upsolve button each; a button that
+  can't do anything says why in a short moment; verdicts show live ("judging · test 9", "WA on test 3").
+- The dashboard is built only while it's open, and follows edge's push, reading the stats file only when the push is
+  a ping.
+- Room for edge's trials: tonight's rep and its cue, an interview countdown, a 28-day chain and readiness bars with
+  their uncertainty.
+
+**Fixes**
+- The plugin, bad-hook and stage tests pass when run more than once in a row.
+
 ## 1.1.0
 
 **Lighter**
