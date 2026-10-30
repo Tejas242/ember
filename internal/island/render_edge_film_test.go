@@ -99,7 +99,7 @@ func TestEdgeTrialFilm(t *testing.T) {
 	status(e)
 	run(800 * time.Millisecond)
 	card(map[string]any{"id": "cue", "mood": "nudge", "title": "Tonight's rep: LC 2779 · Sliding window. When?", "ttl_s": 3600,
-		"chips": []map[string]any{chip("cue:now", "Now"), chip("cue:19:30", "19:30"), chip("cue:21:00", "21:00"), chip("skiptonight", "Skip tonight (1 left)")}})
+		"chips": []map[string]any{chip("cue:now", "Now"), chip("cue:19:30", "19:30"), chip("cue:21:00", "21:00"), chip("skiptonight", "Skip (1 left)")}})
 	run(1500 * time.Millisecond)
 	shoot("cue-card", 300)
 

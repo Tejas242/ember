@@ -196,12 +196,12 @@ func TestTrialRow(t *testing.T) {
 func TestCardifyChips(t *testing.T) {
 	var c Card
 	raw := `{"id":"cue","mood":"nudge","title":"Tonight's rep: LC 2779 · Sliding window. When?","ttl_s":3600,
-		"chips":[{"key":"cue:now","label":"Now"},{"key":"cue:19:30","label":"19:30"},{"key":"cue:21:00","label":"21:00"},{"key":"skiptonight","label":"Skip tonight (1 left)"}]}`
+		"chips":[{"key":"cue:now","label":"Now"},{"key":"cue:19:30","label":"19:30"},{"key":"cue:21:00","label":"21:00"},{"key":"skiptonight","label":"Skip (1 left)"}]}`
 	if err := json.Unmarshal([]byte(raw), &c); err != nil {
 		t.Fatal(err)
 	}
 	pc, _ := Cardify(&c)
-	if len(pc.Chips) != 4 || pc.Chips[1].Key != "cue:19:30" || pc.Chips[3].Label != "Skip tonight (1 left)" || pc.TTLs != 3600 || len(pc.Buttons) != 0 {
+	if len(pc.Chips) != 4 || pc.Chips[1].Key != "cue:19:30" || pc.Chips[3].Label != "Skip (1 left)" || pc.TTLs != 3600 || len(pc.Buttons) != 0 {
 		t.Fatalf("%+v", pc)
 	}
 	b, _ := plugin.Line("card", pc)
