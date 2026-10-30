@@ -28,6 +28,7 @@ func TestSaveFailureLoggedOnce(t *testing.T) {
 
 // A hook Ember can't read says so once per event, and is still taken.
 func TestBadHookLoggedOnce(t *testing.T) {
+	logged.Delete("hook:Stop") // -count runs it again: once is per run
 	var buf bytes.Buffer
 	log.SetOutput(&buf)
 	defer log.SetOutput(os.Stderr)

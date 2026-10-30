@@ -21,6 +21,7 @@ var testLines = []proto.TimedLine{
 
 // stageScene is a stage open on a song, its words sent by a plugin.
 func stageScene(t testing.TB, lines []proto.TimedLine, key func(*Track) string, mode, state string) *galleryScene {
+	os.Remove(nudgesPath()) // a nudge an earlier run remembered (-count) would move these words
 	g := newScene()
 	g.work("k", "kinvault", "fix the race", 2)
 	g.music(true)

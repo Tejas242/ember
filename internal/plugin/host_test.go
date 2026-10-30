@@ -163,6 +163,7 @@ func info(h *Host) Info {
 }
 
 func TestHandshakeAndMessages(t *testing.T) {
+	opened = nil // -count runs it again: the last run's clicks aren't this one's
 	h, s, cancel := fakeHost(t, "good")
 	eventually(t, "status, row and moment applied", func() bool { return len(s.types()) == 3 })
 	if got := strings.Join(s.types(), ","); got != "status,row,moment" {
