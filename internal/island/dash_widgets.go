@@ -226,11 +226,11 @@ func (u *UI) widget(name string, wd *proto.Widget) wbox {
 	case "chips":
 		return u.chipsW(wd)
 	case "list":
-		return u.listW(wd)
+		return u.listW(name, wd)
 	case "heatmap":
 		return u.heatW(wd)
 	case "agenda":
-		return u.agendaW(wd)
+		return u.agendaW(name, wd)
 	case "note":
 		return u.noteW(wd)
 	}
@@ -708,13 +708,13 @@ func (u *UI) chipsW(wd *proto.Widget) wbox {
 
 // ---- list: rows, each with its icon or an outcome mark ----
 
-func (u *UI) listW(wd *proto.Widget) wbox {
+func (u *UI) listW(name string, wd *proto.Widget) wbox {
 	marked := false
 	for _, it := range wd.Items {
 		marked = marked || it.Mark != ""
 	}
 	if marked {
-		return u.markedListW(wd)
+		return u.markedListW(name, wd)
 	}
 	top := float32(0)
 	if wd.Title != "" {
@@ -726,6 +726,7 @@ func (u *UI) listW(wd *proto.Widget) wbox {
 		for j, it := range wd.Items {
 			k := phase(age, time.Duration(40*j)*time.Millisecond, 400*time.Millisecond)
 			ry := y + top + float32(j)*24
+			rw := w - u.pressRow(name, it.Key, x, ry, w, 24, k)
 			tint := p.tint(it.Mood)
 			if it.Icon != "" {
 				u.dc.icon(it.Icon, x+6, ry+11, 11, alpha(tint, k))
@@ -734,14 +735,14 @@ func (u *UI) listW(wd *proto.Widget) wbox {
 			}
 			tw := u.dc.text(fBody(), ellipsize(fBody(), it.Title, w*0.55), x+20, ry+16, alpha(p.fg, k))
 			if it.Sub != "" {
-				u.dc.text(fSecond(), ellipsize(fSecond(), it.Sub, w-tw-28), x+28+tw, ry+16, alpha(p.muted, k))
+				u.dc.text(fSecond(), ellipsize(fSecond(), it.Sub, rw-tw-28), x+28+tw, ry+16, alpha(p.muted, k))
 			}
 		}
 	}}
 }
 
 // markedListW: a few rows, an honest outcome mark each, the detail at the right.
-func (u *UI) markedListW(wd *proto.Widget) wbox {
+func (u *UI) markedListW(name string, wd *proto.Widget) wbox {
 	n := min(len(wd.Items), 4)
 	return wbox{h: 22 + 16*float32(max(n, 1)), draw: func(x, y, w float32, age time.Duration) {
 		p := u.pal
@@ -749,6 +750,7 @@ func (u *UI) markedListW(wd *proto.Widget) wbox {
 		for i, it := range wd.Items[:n] {
 			k := phase(age, time.Duration(500+70*i)*time.Millisecond, 450*time.Millisecond)
 			cy := y + 34 + float32(i)*16
+			right := x + w - u.pressRow(name, it.Key, x, cy-8, w, 16, k)
 			switch it.Mark {
 			case "done":
 				u.dc.circle(x+4, cy, 3.2, alpha(p.green, k))
@@ -760,8 +762,8 @@ func (u *UI) markedListW(wd *proto.Widget) wbox {
 				u.dc.arc(x+4, cy, 2.8, 1.1, 0, 2*math.Pi, alpha(p.faint, 0.8*k))
 			}
 			rw := measure(fCaption(), it.Sub)
-			u.dc.text(fCaption(), it.Sub, x+w-rw, cy+4, alpha(p.faint, k))
-			u.dc.text(fSecond(), ellipsize(fSecond(), it.Title, w-rw-24), x+14, cy+4.5, alpha(p.fg, k))
+			u.dc.text(fCaption(), it.Sub, right-rw, cy+4, alpha(p.faint, k))
+			u.dc.text(fSecond(), ellipsize(fSecond(), it.Title, right-x-rw-24), x+14, cy+4.5, alpha(p.fg, k))
 		}
 	}}
 }
@@ -861,7 +863,7 @@ func when(now, t time.Time, ends string) string {
 	return t.Format("Mon 2")
 }
 
-func (u *UI) agendaW(wd *proto.Widget) wbox {
+func (u *UI) agendaW(name string, wd *proto.Widget) wbox {
 	now := u.now()
 	var items []proto.Item
 	for _, it := range wd.Items {
@@ -881,13 +883,14 @@ func (u *UI) agendaW(wd *proto.Widget) wbox {
 		for i, it := range items {
 			k := phase(age, time.Duration(200+70*i)*time.Millisecond, 450*time.Millisecond)
 			cy := y + 35 + float32(i)*18 + 4*float32(1-k)
+			room := u.pressRow(name, it.Key, x, cy-9, w, 18, k)
 			at := time.UnixMilli(it.AtMs)
 			wc := p.muted
 			if at.Sub(now) < 24*time.Hour { // within a day: it brightens
 				wc = p.fg
 			}
 			u.dc.text(fCaption(), when(now, at, wd.DayEnds), x, cy+4, alpha(wc, k))
-			tx, r := x+62, x+w
+			tx, r := x+62, x+w-room
 			if ls := chipLetters(it.Chips); len(ls) > 0 {
 				cw := lettersW(ls, 14)
 				u.letters(ls, r-cw, cy, 14, k)
@@ -905,6 +908,25 @@ func (u *UI) agendaW(wd *proto.Widget) wbox {
 			u.dc.text(fSecond(), ellipsize(fSecond(), it.Title, r-tx), tx, cy+4.5, alpha(p.fg, k))
 		}
 	}}
+}
+
+// pressRow makes a list's or an agenda's row that carries a key pressable,
+// the way the card's rows are: a soft panel under the pointer that deepens
+// while it's held, a quiet chevron at its end, and a press that sends the key
+// as a button on the page. It reports the room the chevron takes (0 for a
+// row without a key, drawn as before).
+func (u *UI) pressRow(name, key string, x, y, w, h float32, k float64) float32 {
+	if key == "" {
+		return 0
+	}
+	p, hk := u.pal, "x:dbtn:"+name+"\x00"+key
+	on, d := u.hl(hk), u.pressed(hk)
+	if a := (0.05*on + 0.06*d) * k; a > 0.004 {
+		u.dc.roundRect(x-8, y, w+16, h, min(radRow, h/2), alpha(p.fg, a))
+	}
+	u.chevron(x+w-3, y+h/2, 0, alpha(mix(p.faint, p.fg, 0.5*on), k))
+	u.hits = append(u.hits, hit{image.Rect(int(x-8), int(y), int(x+w+8), int(y+h)), hk})
+	return 16
 }
 
 // ---- note: one quiet line ----

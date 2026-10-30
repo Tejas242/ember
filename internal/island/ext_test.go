@@ -387,3 +387,46 @@ func TestExtQuietPosts(t *testing.T) {
 		t.Fatal("remove")
 	}
 }
+
+// A list's or an agenda's row with a key is pressable like a button: under
+// the pointer it lights, and a press sends its key as a button on the page.
+func TestPressableRows(t *testing.T) {
+	g := newScene()
+	h := &fakeHost{}
+	g.a.host = h
+	g.a.ui.onKey = g.a.key
+	at := strconv.FormatInt(g.clock.Add(26*time.Hour).UnixMilli(), 10)
+	g.a.applyExt("edge", extMsg(t, `{"type":"dashboard","widgets":[
+		{"kind":"agenda","title":"Coming","items":[{"title":"CF 1129 upsolves","at_ms":`+at+`,"key":"upsolve:cf:2261"},{"title":"ABC 482","at_ms":`+at+`}]},
+		{"kind":"list","title":"Recent","items":[{"title":"2277C","sub":"WA on test 3","key":"open:cf:2277C"}]}]}`))
+	g.a.ui.openDash("edge")
+	g.run(2500 * time.Millisecond)
+	find := func(key string) (image.Rectangle, bool) {
+		for _, ht := range g.a.ui.hits {
+			if ht.key == "x:dbtn:edge\x00"+key {
+				return ht.r, true
+			}
+		}
+		return image.Rectangle{}, false
+	}
+	n := 0
+	for _, ht := range g.a.ui.hits {
+		if strings.HasPrefix(ht.key, "x:dbtn:edge\x00") {
+			n++
+		}
+	}
+	r, ok := find("upsolve:cf:2261")
+	if _, ok2 := find("open:cf:2277C"); !ok || !ok2 || n != 2 {
+		t.Fatalf("the keyed rows' hits: %v %v, %d in all", ok, ok2, n)
+	}
+	cx, cy := float64(r.Min.X+r.Dx()/2), float64(r.Min.Y+r.Dy()/2)
+	if redraw, _ := g.a.ui.pointer(pointerEvent{kind: "motion", x: cx, y: cy}); !redraw {
+		t.Fatal("moving onto a row doesn't light it")
+	}
+	g.a.ui.pointer(pointerEvent{kind: "press", x: cx, y: cy, button: 1})
+	g.a.ui.pointer(pointerEvent{kind: "release", x: cx, y: cy, button: 1})
+	bs := h.of("button")
+	if len(bs) != 1 || bs[0].Card != "dash" || bs[0].Key != "upsolve:cf:2261" {
+		t.Fatalf("%+v", bs)
+	}
+}

@@ -218,9 +218,9 @@ capitals, divided by hairlines.
 | `line` | `title`, `values` ≤ 120, `value ≤ 12` (by the title), `delta ≤ 12` with `delta_mood`, `extra ≤ 12`, `band` `{lo, hi, label ≤ 32}`: a line over a shaded range, its last point lit |
 | `bars` | `title`, `items`: ≤ 12 × `{label ≤ 20, value number ≥ 0, caption ≤ 12}`: horizontal bars. With `layout: "columns"`: columns with labels under them, each with `target` (a ghost of what it asks), `today`, `mood` (`done` green, else amber) and `state` (`future`: none yet; `excused`), and `value` and `caption` by the title |
 | `chips` | `title`, `items`: ≤ 12 × `{label ≤ 4, state}`: letters in chips; `state` is `done` (filled green), `tried` (ringed red), `owed` (ringed amber), `fixed` (filled blue), `gone` (struck), or `todo` (quiet, the default) |
-| `list` | `title`, `items`: ≤ 8 × `{title ≤ 40, sub ≤ 60, icon, mood}`; with `mark` (`done`, `skip`, `fail`, `none`) an outcome mark leads each row and `sub` sits at its right end |
+| `list` | `title`, `items`: ≤ 8 × `{title ≤ 40, sub ≤ 60, icon, mood, key ≤ 128}`; with `mark` (`done`, `skip`, `fail`, `none`) an outcome mark leads each row and `sub` sits at its right end. A row with a `key` is pressable (below) |
 | `heatmap` | `title`, `caption`, `weeks` 4..53, `days`: `{date, level 0..1, mood}` (`done` green as deep as the level, `wait` blue: excused, `quiet` a whisper), Monday on top, today ringed |
-| `agenda` | `title`, `caption`, `items`: ≤ 5 × `{at_ms, title ≤ 40, tag ≤ 14, tag_mood, chips ≤ 4}`; Ember sorts them, drops what's past, says when ("in 1h 07m", "Sun night", "Mon 20:05", "Thu 29") and brightens what's within a day; `day_ends` ("04:00") makes a time before it the night before; `empty` is said when nothing's coming |
+| `agenda` | `title`, `caption`, `items`: ≤ 5 × `{at_ms, title ≤ 40, tag ≤ 14, tag_mood, chips ≤ 4, key ≤ 128}`; Ember sorts them, drops what's past, says when ("in 1h 07m", "Sun night", "Mon 20:05", "Thu 29") and brightens what's within a day; `day_ends` ("04:00") makes a time before it the night before; `empty` is said when nothing's coming. A row with a `key` is pressable (below) |
 | `columns` | `split` 0.3..0.7, `a` and `b`: two widgets (not a hero, not columns) side by side, a hairline between |
 | `note` | `icon`, `text ≤ 80`, `mood`: one quiet line |
 
@@ -237,6 +237,12 @@ but the hero can fold to one line (a chevron, its title, its `summary ≤ 80`): 
 (folded from the bottom up until the page fits the screen); a click unfolds it. A new `dashboard` replaces the
 last; Ember sends `dash` when it opens or closes, so a plugin can send updates only while it's open.
 `{"type":"remove","what":"dashboard"}` takes it back.
+
+**Pressable rows.** A `list` or `agenda` row with a `key` is a control: a quiet chevron at its end says so, it
+lights under the pointer and deepens while it's held, like Ember's buttons, and a press sends
+`{"type":"button","card":"dash","key":"<its key>"}`, the same as a hero button. A row without a `key` looks and
+acts as before. Keep a key's action safe to send twice and specific to what the row names (`upsolve:cf:2261`,
+not `upsolve`), since the page may be a few seconds old.
 
 Ember's poses in a hero: `calm`, `attentive` (reading), `sidelong` (a look at the button), `game` (eyes front,
 determined: needs the `focus` grant), `sleepy`, `proud`. Its `react` (`hop`, `nod`, `celebrate`) plays once as the
