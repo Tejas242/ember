@@ -54,7 +54,7 @@ description  = "Practice: the day's problem, contest rounds, and the record"
 command      = %q
 args         = ["plugin", "edge"]
 icon         = "chart"
-capabilities = ["pill", "row", "card", "dashboard", "cheer"]
+capabilities = ["pill", "moment", "row", "card", "dashboard", "cheer"]
 grants       = ["critical", "badge", "focus"]
 `, exe)
 }
