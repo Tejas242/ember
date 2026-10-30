@@ -11,5 +11,5 @@
  "recent":[{"id":"cf:1540A","source":"cf","title":"Great Graphs","outcome":"skipped","work_sec":720},{"id":"cf:2057B","source":"cf","title":"Gorilla and the Exam","outcome":"solo","work_sec":420},{"id":"cf:2108C","source":"cf","title":"Neo's Escape"}],
  "rounds":{"next":{"id":"cf:2160","short":"CF Div. 2","kind":"div2","start":"2026-10-24T16:35:00+05:30","end":"2026-10-24T18:35:00+05:30","plan":"in"},
    "upcoming":[{"id":"cf:2160","short":"CF Div. 2","kind":"div2","start":"2026-10-24T16:35:00+05:30","end":"2026-10-24T18:35:00+05:30","plan":"in"}],
-   "upsolves":{"queue":[{"short":"CF 1128","index":"B","due":"2026-10-26T04:00:00+05:30"},{"short":"CF 1128","index":"C","due":"2026-10-26T04:00:00+05:30"}]},
+   "upsolves":{"queue":[{"id":"cf:2261B","round":"cf:2261","short":"CF 1128","index":"B","due":"2026-10-26T04:00:00+05:30"},{"id":"cf:2261C","round":"cf:2261","short":"CF 1128","index":"C","due":"2026-10-26T04:00:00+05:30"}]},
    "record":{"held":1,"sat":0}}}

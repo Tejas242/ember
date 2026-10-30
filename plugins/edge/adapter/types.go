@@ -22,6 +22,79 @@ type Status struct {
 	StartedMs int64  `json:"startedMs"`
 	Pending   bool   `json:"pending"`
 	Round     *Round `json:"round"` // a contest round that matters now
+
+	// contract v2 (docs/EDGE-CONTRACT.md); an older edge leaves them zero
+	TaskID      string `json:"taskId"`      // "cf:2277C": actions name it (start:<id>, giveup:<id> …)
+	Short       string `json:"short"`       // the pill's label: "2277C", "LC 3542"
+	Kind        string `json:"kind"`        // new | resolve | reentry | upsolve | self
+	WorkSec     int    `json:"workSec"`     // focused work on the task, as of AsOfMs
+	TodaySec    int    `json:"todaySec"`    // focused work today
+	Working     bool   `json:"working"`     // work is being counted right now: the clock runs
+	Paused      bool   `json:"paused"`      // started, but no work for a while
+	AsOfMs      int64  `json:"asOfMs"`      // when WorkSec was measured
+	Policy      string `json:"policy"`      // ladder | instant | cold | ""
+	HintsReady  bool   `json:"hintsReady"`  // a hint can be taken now
+	NextHintSec int    `json:"nextHintSec"` // work until the next hint, 0 = none coming
+	GiveUpInSec int    `json:"giveUpInSec"` // work until give-up unlocks: 0 now, -1 never
+	CanSkip     bool   `json:"canSkip"`     // skip:<id> is accepted
+	DueMs       int64  `json:"dueMs"`       // an upsolve's lapse
+	Lapsed      bool   `json:"lapsed"`      // an upsolve past it
+	Judging     string `json:"judging"`     // "" | "queue" | "test 9"
+	LastVerdict string `json:"lastVerdict"` // "WA on test 3"
+	Owed        []Owed `json:"owed"`        // upsolves still owed, oldest first
+	Explain     string `json:"explain"`     // a task waiting for its explain-back
+	Debrief     string `json:"debrief"`     // a round waiting for its debrief
+	Health      string `json:"health"`      // one plain sentence when a judge is down
+	SeenMs      int64  `json:"seenMs"`      // edge's heartbeat
+
+	Stopped bool `json:"-"` // the adapter's: edge hasn't been heard from in 90 s
+}
+
+// Owed is one round's upsolves still owed.
+type Owed struct {
+	Round   string   `json:"round"` // upsolve:<round> starts its next one
+	Short   string   `json:"short"`
+	Indexes []string `json:"indexes"`
+	DueMs   int64    `json:"dueMs"`
+}
+
+// active: the task is started and not finished.
+func (e *Status) active() bool { return e.StartedMs > 0 && !e.Pending }
+
+// workAt is the task's work as of now: it runs on only while edge counts it.
+func (e *Status) workAt(now time.Time) time.Duration {
+	w := time.Duration(e.WorkSec) * time.Second
+	if e.ticking() {
+		w += max(0, now.Sub(time.UnixMilli(e.AsOfMs)))
+	}
+	return w
+}
+
+// ticking: the clock runs (work counted now, edge alive, a time to count from).
+func (e *Status) ticking() bool { return e.Working && !e.Paused && !e.Stopped && e.AsOfMs > 0 }
+
+// key is an action scoped to the task or round it acts on.
+func key(verb, id string) string {
+	if id == "" {
+		return verb
+	}
+	return verb + ":" + id
+}
+
+// label is the task's name in the pill: edge's Short, else the task cut
+// short, a LeetCode title as "LC 3542".
+func (e *Status) label() string {
+	if e.Short != "" {
+		return e.Short
+	}
+	return shortTask(e.Task)
+}
+
+func shortTask(task string) string {
+	if i := strings.Index(task, ". "); i > 0 && strings.Trim(task[:i], "0123456789") == "" {
+		return "LC " + task[:i]
+	}
+	return short(task)
 }
 
 // Round is the round in edge's status.
@@ -74,6 +147,7 @@ type Card struct {
 		Label   string `json:"label"`
 		Primary bool   `json:"primary"`
 	} `json:"buttons"`
+	TTLs float64 `json:"ttl_s"` // how long its buttons stay valid
 }
 
 // Message is one of edge's messages over Ember's socket.
@@ -100,6 +174,7 @@ type Day struct {
 type Task struct {
 	ID           string    `json:"id"`
 	Source       string    `json:"source"`
+	URL          string    `json:"url"`
 	Kind         string    `json:"kind"` // new | resolve | reentry | upsolve
 	Title        string    `json:"title"`
 	Rating       int       `json:"rating"`
@@ -109,9 +184,14 @@ type Task struct {
 	Hints        int       `json:"hints"`
 	HintsAllowed int       `json:"hints_allowed"`
 	NextHintSec  int       `json:"next_hint_sec"`
+	GiveUpInSec  int       `json:"give_up_in_sec"` // current task: work until giving up is allowed
 	Fails        int       `json:"fails"`
+	Explain      int       `json:"explain"` // 0..2, -1 = not done
 	Outcome      string    `json:"outcome"` // solo | assisted | gaveup | skipped | ""
 }
+
+// started: begun and not finished.
+func (t *Task) started() bool { return !t.Started.IsZero() && t.Outcome == "" }
 
 // StatsRound is a round in edge's stats.
 type StatsRound struct {
@@ -164,7 +244,8 @@ type Stats struct {
 		BandLo        int `json:"band_lo"`
 		BandHi        int `json:"band_hi"`
 		RatingHistory []struct {
-			Rating int `json:"rating"`
+			At     time.Time `json:"at"`
+			Rating int       `json:"rating"`
 		} `json:"rating_history"`
 	} `json:"sources"`
 	Resolves struct {
@@ -188,22 +269,31 @@ type Stats struct {
 	Health []struct {
 		Msg string `json:"msg"`
 	} `json:"health"`
+	Daemon struct {
+		Seen time.Time `json:"seen"`
+	} `json:"daemon"`
 	Rounds *struct {
 		Live     *StatsRound  `json:"live"`
 		Next     *StatsRound  `json:"next"`
 		Upcoming []StatsRound `json:"upcoming"`
+		Recent   []StatsRound `json:"recent"`
 		Upsolves struct {
-			Queue []struct {
-				Short string    `json:"short"`
-				Index string    `json:"index"`
-				Due   time.Time `json:"due"`
-			} `json:"queue"`
+			Queue []Upsolve `json:"queue"`
 		} `json:"upsolves"`
 		Record struct {
 			Held int `json:"held"`
 			Sat  int `json:"sat"`
 		} `json:"record"`
 	} `json:"rounds"`
+}
+
+// Upsolve is one owed problem in edge's stats, oldest round first.
+type Upsolve struct {
+	ID    string    `json:"id"`    // the task's: "cf:2261C"
+	Round string    `json:"round"` // the round's: "cf:2261"
+	Short string    `json:"short"`
+	Index string    `json:"index"`
+	Due   time.Time `json:"due"`
 }
 
 // ---- words ----

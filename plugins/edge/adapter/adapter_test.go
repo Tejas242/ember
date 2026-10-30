@@ -27,6 +27,12 @@ func round(phase string) *Round {
 	return r
 }
 
+// practising is a task started an hour ago with 23 minutes of work, being worked on now.
+func practising() *Status {
+	return &Status{Today: 1, Need: 1, Task: "2257C · Spying", TaskID: "cf:2257C", Short: "2257C", Kind: "new", StartedMs: clock.Add(-time.Hour).UnixMilli(),
+		WorkSec: 23 * 60, Working: true, AsOfMs: clock.UnixMilli(), Policy: "ladder", NextHintSec: 240, GiveUpInSec: 37 * 60}
+}
+
 func TestLine(t *testing.T) {
 	if Line(&Status{}, clock) != nil {
 		t.Fatal("nothing to say: no line")
@@ -35,8 +41,8 @@ func TestLine(t *testing.T) {
 	if day.Text != "Today 1/3" || day.Mood != plugin.Nudge || day.Badge != "lock" || day.BadgeClock != "lock" || day.Value != "2257C" || *day.Salience != 0.55 {
 		t.Fatalf("day %+v", day)
 	}
-	pr := Line(&Status{Need: 3, Task: "2257C · Spying", StartedMs: clock.Add(-23 * time.Minute).UnixMilli()}, clock)
-	if pr.Text != "2257C" || pr.Mood != plugin.Work || pr.SinceMs == 0 || !pr.Satellite || pr.Badge != "" {
+	pr := Line(practising(), clock)
+	if pr.Text != "2257C" || pr.Mood != plugin.Work || pr.SinceMs != clock.Add(-23*time.Minute).UnixMilli() || !pr.Satellite || pr.Badge != "" {
 		t.Fatalf("practising %+v", pr)
 	}
 	soon := Line(&Status{Round: round("soon")}, clock)
@@ -58,12 +64,12 @@ func TestRow(t *testing.T) {
 	if r.Title != "Practice" || r.Sub != "1/2 today · 4-day streak" || r.Flame != "4-day streak" || *r.Ring.Value != 0.5 || r.Ring.Mood != plugin.Nudge || len(r.Buttons) != 0 {
 		t.Fatalf("day %+v", r)
 	}
-	r = Row(&Status{Today: 1, Need: 1, Task: "2257C · Spying", StartedMs: clock.Add(-23 * time.Minute).UnixMilli()}, clock)
-	if r.Sub != "Practising · 23m" || r.Buttons[0].Key != "hint" || r.Ring.Mood != plugin.Done || r.Flame != "" {
+	r = Row(practising(), clock)
+	if r.Sub != "23m · hint in 4m" || len(r.Buttons) != 1 || r.Buttons[0].Key != "start:cf:2257C" || r.Ring.Mood != plugin.Done || r.Flame != "" {
 		t.Fatalf("practising %+v", r)
 	}
 	r = Row(&Status{Round: round("soon")}, clock)
-	if r.Sub != "in 12m · you're in" || len(r.Buttons) != 2 || r.Buttons[1].Key != "openround:cf:2261" || *r.Ring.Value != 1 {
+	if r.Sub != "in 12m · you're in" || len(r.Buttons) != 1 || r.Buttons[0].Key != "openround:cf:2261" || *r.Ring.Value != 1 {
 		t.Fatalf("soon %+v", r)
 	}
 	r = Row(&Status{Round: round("live")}, clock)
@@ -71,7 +77,7 @@ func TestRow(t *testing.T) {
 		t.Fatalf("live %+v", r)
 	}
 	r = Row(&Status{Round: round("over")}, clock)
-	if r.Sub != "solved A · upsolve C" || r.Buttons[0].Key != "upsolve" || r.Ring.Mood != plugin.Done {
+	if r.Sub != "solved A · upsolve C" || r.Buttons[0].Key != "upsolve:cf:2261" || r.Ring.Mood != plugin.Done {
 		t.Fatalf("over %+v", r)
 	}
 }
@@ -115,12 +121,17 @@ func TestDashboard(t *testing.T) {
 	ws := m.Dashboard.Widgets
 	h := ws[0]
 	if h.Kind != "hero" || h.Title != "1 to go today" || h.Sub != "Problems open at 19:00 · Claude is open till then" ||
-		h.Step.Tag != "Upsolve" || h.Step.Facts != "lapses Sun night" || h.Buttons[0].Key != "start" {
+		h.Step.Tag != "Upsolve" || h.Step.Facts != "lapses Sun night" || h.Buttons[0].Key != "start:cf:2261B" {
 		t.Fatalf("hero %+v %+v", h, h.Step)
 	}
-	if len(ws) != 5 || ws[1].Kind != "columns" || ws[1].A.Layout != "columns" || len(ws[1].B.Items) != 3 || ws[4].Kind != "note" {
-		t.Fatalf("%d widgets", len(ws))
+	if len(ws) != 4 || ws[1].Kind != "columns" || ws[1].A.Layout != "columns" || len(ws[1].B.Items) != 2 {
+		t.Fatalf("%d widgets", len(ws)) // the owed round is the hero's step: the agenda doesn't repeat it
 	}
+	st.Current.Kind = "new" // another task: the owed round is on the agenda, pressable
+	if it := Dashboard(st, morning).Widgets[1].B.Items; len(it) != 3 || it[1].Key != "upsolve:cf:2261" || it[1].Title != "CF 1128 upsolves lapse" {
+		t.Fatalf("agenda %+v", it)
+	}
+	st.Current.Kind = "upsolve"
 	// the hero's next step isn't repeated by the agenda: a day done, the cold re-solve is next
 	st.Today.Done, st.Today.Got, st.Rounds.Upsolves.Queue = true, 1, nil
 	d = Dashboard(st, morning)
@@ -150,13 +161,13 @@ func TestRun(t *testing.T) {
 	var actions []string
 	run := func(p *plugin.Plugin) error {
 		return Run(p, Options{StatsPath: path, Now: func() time.Time { return clock }, Every: 20 * time.Millisecond,
-			Action: func(k string) { mu.Lock(); actions = append(actions, k); mu.Unlock() }})
+			Action: func(k string) error { mu.Lock(); actions = append(actions, k); mu.Unlock(); return nil }})
 	}
 	h := plugin.NewHarness("edge", plugin.Caps, run)
 	if _, err := h.Wait("dashboard", 2*time.Second); err != nil {
 		t.Fatal(err)
 	}
-	if r, err := h.Wait("row", time.Second); err != nil || r.Row.Title != "Practice" {
+	if r, err := h.Wait("row", time.Second); err != nil || r.Row.Title != "2261B · What's the Capital of France?" { // the task, from the stats at once
 		t.Fatalf("%v %+v", err, r.Row)
 	}
 	tool := func(v any) {
@@ -164,7 +175,7 @@ func TestRun(t *testing.T) {
 		h.Send(plugin.Event{Type: "tool", Payload: raw})
 	}
 	tool(map[string]any{"type": "status", "status": Status{Today: 0, Need: 1, Closed: true, Task: "2261B · What's the Capital of France?"}})
-	if s, err := h.WaitFor("status", time.Second, func(m plugin.Message) bool { return m.Status.Text == "Today 0/1" }); err != nil || s.Status.Badge != "lock" {
+	if s, err := h.WaitFor("status", time.Second, func(m plugin.Message) bool { return m.Status.Text == "Today 0/1" && m.Status.Badge == "lock" }); err != nil {
 		t.Fatalf("%v %+v", err, s)
 	}
 	tool(map[string]any{"type": "card", "card": map[string]any{"id": "offer", "mood": "work", "title": "Today's problem", "bounce": true,
