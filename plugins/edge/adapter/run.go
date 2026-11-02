@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 
@@ -73,7 +74,25 @@ type adapter struct {
 	sent   map[string][]byte // the last of each kind: only a change is sent again
 	press  chan string       // presses, run one at a time: edge's actions change its state
 	acted  chan error        // what each came to
+
+	// Ember takes a new card at most once a second and holds three open;
+	// past that it drops them unseen. edge often says two at once (Accepted,
+	// then the next problem), so cards wait their turn here.
+	cardQ    []queuedCard
+	cardOpen map[string]time.Time // shown, and until when Ember keeps them (real time)
+	cardLast time.Time            // the last card sent (real time)
+	cardT    *time.Timer
 }
+
+type queuedCard struct {
+	c   plugin.Card
+	hop bool
+}
+
+const (
+	cardGap  = 1100 * time.Millisecond // Ember's limit is one new card a second
+	cardsMax = 3                       // and three open
+)
 
 // Run serves edge's plugin until Ember says stop.
 func Run(p *plugin.Plugin, o Options) error {
@@ -92,7 +111,8 @@ func Run(p *plugin.Plugin, o Options) error {
 	if o.Read == nil {
 		o.Read = os.ReadFile
 	}
-	a := &adapter{p: p, o: o, sent: map[string][]byte{}, press: make(chan string, 8), acted: make(chan error, 8), heard: o.Now()}
+	a := &adapter{p: p, o: o, sent: map[string][]byte{}, press: make(chan string, 8), acted: make(chan error, 8), heard: o.Now(),
+		cardOpen: map[string]time.Time{}}
 	go func() {
 		for k := range a.press {
 			select {
@@ -140,6 +160,9 @@ func Run(p *plugin.Plugin, o Options) error {
 			}
 		case <-refresh.C:
 			a.show()
+		case <-a.cardWake():
+			a.cardT = nil
+			a.flushCards()
 		}
 	}
 }
@@ -152,6 +175,7 @@ func (a *adapter) event(ev plugin.Event) {
 			a.message(m)
 		}
 	case "button":
+		delete(a.cardOpen, ev.Card) // a press takes the card down
 		if k := ev.Key; k != "" && k != "dismiss" {
 			select {
 			case a.press <- k:
@@ -170,7 +194,7 @@ func (a *adapter) oops(why string) {
 		a.p.Moment(plugin.Moment{Text: why, Mood: plugin.Fail, TTLs: 5})
 		return
 	}
-	a.p.Card(plugin.Card{ID: "edge:oops", Eyebrow: "Practice", Title: why, Mood: plugin.Fail, TTLs: 5})
+	a.card(plugin.Card{ID: "edge:oops", Eyebrow: "Practice", Title: why, Mood: plugin.Fail, TTLs: 5}, false)
 }
 
 // message is one of edge's messages.
@@ -202,14 +226,82 @@ func (a *adapter) message(m Message) {
 	case "card":
 		if m.Card != nil {
 			c, bounce := Cardify(m.Card)
-			a.p.Card(c)
-			if bounce {
-				a.p.Cheer("hop")
-			}
+			a.card(c, bounce)
 		}
 	case "remove":
+		a.cardQ = slices.DeleteFunc(a.cardQ, func(q queuedCard) bool { return q.c.ID == m.ID }) // never shown: about something over
+		delete(a.cardOpen, m.ID)
 		a.p.RemoveCard(m.ID)
 	}
+}
+
+// card shows c in its turn: a newer card with the same id takes the
+// queued one's place.
+func (a *adapter) card(c plugin.Card, hop bool) {
+	if i := slices.IndexFunc(a.cardQ, func(q queuedCard) bool { return q.c.ID == c.ID }); i >= 0 {
+		a.cardQ[i] = queuedCard{c, hop}
+	} else {
+		a.cardQ = append(a.cardQ, queuedCard{c, hop})
+	}
+	a.flushCards()
+}
+
+// flushCards sends the queued cards Ember will take now, and wakes for the
+// rest. With three open, the oldest gives way to the newest.
+func (a *adapter) flushCards() {
+	now := time.Now()
+	for id, end := range a.cardOpen {
+		if !now.Before(end) {
+			delete(a.cardOpen, id)
+		}
+	}
+	for len(a.cardQ) > 0 {
+		if wait := cardGap - now.Sub(a.cardLast); wait > 0 {
+			if a.cardT == nil {
+				a.cardT = time.NewTimer(wait)
+			}
+			return
+		}
+		q := a.cardQ[0]
+		a.cardQ = a.cardQ[1:]
+		if _, open := a.cardOpen[q.c.ID]; !open && len(a.cardOpen) >= cardsMax {
+			oldest := ""
+			for id, end := range a.cardOpen {
+				if oldest == "" || end.Before(a.cardOpen[oldest]) {
+					oldest = id
+				}
+			}
+			a.p.RemoveCard(oldest)
+			delete(a.cardOpen, oldest)
+		}
+		if a.p.Card(q.c) == nil {
+			a.cardOpen[q.c.ID] = now.Add(cardLife(q.c))
+		}
+		a.cardLast = now
+		if q.hop {
+			a.p.Cheer("hop")
+		}
+	}
+}
+
+func (a *adapter) cardWake() <-chan time.Time {
+	if a.cardT == nil {
+		return nil
+	}
+	return a.cardT.C
+}
+
+// cardLife is how long Ember keeps c: its ttl, else 180 s with buttons or 7
+// s without, within 5..600 s (the protocol's rule).
+func cardLife(c plugin.Card) time.Duration {
+	ttl := c.TTLs
+	if ttl == 0 {
+		ttl = 7
+		if len(c.Buttons)+len(c.Chips) > 0 {
+			ttl = 180
+		}
+	}
+	return time.Duration(min(600, max(5, ttl)) * float64(time.Second))
 }
 
 // send sends v as kind unless it's what Ember already has.
