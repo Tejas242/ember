@@ -95,6 +95,11 @@ func gateWords(st *Stats, e *Status) string {
 		return "Problems open at " + t.StudyFrom + " · Claude is open till then"
 	case "edge_trouble":
 		return "Claude is open: edge can't check right now"
+	case "before_cue":
+		if e.CueMs > 0 {
+			return "Claude is open until tonight's rep at " + cueAt(e)
+		}
+		return "Claude is open until tonight's rep"
 	}
 	return "Claude is open"
 }
@@ -209,11 +214,20 @@ func DashboardFor(st *Stats, e *Status, now time.Time) plugin.Dashboard {
 			}
 			h.Ember.React = "celebrate"
 		}
-		if late {
+		switch {
+		case working: // past the goal and still at it: the problem stays the hero's
+			h.Ember.Mood, h.Ember.Pose = plugin.Work, "attentive"
+			h.Title, h.Aside, h.Sub = "Practising", mins(e.workAt(now)), "Today's done · Claude is open"
+			if e.Paused {
+				h.Title = "Paused"
+			}
+		case late:
 			h.Ember.Mood, h.Ember.Pose = plugin.Quiet, "sleepy"
 			h.Sub = "Next problem tomorrow at " + st.Today.StudyFrom
+			after()
+		default:
+			after()
 		}
-		after()
 	default:
 		h.Title = fmt.Sprintf("%d to go today", st.Today.Need-st.Today.Got)
 		h.Sub = gateWords(st, e)
@@ -236,7 +250,10 @@ func DashboardFor(st *Stats, e *Status, now time.Time) plugin.Dashboard {
 			after()
 		}
 	}
-	if e.Task != "" && live == nil && !st.Today.Done { // the problem: the next step
+	// the problem is the next step: before the goal; after it while he's on
+	// it, or when nothing else (an explain-back, an owed upsolve) asks first
+	if e.Task != "" && live == nil && (!st.Today.Done || working || len(h.Buttons) == 0) {
+		*step = plugin.Step{TagMood: plugin.Nudge}
 		taskStep(&h, step, st, cur, e, now)
 		if e.Kind == "upsolve" {
 			stepKey = "upsolve:" + upsolveRound(st, e.TaskID)

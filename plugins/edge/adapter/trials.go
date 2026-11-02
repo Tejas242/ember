@@ -305,6 +305,9 @@ func trialHero(h *plugin.Widget, st *Stats, cur *Task, e *Status, now time.Time)
 		if e.Chain > 0 {
 			h.Sub = "Chain " + itoa(e.Chain) + " · Claude is open"
 		}
+		if e.active() { // still on a problem: its clock, and its step stays below
+			h.Title, h.Aside, h.Ring = "Rep done · still going", mins(e.workAt(now)), nil
+		}
 	case e.active():
 		h.Title = "Rep"
 		if e.Drill {

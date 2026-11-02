@@ -134,7 +134,14 @@ func TestDashboard(t *testing.T) {
 	st.Current.Kind = "upsolve"
 	// the hero's next step isn't repeated by the agenda: a day done, the cold re-solve is next
 	st.Today.Done, st.Today.Got, st.Rounds.Upsolves.Queue = true, 1, nil
+	d = Dashboard(st, morning) // a problem still waiting comes first: it has a Start
+	if h := d.Widgets[0]; h.Step == nil || h.Step.Tag != "Upsolve" || h.Buttons[len(h.Buttons)-1].Key != "start:cf:2261B" {
+		t.Fatalf("day done, a problem waiting: %+v", h.Step)
+	}
+	cur := st.Current
+	st.Current = nil // nothing waiting: the re-solve is next
 	d = Dashboard(st, morning)
+	st.Current = cur
 	for _, it := range d.Widgets[1].B.Items {
 		if strings.Contains(it.Title, "3542") {
 			t.Fatal("the agenda repeats the hero's step")
