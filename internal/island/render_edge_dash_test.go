@@ -140,7 +140,7 @@ func TestEdgeDashStates(t *testing.T) {
 		g := &galleryScene{clock: s.clock}
 		g.a = newTestApp(&g.clock)
 		u := NewUI(surfW, surfH, 22)
-		u.now, u.mind, u.day = g.a.ui.now, g.a.ui.mind, g.a.ui.day
+		u.now, u.mind = g.a.ui.now, g.a.ui.mind
 		u.start, u.lastBlink, u.bounceAt = g.clock, g.clock, g.clock.Add(-time.Hour)
 		g.a.ui = u
 		edgeSays(u, nil, &st)

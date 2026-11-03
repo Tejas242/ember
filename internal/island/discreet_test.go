@@ -48,15 +48,11 @@ func TestDiscreet(t *testing.T) {
 	}
 	u.cards = nil
 
-	// the dot off doesn't make it less discreet; discreet off does
+	// the dot off doesn't make it less discreet
 	u.cfg.Privacy = false
 	a.castsChanged(0)
 	a.castsChanged(1)
 	if u.casting || !u.discreet() {
 		t.Fatal("dot off: still discreet, without the dot")
-	}
-	u.cfg.Discreet = false
-	if u.discreet() || u.currentView() != vExpanded {
-		t.Fatal("discreet = false: hover opens the card again")
 	}
 }

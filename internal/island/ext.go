@@ -170,7 +170,7 @@ func (a *app) extCard(name string, w *proto.Card) {
 		c.Chips = append(c.Chips, Button{Key: b.Key, Label: b.Label, Primary: b.Primary})
 	}
 	id := w.ID
-	c.OnPick = func(k string, _ []int) {
+	c.OnPick = func(k string) {
 		if a.host == nil {
 			return
 		}
@@ -282,11 +282,8 @@ func (u *UI) granted(name, grant string) bool {
 	return slices.Contains(u.cfg.PluginGrants(name), grant)
 }
 
-// waitingOnYou: a request from Claude, or a session that needs you.
+// waitingOnYou: a session that needs you.
 func (u *UI) waitingOnYou() bool {
-	if c := u.top(); c != nil && (c.Kind == "perm" || c.Kind == "ask") {
-		return true
-	}
 	ss := u.sessionList()
 	return len(ss) > 0 && ss[0].State == "wait"
 }

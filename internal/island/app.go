@@ -146,7 +146,6 @@ func Run(version string) error {
 	if t := a.ui.bond.Active; !t.IsZero() && a.ui.now().Sub(t) > sleptGap { // the machine was off: this is a return
 		a.ui.returned(t, a.ui.now())
 	}
-	a.ui.day = loadDay(time.Now())
 	win.OnIdle = func(idle bool) { a.presence(idle); a.ui.Invalidate() }
 	a.reloadConfig()
 	a.loadSessions()

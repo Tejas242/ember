@@ -259,13 +259,13 @@ func TestGallery(t *testing.T) {
 		return galleryShot{label, onDesktop(g.a.ui, image.Rect(surfW/2-210, 0, surfW/2+210, min(surfH, h+24)))}
 	}
 	cards := []galleryShot{
-		card("working: the timeline hangs from Ember", func(g *galleryScene) {
+		card("working: who, since when", func(g *galleryScene) {
 			g.work("k", "kinvault", "fix the race in the store's compaction path and make the tests pass", 5)
 			g.agent("k", "kinvault", "a1", "Map the store's locking", 2)
 			g.music(true)
 			g.edge()
 		}),
-		card("three sessions: the one you can't see is the hero", func(g *galleryScene) {
+		card("three sessions: the one you can't see leads", func(g *galleryScene) {
 			g.work("e", "edge", "add a hint ladder to the daily problem flow", 3)
 			g.work("m", "ember", "redesign the island", 2)
 			hookAt(g.a, "Stop", "m", "ember", map[string]any{"last_assistant_message": "The island is redesigned and 41 tests pass."})
@@ -288,10 +288,7 @@ func TestGallery(t *testing.T) {
 			g.music(false)
 			g.edge()
 		}),
-		card("a quiet day", func(g *galleryScene) {
-			copy(g.a.ui.day.Hours[:], []int{0, 0, 0, 0, 0, 0, 0, 0, 0, 14, 31, 22, 4, 0, 18, 40, 52, 26, 0})
-			g.a.ui.day.Tasks, g.a.ui.day.Busy = 7, 2*time.Hour+14*time.Minute
-			g.a.ui.day.Projects = map[string]int{"ember": 5, "kinvault": 2}
+		card("a quiet card: music, edge", func(g *galleryScene) {
 			g.music(true)
 			g.edge()
 		}),
@@ -303,8 +300,7 @@ func TestGallery(t *testing.T) {
 			g.work("k", "kinvault", "audit the store for lock ordering bugs", 3)
 			g.agent("k", "kinvault", "a1", "Map the store's locking", 2)
 			g.agent("k", "kinvault", "a2", "Audit the tests", 1)
-			hookAt(g.a, "SubagentStop", "k", "kinvault", map[string]any{"agent_id": "a1", "last_assistant_message": "Locks are taken in segment order everywhere but compact()."})
-			g.a.ui.opened["a:k:a1"] = true
+			hookAt(g.a, "SubagentStop", "k", "kinvault", map[string]any{"agent_id": "a1"})
 			g.music(true)
 			g.a.ui.pinned = true
 			g.run(time.Second)
@@ -312,7 +308,7 @@ func TestGallery(t *testing.T) {
 			g.a.ui.pointer(pointerEvent{kind: "enter", x: float64(r.Max.X - 40), y: float64(r.Min.Y - 18)})
 			g.a.ui.Invalidate()
 			g.run(1500 * time.Millisecond)
-			return galleryShot{"subagents, one opened; music under the pointer", onDesktop(g.a.ui, image.Rect(surfW/2-210, 0, surfW/2+210, min(surfH, g.a.ui.expandedHeight()+24)))}
+			return galleryShot{"subagents, one done; music under the pointer", onDesktop(g.a.ui, image.Rect(surfW/2-210, 0, surfW/2+210, min(surfH, g.a.ui.expandedHeight()+24)))}
 		}())
 	}
 	sheet(t, "gallery-cards", cards, 2)
@@ -323,46 +319,18 @@ func TestGallery(t *testing.T) {
 		}
 	}
 
-	req := func(label string, c *Card, extra func(g *galleryScene)) galleryShot {
+	if !noPlugins() { // edge's nudge: the one card left that asks you something
 		g := newScene()
-		if extra != nil {
-			extra(g)
-		}
-		c.Born = g.clock
-		if c.Expires.IsZero() {
-			c.Expires = g.clock.Add(85 * time.Second)
-		}
+		c := &Card{ID: "x:edge:1", Kind: "plugin", Mood: moodNudge, Eyebrow: "edge", Title: "Today's problem is waiting",
+			Body: "1360E · Polygon, rated 1400. Claude unlocks when it's solved.", Buttons: []Button{{Key: "later", Label: "Later"}, {Key: "start", Label: "Start", Primary: true}}}
+		c.Born, c.Expires = g.clock, g.clock.Add(85*time.Second)
 		g.a.ui.AddCard(c)
 		g.run(2500 * time.Millisecond)
-		return galleryShot{label, onDesktop(g.a.ui, image.Rect(surfW/2-210, 0, surfW/2+210, min(surfH, g.a.ui.cardHeight(g.a.ui.top())+24)))}
-	}
-	perm := func() []Button {
-		return []Button{{Key: "deny", Label: "Deny", Danger: true}, {Key: "always", Label: "Always"}, {Key: "allow", Label: "Allow", Primary: true}}
-	}
-	reqs := []galleryShot{
-		req("a command", &Card{ID: "p", Kind: "perm", Mood: moodWait, Eyebrow: "kinvault wants to run", Title: "Run the store tests with the race detector",
-			Code: "go test -race ./store/... -run TestRepair -count=1", Shell: true, Buttons: perm(), Footer: "Answer in terminal"}, nil),
-		req("an edit, two more waiting", &Card{ID: "e", Kind: "perm", Mood: moodWait, Eyebrow: "ember wants to edit", Title: "Edit board.go",
-			Body: "~/Gems/ember/island  ·  +48 −112", Buttons: perm(), Footer: "Answer in terminal"}, func(g *galleryScene) {
-			g.a.ui.AddCard(&Card{ID: "x1", Priority: -1})
-			g.a.ui.AddCard(&Card{ID: "x2", Priority: -1})
-		}),
-		req("a question", &Card{ID: "q", Kind: "ask", Mood: moodWait, Eyebrow: "kinvault asks", Meta: "1 of 2", Title: "Which storage engine should the index use?",
-			Options: []Option{{"Pebble", "LSM, battle tested"}, {"bbolt", "B+tree, one file"}, {"Roll our own", "Append-only log and an index"}}, Footer: "Answer in terminal"}, nil),
-		req("several answers, the last seconds", &Card{ID: "m", Kind: "ask", Mood: moodWait, Eyebrow: "edge asks", Title: "Which topics should the ladder cover?", Multi: true,
-			Options: []Option{{"Graphs", ""}, {"Dynamic programming", ""}, {"Binary search", ""}}, Buttons: []Button{{Key: "submit", Label: "Submit", Primary: true}}, Footer: "Answer in terminal",
-			picked: map[int]bool{0: true, 2: true}, Expires: time.Date(2026, 10, 15, 17, 24, 12, 0, time.Local)}, nil),
-		req("edge's nudge", &Card{ID: "x:edge:1", Kind: "plugin", Mood: moodNudge, Eyebrow: "edge", Title: "Today's problem is waiting",
-			Body: "1360E · Polygon, rated 1400. Claude unlocks when it's solved.", Buttons: []Button{{Key: "later", Label: "Later"}, {Key: "start", Label: "Start", Primary: true}}}, nil),
-	}
-	if noPlugins() {
-		reqs = reqs[:len(reqs)-1] // edge's nudge
-	}
-	sheet(t, "gallery-requests", reqs, 2)
-	single(t, "gallery-request", reqs[0].img)
-	if os.Getenv("EMBER_GROUND") == "site" {
-		for i, r := range reqs {
-			single(t, fmt.Sprintf("site-request-%d", i), r.img)
+		reqs := []galleryShot{{"edge's nudge", onDesktop(g.a.ui, image.Rect(surfW/2-210, 0, surfW/2+210, min(surfH, g.a.ui.cardHeight(g.a.ui.top())+24)))}}
+		sheet(t, "gallery-requests", reqs, 2)
+		single(t, "gallery-request", reqs[0].img)
+		if os.Getenv("EMBER_GROUND") == "site" {
+			single(t, "site-request-0", reqs[0].img)
 		}
 	}
 
@@ -396,14 +364,7 @@ func TestGallery(t *testing.T) {
 		g.a.ui.mind.away = false
 		hookAt(g.a, "Stop", "k", "kinvault", map[string]any{"last_assistant_message": "All 42 tests pass under -race."})
 	}, []int{0, 4, 8, 12, 18, 26, 36, 50}, pillCrop)
-	strip("bead", "a new step: a bead runs down the thread", func(g *galleryScene) {
-		g.work("k", "kinvault", "fix the race in the store's compaction path and make the tests pass", 4)
-		g.a.ui.pinned = true
-	}, func(g *galleryScene) {
-		hookAt(g.a, "PostToolUse", "k", "kinvault", map[string]any{"tool_name": "Edit"})
-		hookAt(g.a, "PreToolUse", "k", "kinvault", map[string]any{"tool_name": "Bash", "tool_input": map[string]any{"command": "go vet ./...", "description": "Vet the store"}})
-	}, []int{0, 4, 8, 12, 16, 20, 26, 40}, image.Rect(surfW/2-210, 0, surfW/2+210, 190))
-	strip("react", "Allow: Ember nods; a failed step: it winces", func(g *galleryScene) {
+	strip("react", "Ember nods", func(g *galleryScene) {
 		g.work("k", "kinvault", "fix the race", 2)
 	}, func(g *galleryScene) {
 		g.a.ui.React("nod")
@@ -457,14 +418,10 @@ func TestGallery(t *testing.T) {
 }
 
 func (g *galleryScene) agent(id, project, aid, desc string, steps int) {
-	hookAt(g.a, "PreToolUse", id, project, map[string]any{"tool_name": "Agent", "tool_input": map[string]any{"description": desc, "subagent_type": "Explore"}})
 	hookAt(g.a, "SubagentStart", id, project, map[string]any{"agent_id": aid, "agent_type": "Explore"})
-	for _, st := range []map[string]any{
-		{"tool_name": "Grep", "tool_input": map[string]any{"pattern": "segment.Lock"}},
-		{"tool_name": "Read", "tool_input": map[string]any{"file_path": "/x/store/segment.go"}},
-	}[:steps] {
+	for i := 0; i < steps; i++ {
 		g.clock = g.clock.Add(12 * time.Second)
-		hookAt(g.a, "PreToolUse", id, project, map[string]any{"agent_id": aid, "agent_type": "Explore", "tool_name": st["tool_name"], "tool_input": st["tool_input"]})
+		hookAt(g.a, "PostToolUse", id, project, map[string]any{"agent_id": aid, "agent_type": "Explore", "tool_name": "Grep"})
 	}
 }
 

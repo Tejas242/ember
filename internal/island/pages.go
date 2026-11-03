@@ -22,7 +22,6 @@ const (
 	musicH  = 70
 	rowGapX = 6
 	btnH    = 26
-	optH    = 32
 )
 
 // rowHot reports how much the pointer is on a section (eased, 0..1). The
@@ -240,10 +239,9 @@ func ago(d time.Duration) string {
 
 // ---- buttons ----
 
-// buttonRow draws right-aligned round buttons, and an optional quiet link on
-// the left. The primary one is filled in the card's colour; hover and press
+// buttonRow draws right-aligned round buttons. The primary one is filled in the card's colour; hover and press
 // ease.
-func (u *UI) buttonRow(btns []Button, prefix string, x, w, y float32, footer string, primary color.NRGBA) {
+func (u *UI) buttonRow(btns []Button, prefix string, x, w, y float32, primary color.NRGBA) {
 	p := u.pal
 	bx := x + w - pad
 	for i := len(btns) - 1; i >= 0; i-- {
@@ -273,12 +271,6 @@ func (u *UI) buttonRow(btns []Button, prefix string, x, w, y float32, footer str
 		u.dc.text(bf, b.Label, bx+14, y+btnH/2+4.2, txt)
 		u.hits = append(u.hits, hit{image.Rect(int(bx), int(y), int(bx+bw), int(y+btnH)), key})
 		bx -= 8
-	}
-	if footer != "" {
-		key := prefix + "footer"
-		col := mix(p.faint, p.fg, 0.2+0.6*u.hl(key))
-		fw := u.dc.text(fCaption(), footer, x+pad, y+btnH/2+4, col)
-		u.hits = append(u.hits, hit{image.Rect(int(x+pad-4), int(y), int(x+pad+fw+4), int(y+btnH)), key})
 	}
 }
 
@@ -401,39 +393,6 @@ func (u *UI) cardTitle(c *Card) []string {
 	return wrap(fTitle(), c.Title, cardW-textX-pad, 2)
 }
 
-// codeLines wraps a command to its box: at spaces, continuation lines
-// indented, four lines at most. Longer, it keeps the start and the end (the
-// end is where a "&& rm -rf" would hide) and says the middle is left out.
-func codeLines(code string, w float32) []string {
-	f := fMonoS()
-	var out []string
-	for _, ln := range strings.Split(strings.TrimSpace(code), "\n") {
-		cur, ind := "", ""
-		for _, word := range strings.Fields(ln) {
-			try := word
-			if cur != "" {
-				try = cur + " " + word
-			}
-			if measure(f, ind+try) <= w || cur == "" {
-				cur = try
-				continue
-			}
-			out = append(out, ind+cur)
-			cur, ind = word, "  "
-		}
-		if cur != "" || ind == "" {
-			out = append(out, ind+cur)
-		}
-	}
-	for i := range out {
-		out[i] = ellipsize(f, out[i], w)
-	}
-	if len(out) > 4 {
-		out = []string{out[0], "  …", out[len(out)-2], out[len(out)-1]}
-	}
-	return out
-}
-
 const (
 	cardTitleTop = 25 // the title's first line box
 	titleLineH   = 19
@@ -453,22 +412,12 @@ func (u *UI) cardHeight(c *Card) int {
 	if c == nil {
 		return 60
 	}
-	inner := float32(cardW - 2*pad)
 	h := cardTitleTop + titleLineH*len(u.cardTitle(c))
 	if c.Body != "" {
 		h += 2 + 15*len(cardBody(c, cardW-textX-pad))
 	}
 	h += int(choicesH(c.Chips, cardW-textX-pad))
-	if c.Code != "" {
-		h += 10 + 12 + 15*len(codeLines(c.Code, inner-20))
-	}
-	if c.Note != "" {
-		h += 18
-	}
-	if len(c.Options) > 0 {
-		h += 10 + len(c.Options)*optH
-	}
-	if len(c.Buttons) > 0 || c.Footer != "" {
+	if len(c.Buttons) > 0 {
 		h += 12 + btnH
 	}
 	return min(h+14, u.room()-14)
@@ -491,7 +440,6 @@ func (u *UI) drawCard(c *Card, x, w float32) {
 	}
 	p := u.pal
 	u.spot = emberSpot{x: x + railX, y: 28, s: emberCard, mood: c.Mood, show: true}
-	inner := w - 2*pad
 	right := x + w - pad
 	tx := x + textX
 	i := 0
@@ -554,77 +502,10 @@ func (u *UI) drawCard(c *Card, x, w float32) {
 		y += ch
 		i++
 	}
-	if c.Code != "" {
-		code := codeLines(c.Code, inner-20)
-		bh := float32(12 + 15*len(code))
-		y += 10
-		u.item("c:code", i, x, w, y, bh, func(y float32) {
-			u.panel(x+pad, y, inner, bh, radRow, alpha(p.fg, 0.055))
-			for j, ln := range code {
-				by := y + 6 + 11 + float32(j)*15
-				if !c.Shell {
-					u.dc.text(fMonoS(), ln, x+pad+10, by, mix(p.fg, p.bg, 0.12))
-					continue
-				}
-				cx := x + pad + 10
-				for _, r := range shellTokens(p, ln, !strings.HasPrefix(ln, "  ")) {
-					cx += u.dc.text(fMonoS(), r.s, cx, by, r.col)
-				}
-			}
-		})
-		y += bh
-		i++
-	}
-	if c.Note != "" { // what "Always" would allow, before you press it
-		note := ellipsize(fCaption(), c.Note, right-x-pad)
-		u.item("c:note", i, x, w, y, 18, func(y float32) { u.dc.text(fCaption(), note, x+pad+2, y+14, p.faint) })
-		y += 18
-		i++
-	}
-	if len(c.Options) > 0 { // one grouped list, hairlines between, a number to press
-		y += 10
-		u.panel(x+pad, y, inner, float32(len(c.Options))*optH, radRow, alpha(p.fg, 0.045))
-		for j, o := range c.Options {
-			key := fmt.Sprintf("opt:%d", j)
-			u.item("c:"+key, i, x, w, y, optH, func(y float32) {
-				h, d := u.hl(key), u.pressed(key)
-				picked := c.picked[j]
-				if picked {
-					u.panel(x+pad, y, inner, optH, radRow, alpha(u.primaryOf(c), 0.07+0.03*h))
-				} else if h > 0.01 || d > 0 {
-					u.panel(x+pad, y, inner, optH, radRow, alpha(p.fg, 0.05*h+0.06*d))
-				}
-				if j > 0 {
-					u.dc.roundRect(x+pad+32, y, inner-32-10, 1, 0.5, p.hair())
-				}
-				bx, by := x+pad+16, y+optH/2
-				if c.Multi {
-					u.dc.frame(bx-6.5, by-6.5, 13, 13, 4, 1.3, alpha(p.fg, 0.35+0.2*h))
-					if picked {
-						u.dc.roundRect(bx-6.5, by-6.5, 13, 13, 4, u.primaryOf(c))
-						u.dc.icon("check", bx, by, 10, p.ink)
-					}
-				} else { // the number you can press: `ember answer opt:N`
-					n := fmt.Sprint(j + 1)
-					nf := face(fSemiBold, 10)
-					u.dc.circle(bx, by, 8, alpha(p.fg, 0.07+0.1*h))
-					u.dc.text(nf, n, bx-measure(nf, n)/2+0.5, by+3.6, mix(p.muted, p.fg, h))
-				}
-				lx := bx + 16
-				lw := u.dc.text(fBody(), ellipsize(fBody(), o.Label, inner*0.5), lx, by+4.5, p.fg)
-				if o.Desc != "" {
-					u.dc.text(fCaption(), ellipsize(fCaption(), o.Desc, x+pad+inner-12-(lx+lw+10)), lx+lw+10, by+4, p.muted)
-				}
-				u.hits = append(u.hits, hit{image.Rect(int(x+pad), int(y), int(x+pad+inner), int(y+optH)), key})
-			})
-			y += optH
-			i++
-		}
-	}
-	if len(c.Buttons) > 0 || c.Footer != "" {
+	if len(c.Buttons) > 0 {
 		y += 12
 		u.item("c:buttons", i, x, w, y, btnH, func(y float32) {
-			u.buttonRow(c.Buttons, "btn:", x, w, y, c.Footer, u.primaryOf(c))
+			u.buttonRow(c.Buttons, "btn:", x, w, y, u.primaryOf(c))
 		})
 	}
 	// how long it will wait for you: a hairline that drains along the bottom

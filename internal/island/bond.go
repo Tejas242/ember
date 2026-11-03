@@ -94,7 +94,7 @@ func (u *UI) calm() bool {
 		return false
 	}
 	for _, s := range u.sessions {
-		if s.State == "wait" || (s.Recap != nil && s.Recap.Failed && !s.Unseen.IsZero()) {
+		if s.State == "wait" || (s.Outcome != nil && s.Outcome.Failed && !s.Unseen.IsZero()) {
 			return false
 		}
 	}
@@ -117,7 +117,7 @@ func (u *UI) mayDance() bool {
 		return false
 	}
 	for _, s := range u.sessions {
-		if s.State == "wait" || (s.Recap != nil && s.Recap.Failed && !s.Unseen.IsZero()) {
+		if s.State == "wait" || (s.Outcome != nil && s.Outcome.Failed && !s.Unseen.IsZero()) {
 			return false
 		}
 	}
@@ -300,7 +300,7 @@ func (u *UI) returned(since, now time.Time) {
 		b.greeted(now)
 	case first:
 		u.greetAt = now
-	case u.cfg.Flourishes && now.Sub(since) >= 10*time.Minute && len(u.mind.missed) == 0 && !u.extFocus() && b.cooled("hello", 30*time.Minute, now):
+	case !u.cfg.Calm && now.Sub(since) >= 10*time.Minute && len(u.mind.missed) == 0 && !u.extFocus() && b.cooled("hello", 30*time.Minute, now):
 		u.play("hello", 0)
 	}
 }

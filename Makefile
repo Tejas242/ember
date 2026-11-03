@@ -83,9 +83,7 @@ docs:
 	EMBER_PLUGINS=off EMBER_PREVIEW=$(CURDIR)/preview/docs go test -tags render -count=1 -run TestGallery ./internal/island
 	cp preview/docs/gallery-pills.png docs/pills.png
 	cp preview/docs/gallery-cards.png docs/cards.png
-	cp preview/docs/gallery-requests.png docs/requests.png
 	cp preview/docs/gallery-card.png docs/card.png
-	cp preview/docs/gallery-request.png docs/request.png
 	$(MAKE) demo
 
 demo:

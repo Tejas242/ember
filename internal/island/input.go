@@ -139,7 +139,7 @@ func (u *UI) press(k string, button int) {
 			c := u.top()
 			u.RemoveCard(c.ID)
 			if c.OnPick != nil {
-				c.OnPick("dismiss", nil)
+				c.OnPick("dismiss")
 			}
 		}
 		return
@@ -184,8 +184,6 @@ func (u *UI) press(k string, button int) {
 		u.allRows = !u.allRows
 	case strings.HasPrefix(k, "s:"): // another session in the card: it becomes the hero
 		u.hero, u.staggerAt = strings.TrimPrefix(k, "s:"), u.now()
-	case strings.HasPrefix(k, "a:"): // an agent on the branch: open or close its steps
-		u.opened[k] = !u.shownOpen[k]
 	case k == "dash", k == "page:back", k == "page:words": // so does a dashboard's, and a stage's way back
 		u.closeDash(proto.CloseUser)
 	case strings.HasPrefix(k, "dash:"): // a plugin's row in the card: its dashboard
@@ -200,22 +198,7 @@ func (u *UI) press(k string, button int) {
 	case strings.HasPrefix(k, "close:") && c != nil:
 		u.RemoveCard(c.ID)
 		if c.OnPick != nil {
-			c.OnPick("dismiss", nil)
-		}
-	case strings.HasPrefix(k, "opt:") && c != nil:
-		var i int
-		fmt.Sscanf(k, "opt:%d", &i)
-		if c.Multi {
-			if c.picked == nil {
-				c.picked = map[int]bool{}
-			}
-			c.picked[i] = !c.picked[i]
-			return
-		}
-		u.RemoveCard(c.ID)
-		u.React("nod")
-		if c.OnPick != nil {
-			c.OnPick("option", []int{i})
+			c.OnPick("dismiss")
 		}
 	case strings.HasPrefix(k, "x:unfold:"): // a folded section of a plugin's dashboard
 		if u.unfolded == nil {
@@ -240,24 +223,15 @@ func (u *UI) press(k string, button int) {
 		u.RemoveCard(c.ID)
 		u.React("nod")
 		if c.OnPick != nil {
-			c.OnPick(strings.TrimPrefix(k, "chip:"), nil)
+			c.OnPick(strings.TrimPrefix(k, "chip:"))
 		}
 	case strings.HasPrefix(k, "btn:") && c != nil:
-		switch strings.TrimPrefix(k, "btn:") {
-		case "allow", "always", "submit", "start":
+		if strings.TrimPrefix(k, "btn:") == "start" {
 			u.React("nod")
-		case "deny":
-			u.React("shake")
-		}
-		var picked []int
-		for i := range c.Options {
-			if c.picked[i] {
-				picked = append(picked, i)
-			}
 		}
 		u.RemoveCard(c.ID)
 		if c.OnPick != nil {
-			c.OnPick(strings.TrimPrefix(k, "btn:"), picked)
+			c.OnPick(strings.TrimPrefix(k, "btn:"))
 		}
 	}
 }

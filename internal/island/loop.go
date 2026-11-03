@@ -157,7 +157,6 @@ func (a *app) housekeep(saveDue *bool) {
 	}
 	a.ui.habits.save()
 	a.ui.bond.save()
-	a.ui.day.save()
 	if p := applyLook(a.ui.cfg, loadPalette()); p != a.ui.pal { // the wallpaper palette changed
 		a.ui.pal = p
 		a.ui.Invalidate()

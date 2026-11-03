@@ -56,9 +56,7 @@ func (a *app) key(k string) {
 	}
 }
 
-// command handles keyboard commands: answer the oldest request. allow,
-// deny, always and terminal with an argument answer only that session's
-// request (ember demo answers its own, never a real one).
+// command handles the keyboard commands that come over the socket (`ember open`, `ember toggle`, …).
 func (a *app) command(cmd, arg string) {
 	switch cmd {
 	case "toggle":
@@ -82,50 +80,6 @@ func (a *app) command(cmd, arg string) {
 		return
 	case "play":
 		a.key("music:toggle")
-		return
-	}
-	for _, c := range a.ui.cards {
-		if c.Kind != "perm" && c.Kind != "ask" {
-			continue
-		}
-		if arg != "" && cmd != "answer" && !strings.HasPrefix(c.ID, "perm:"+arg+":") && c.ID != "ask:"+arg {
-			continue
-		}
-		key := cmd
-		switch cmd {
-		case "answer":
-			key = arg
-		case "terminal":
-			key = "footer"
-		}
-		if c.Kind == "ask" {
-			if strings.HasPrefix(key, "opt:") {
-				i, _ := strconv.Atoi(strings.TrimPrefix(key, "opt:"))
-				if c.Multi {
-					if c.picked == nil {
-						c.picked = map[int]bool{}
-					}
-					c.picked[i-1] = !c.picked[i-1]
-					return
-				}
-				a.ui.RemoveCard(c.ID)
-				c.OnPick("option", []int{i - 1})
-				return
-			}
-			if key == "submit" {
-				var picked []int
-				for i := range c.Options {
-					if c.picked[i] {
-						picked = append(picked, i)
-					}
-				}
-				a.ui.RemoveCard(c.ID)
-				c.OnPick("submit", picked)
-				return
-			}
-		}
-		a.ui.RemoveCard(c.ID)
-		c.OnPick(key, nil)
 		return
 	}
 }

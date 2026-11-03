@@ -22,7 +22,6 @@ func (a *app) shutdown() {
 	a.saveSessions()
 	a.ui.habits.save()
 	a.ui.bond.save()
-	a.ui.day.save()
 	a.ui.audio.Set(false)
 }
 

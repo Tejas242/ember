@@ -3,6 +3,21 @@
 Each release's section here becomes its notes on GitHub. Versions follow [semver](https://semver.org): the config
 file, the commands and the plugin protocol are the public surface.
 
+## Unreleased (1.3)
+
+**Ember stops holding Claude**
+- The permission and question hooks no longer wait on the island. Every hook is async and returns at once, so the
+  terminal asks immediately (before, a request could sit on the island for up to 85 s). Ember still learns what is
+  asked, and says so: *jobwatch · Wants to run go test ./…*.
+- Hooks: 15 down to 11. `PreToolUse *`, `PreCompact`, `PostCompact` and `PostToolUseFailure` are gone;
+  `PostToolUse` stays (it clears an ask answered in the terminal, and feeds Ember's per-tool gulp). `ember install`
+  takes the retired entries out of `~/.claude/settings.json`; `ember uninstall` still removes every Ember entry, old or new.
+- Gone: the on-island permission and question cards, `ember allow | deny | always | terminal | answer`, the step
+  timeline, agent rows, recaps and summaries, and the day card.
+- Config: `[claude] answer` and `wait_s`, `[card] steps` and `others`, `[moments] done_s`, `[look]` opacity and
+  colours, `[ember] flourishes` and `celebrate` (now part of `motion = "calm"`) and `[privacy] discreet` (always on
+  while the screen is shared) are retired. An old config still loads; `ember doctor` says which lines do nothing.
+
 ## 1.2.0
 
 **Volume and brightness, everywhere**

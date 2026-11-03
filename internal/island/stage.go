@@ -135,7 +135,7 @@ func (u *UI) stageStill() bool {
 // stageOver is the session whose turn ended while the stage was open, if one did.
 func (u *UI) stageOver() *Session {
 	for _, s := range u.sessionList() {
-		if !s.Unseen.IsZero() && s.Recap != nil {
+		if !s.Unseen.IsZero() && s.Outcome != nil {
 			return s
 		}
 	}
@@ -223,7 +223,7 @@ func (d extDash) drawStage(u *UI, x, w float32, age time.Duration) bool {
 	ex := x + 74
 	md := moodIdle
 	if s := u.stageOver(); s != nil {
-		md = map[bool]mood{true: moodError, false: moodHappy}[s.Recap.Failed]
+		md = map[bool]mood{true: moodError, false: moodHappy}[s.Outcome.Failed]
 	}
 	u.spot = emberSpot{x: ex, y: stageBase - 0.45*stageEmber, s: stageEmber, mood: md, show: true}
 	u.hits = append(u.hits, hit{image.Rect(int(ex-50), int(stageBase-stageEmber-6), int(ex+50), int(stageBase+6)), "ember"})
@@ -402,15 +402,15 @@ func (u *UI) stageTop(cv *canvas, sw stageWidgets, x, right, base float32, t flo
 	}
 	if ss := over; ss != nil {
 		col, word := p.green, "done"
-		if ss.Recap.Failed {
+		if ss.Outcome.Failed {
 			col, word = p.red, "stopped"
 		}
-		cv.icon(map[bool]string{true: "warning", false: "check"}[ss.Recap.Failed], x+4, base-4, 10, alpha(col, k))
+		cv.icon(map[bool]string{true: "warning", false: "check"}[ss.Outcome.Failed], x+4, base-4, 10, alpha(col, k))
 		head := u.short(ss) + " " + word
 		hw := cv.text(fBody(), head, x+16, base, alpha(col, k))
-		say := ss.Recap.Summary
-		if ss.Recap.Failed {
-			say = ss.Recap.Error
+		say := ""
+		if ss.Outcome.Failed {
+			say = ss.Outcome.Error
 		}
 		bl := "Back to it"
 		bw := measure(f, bl) + 22
@@ -941,7 +941,7 @@ func (u *UI) stagePose(ps *pose) {
 	case u.track != nil && !u.track.Playing:
 		ps.eyes, ps.eyeH, ps.lookX, ps.lookY, ps.mouth = eyeOpen, 2.8, -0.6, 1.2, mouthNone
 	case u.stageOver() != nil:
-		if u.stageOver().Recap.Failed {
+		if u.stageOver().Outcome.Failed {
 			return // slumped: its mood says it
 		}
 		ps.eyes, ps.lookX, ps.lookY = eyeOpen, 0, -0.3 // done: it looks at you

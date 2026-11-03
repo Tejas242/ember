@@ -28,12 +28,10 @@ var (
 	fBody    = func() fontFace { return face(fMedium, 12.5) }
 	fSecond  = func() fontFace { return face(fRegular, 12) }
 	fCaption = func() fontFace { return face(fRegular, 11) }
-	fMonoS   = func() fontFace { return face(fMono, 11.5) }
 	fEyebrow = func() fontFace { return face(fSemiBold, 9.5) }
 )
 
 // secondary is text one step quieter than fg: steps, artists, summaries.
-func (p palette) secondary() color.NRGBA { return p.muted }
 
 // hair is a divider.
 func (p palette) hair() color.NRGBA { return alpha(p.fg, 0.07) }
@@ -282,63 +280,6 @@ func (u *UI) shimmerLive(f fontFace, s string, x, base float32, col color.NRGBA)
 			}
 		}
 	}})
-}
-
-// ---- syntax tint for commands ----
-
-// shellTokens splits a command line into coloured runs: the program, flags,
-// strings, the rest.
-func shellTokens(p palette, ln string, first bool) []struct {
-	s   string
-	col color.NRGBA
-} {
-	type run = struct {
-		s   string
-		col color.NRGBA
-	}
-	var out []run
-	i := 0
-	for i < len(ln) {
-		j := i
-		switch ln[i] {
-		case ' ', '\t':
-			for j < len(ln) && (ln[j] == ' ' || ln[j] == '\t') {
-				j++
-			}
-			out = append(out, run{ln[i:j], p.fg})
-			i = j
-			continue
-		case '"', '\'':
-			q := ln[i]
-			j++
-			for j < len(ln) && ln[j] != q {
-				j++
-			}
-			j = min(j+1, len(ln))
-			out = append(out, run{ln[i:j], mix(p.green, p.fg, 0.25)})
-		case '|', '&', ';', '>', '<':
-			for j < len(ln) && (ln[j] == '|' || ln[j] == '&' || ln[j] == ';' || ln[j] == '>' || ln[j] == '<') {
-				j++
-			}
-			out = append(out, run{ln[i:j], p.yellow})
-			first = true
-		default:
-			for j < len(ln) && ln[j] != ' ' && ln[j] != '\t' && ln[j] != '"' && ln[j] != '\'' && ln[j] != '|' && ln[j] != ';' {
-				j++
-			}
-			tok := ln[i:j]
-			col := p.fg
-			switch {
-			case first:
-				col, first = mix(p.blue, p.fg, 0.15), false
-			case tok[0] == '-':
-				col = p.muted
-			}
-			out = append(out, run{tok, col})
-		}
-		i = j
-	}
-	return out
 }
 
 // panel draws a large translucent background (a row, a box) straight onto

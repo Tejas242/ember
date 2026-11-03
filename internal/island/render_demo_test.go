@@ -311,16 +311,14 @@ func TestDemo(t *testing.T) {
 		}
 		d.move(demoW/2+60, 345, 600*time.Millisecond) // away: it folds
 		d.run(700 * time.Millisecond)
-		var id string
-		d.event(func(g *galleryScene) {
-			id, _ = askAt(g.a, "PermissionRequest", "k", "kinvault", map[string]any{"tool_name": "Bash",
+		d.event(func(g *galleryScene) { // the terminal asks; Ember says who and what, and holds nothing
+			hookAt(g.a, "PermissionRequest", "k", "kinvault", map[string]any{"tool_name": "Bash",
 				"tool_input": map[string]any{"command": "go test -race -count=1 ./store/...", "description": "Run the store tests with the race detector"}})
 		})
-		_ = id
-		d.run(1100 * time.Millisecond)
-		d.to("btn:allow", 700*time.Millisecond)
-		d.run(250 * time.Millisecond)
-		d.click()
+		d.run(2200 * time.Millisecond)
+		d.event(func(g *galleryScene) {
+			hookAt(g.a, "PostToolUse", "k", "kinvault", map[string]any{"tool_name": "Bash"})
+		}) // answered in the terminal
 		d.run(500 * time.Millisecond)
 		d.move(demoW/2+140, 330, 500*time.Millisecond)
 		d.event(func(g *galleryScene) {
@@ -338,9 +336,6 @@ func TestDemo(t *testing.T) {
 		d.g.a.ui.track = &Track{Player: "p", Title: "Instant Crush", Artist: "Daft Punk, Julian Casablancas", Playing: true,
 			Length: 5*time.Minute + 37*time.Second, Position: 98 * time.Second, PosAt: d.g.clock}
 		d.g.a.ui.art = galleryArt()
-		copy(d.g.a.ui.day.Hours[:], []int{0, 0, 0, 0, 0, 0, 0, 0, 0, 14, 31, 22, 4, 0, 18, 40, 52, 26})
-		d.g.a.ui.day.Tasks, d.g.a.ui.day.Busy = 7, 2*time.Hour+14*time.Minute
-		d.g.a.ui.day.Projects = map[string]int{"kinvault": 5, "notes": 2}
 		d.run(1500 * time.Millisecond)
 		d.move(float64(d.cropW)/2, 11, 700*time.Millisecond)
 		d.run(900 * time.Millisecond)

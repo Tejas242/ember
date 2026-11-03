@@ -35,7 +35,7 @@ func TestBadHookLoggedOnce(t *testing.T) {
 	clock := time.Now()
 	a := newTestApp(&clock)
 	for i := 0; i < 3; i++ {
-		a.hook(ipc.Msg{Type: "hook", Event: "Stop", Payload: []byte(`{"session_id": 5}`)}, nil)
+		a.hook(ipc.Msg{Type: "hook", Event: "Stop", Payload: []byte(`{"session_id": 5}`)})
 	}
 	if n := strings.Count(buf.String(), "a Stop hook Ember can't read"); n != 1 {
 		t.Fatalf("logged %d times: %q", n, buf.String())

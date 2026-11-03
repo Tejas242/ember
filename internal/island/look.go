@@ -1,7 +1,6 @@
 package island
 
 import (
-	"image/color"
 	"math"
 	"os"
 	"time"
@@ -9,17 +8,12 @@ import (
 	"github.com/Tejas242/ember/internal/config"
 )
 
-// applyLook puts the [look] overrides over the theme's palette.
-func applyLook(c config.Config, p palette) palette {
-	for _, o := range []struct {
-		dst *color.NRGBA
-		v   color.NRGBA
-	}{{&p.green, c.Green}, {&p.blue, c.Blue}, {&p.red, c.Red}, {&p.yellow, c.Amber}} {
-		if o.v.A != 0 {
-			*o.dst = o.v
-		}
-	}
-	p.island.A = uint8(math.Round(c.Opacity * 255))
+// islandOpacity is how solid the island's body is: lower lets the blur through.
+const islandOpacity = 0.87
+
+// applyLook sets the island body's translucency on the theme's palette.
+func applyLook(_ config.Config, p palette) palette {
+	p.island.A = uint8(math.Round(islandOpacity * 255))
 	return p
 }
 

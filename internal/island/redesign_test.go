@@ -1,7 +1,6 @@
 package island
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -18,11 +17,11 @@ func TestFailedTurnIsNotASuccess(t *testing.T) {
 	clock = clock.Add(time.Minute)
 	hookAt(a, "StopFailure", "s", "kinvault", map[string]any{"error": "rate_limit"})
 	b := a.ui.brief()
-	if b.mode != "recap" || b.mood != moodError || !strings.Contains(b.sub, "stopped") {
+	if b.mode != "done" || b.mood != moodError || !strings.Contains(b.sub, "stopped") {
 		t.Fatalf("%+v", b)
 	}
-	if r := a.ui.sessions["s"].Recap; !r.Failed || r.Error != "Rate limited" || r.Summary != "" {
-		t.Fatalf("recap %+v", r)
+	if o := a.ui.sessions["s"].Outcome; !o.Failed || o.Error != "Rate limited" {
+		t.Fatalf("outcome %+v", o)
 	}
 	a.ui.moment = nil
 	if l := a.ui.mainLine(); l.key != "clock:kinvault stopped" {
@@ -32,29 +31,6 @@ func TestFailedTurnIsNotASuccess(t *testing.T) {
 	settle(a.ui, &clock)
 	if l := a.ui.mainLine(); l.sub != "" {
 		t.Fatalf("still says %q after you looked", l.sub)
-	}
-}
-
-// A long command wraps and keeps its end: that's where the danger hides.
-func TestCommandKeepsItsTail(t *testing.T) {
-	cmd := "cd ~/Gems/kinvault && go build ./... && go test -race -count=1 ./store/... ./index/... ./wal/... && ./scripts/deploy.sh --prod && rm -rf /tmp/kv-build-cache"
-	lines := codeLines(cmd, 300)
-	if len(lines) > 4 || !strings.Contains(strings.Join(strings.Fields(strings.Join(lines[len(lines)-2:], " ")), " "), "rm -rf /tmp/kv-build-cache") {
-		t.Fatalf("%q", lines)
-	}
-	for _, ln := range lines[1:] {
-		if !strings.HasPrefix(ln, "  ") {
-			t.Fatalf("continuation %q isn't indented", ln)
-		}
-	}
-}
-
-// "Always" says what it would allow, before you press it.
-func TestAlwaysNote(t *testing.T) {
-	raw, _ := json.Marshal([]map[string]any{{"type": "addRules", "behavior": "allow", "destination": "localSettings",
-		"rules": []map[string]any{{"toolName": "Bash", "ruleContent": "go test:*"}}}})
-	if n := alwaysNote(raw); n != "Always allows go test:* in this project" {
-		t.Fatalf("%q", n)
 	}
 }
 

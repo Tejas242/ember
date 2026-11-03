@@ -28,16 +28,6 @@ func clock(d time.Duration) string {
 	return fmt.Sprintf("%d:%02d", s/60, s%60)
 }
 
-func diffText(p, m int) string {
-	switch {
-	case p > 0 && m > 0:
-		return fmt.Sprintf("+%d −%d", p, m)
-	case p > 0:
-		return fmt.Sprintf("+%d", p)
-	}
-	return fmt.Sprintf("−%d", m)
-}
-
 // ---- compact: the pill ----
 
 // line is what the pill says. It changes when the situation changes
@@ -165,8 +155,8 @@ func (u *UI) mainLine() line {
 	// beside the time until you've seen it
 	var done, failed []*Session
 	for _, s := range ss {
-		if !s.Unseen.IsZero() && s.Recap != nil && u.cfg.Claude {
-			if s.Recap.Failed {
+		if !s.Unseen.IsZero() && s.Outcome != nil && u.cfg.Claude {
+			if s.Outcome.Failed {
 				failed = append(failed, s)
 			} else {
 				done = append(done, s)

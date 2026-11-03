@@ -22,7 +22,7 @@ func benchUI(b *testing.B, step time.Duration, setup func(*UI)) {
 }
 
 func working(u *UI) {
-	u.sessions["a"] = &Session{ID: "a", Project: "edge", State: "work", Label: "Editing quota.go", Plus: 12, Minus: 3}
+	u.sessions["a"] = &Session{ID: "a", Project: "edge", State: "work", Label: "Editing quota.go"}
 }
 
 // steady frames while Claude works: only Ember's square is redrawn
@@ -31,8 +31,8 @@ func BenchmarkFlickerFrame(b *testing.B) { benchUI(b, time.Second/12, working) }
 // a full repaint (state changed)
 func BenchmarkFullCard(b *testing.B) {
 	benchUI(b, time.Second/60, func(u *UI) {
-		u.AddCard(&Card{ID: "p", Kind: "perm", Mood: moodWait, Title: "Run this command?", Meta: "kinvault", Body: "Run tests",
-			Code: "go test -race ./...", Buttons: []Button{{Key: "deny", Label: "Deny"}, {Key: "allow", Label: "Allow", Primary: true}}})
+		u.AddCard(&Card{ID: "p", Kind: "plugin", Mood: moodWait, Title: "Start today's problem?", Meta: "edge", Body: "Two are waiting",
+			Buttons: []Button{{Key: "skip", Label: "Skip"}, {Key: "start", Label: "Start", Primary: true}}})
 		u.dirty = true
 	})
 }

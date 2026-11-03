@@ -113,7 +113,7 @@ func TestStageKinds(t *testing.T) {
 		{"synced", "spoken", "spoken", nil},
 		{"stanzas", "ready", "stanzas", nil},
 		{"synced", "ready", "stanzas", func(g *galleryScene) { g.a.ui.track.Length = 0; g.a.ui.stage = nil }}, // a browser: no playhead to follow
-		{"synced", "ready", "hidden", func(g *galleryScene) { g.a.ui.shared, g.a.ui.cfg.Discreet = true, true }},
+		{"synced", "ready", "hidden", func(g *galleryScene) { g.a.ui.shared = true }},
 	} {
 		g := stageScene(t, testLines, mediaKey, c.mode, c.state)
 		if c.set != nil {

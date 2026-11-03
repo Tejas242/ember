@@ -85,7 +85,6 @@ type worldState struct {
 	light      float64 // screen brightness 0..1, -1 if there's no backlight
 	bond       *bond   // what Ember remembers about you
 	mind       *mind
-	day        *Day
 	watching   map[string]bool // sessions whose terminal has your focus
 	habits     *habits
 	lastDone   struct {
@@ -98,8 +97,6 @@ type worldState struct {
 // presses and drags, and what you opened or picked in the card.
 type pointerState struct {
 	unfolded                map[string]bool                          // dashboard sections you unfolded: "<plugin>:<index>"
-	opened                  map[string]bool                          // agents you opened or closed in the card: a:<session>:<agent>
-	shownOpen               map[string]bool                          // how the card last drew them (the room it had may have closed one)
 	allRows                 bool                                     // the card shows every session, one line each ("Show all"), until it closes
 	hero                    string                                   // the session you made the card's hero, until it closes
 	dash                    string                                   // the open dashboard's plugin, if any
@@ -230,16 +227,13 @@ type frameState struct {
 func NewUI(w, h int, barH float32) *UI {
 	u := &UI{W: w, H: h, BarH: barH, TimeFmt: "3:04 PM", pal: loadPalette(), cfg: config.Default(), now: time.Now}
 	u.cv, u.content, u.prev, u.base = newCanvas(w, h), newCanvas(w, h), image.NewRGBA(image.Rect(0, 0, w, h)), image.NewRGBA(image.Rect(0, 0, w, h))
-	u.sessions, u.dashboards, u.opened, u.dirty = map[string]*Session{}, map[string]Dashboard{}, map[string]bool{}, true
+	u.sessions, u.dashboards, u.dirty = map[string]*Session{}, map[string]Dashboard{}, true
 	u.dc = u.content
 	u.light, u.rowK = -1, 1
-	u.shownOpen = map[string]bool{}
 	u.sliders = map[string]image.Rectangle{}
 	u.tweens, u.rolls, u.watching = map[string]*tween{}, map[string]*roll{}, map[string]bool{}
 	u.enterAt = map[string]time.Time{}
 	u.mind = newMind(u.now())
-	u.day = &Day{}
-	u.day.roll(u.now())
 	u.habits = &habits{Counts: map[string]map[string]float64{}}
 	u.start, u.lastBlink, u.glanceAt = u.now(), u.now(), u.now()
 	u.body = newBody()
@@ -353,14 +347,14 @@ func (u *UI) Moment(m moment) {
 func (u *UI) momentAct(m moment) {
 	switch {
 	case m.key == "hello": // the first time ever: a hello
-		if u.cfg.Flourishes {
+		if !u.cfg.Calm {
 			u.play("hello", 0)
 		}
 	case m.key == "away": // you're back: a stretch may be playing; otherwise a small hello
-		if u.cfg.Flourishes && (u.act == nil || u.act.kind != "stretch") {
+		if !u.cfg.Calm && (u.act == nil || u.act.kind != "stretch") {
 			u.play("hello", 0)
 		}
-	case m.mood == moodHappy && m.cheer.roll && !u.casting && u.cfg.Flourishes && u.bond != nil && u.bond.cooled("eyeroll", 20*time.Hour, u.now()):
+	case m.mood == moodHappy && m.cheer.roll && !u.casting && !u.cfg.Calm && u.bond != nil && u.bond.cooled("eyeroll", 20*time.Hour, u.now()):
 		u.afterRoll = m.cheer
 		u.play("eyeroll", 0) // then the Done, when it's done rolling
 	case m.mood == moodHappy:
@@ -550,10 +544,9 @@ func (u *UI) currentView() view {
 	return vCompact
 }
 
-// discreet: the screen is shared and [privacy] discreet is on: Done and
-// Stopped keep Claude's words to themselves, screenshots show no preview, and
-// the card opens only on a click. Requests still show: they need you.
-func (u *UI) discreet() bool { return u.shared && u.cfg.Discreet }
+// discreet: the screen is shared, so Done and Stopped keep Claude's words to
+// themselves, screenshots show no preview, and the card opens only on a click.
+func (u *UI) discreet() bool { return u.shared }
 
 // used: you did something with a row in the open card; in this situation
 // that row is the one you reach for.

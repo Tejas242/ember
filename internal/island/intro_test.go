@@ -36,12 +36,12 @@ func TestIntroduce(t *testing.T) {
 		t.Fatal("said hello twice")
 	}
 
-	if got := u.dayFacts(); got != "Start a Claude Code session and I'll follow it here" {
+	if got := u.brief().sub; got != "Start a Claude Code session and I'll follow it here" {
 		t.Fatalf("quiet card before Claude: %q", got)
 	}
 	hookAt(a, "SessionStart", "s", "kinvault", map[string]any{})
-	if !u.bond.MetClaude || u.dayFacts() != "Nothing finished with Claude yet today" {
-		t.Fatalf("after a session: %v %q", u.bond.MetClaude, u.dayFacts())
+	if got := u.brief().sub; !u.bond.MetClaude || got != "No Claude Code session running" {
+		t.Fatalf("after a session: %v %q", u.bond.MetClaude, got)
 	}
 
 	// someone who used Ember before it kept count has met Claude

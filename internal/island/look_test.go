@@ -1,21 +1,17 @@
 package island
 
 import (
-	"image/color"
 	"testing"
 
 	"github.com/Tejas242/ember/internal/config"
 )
 
-// [look] colours and opacity go over the theme; the defaults change nothing.
+// The island's body is a little translucent over the theme's palette; the
+// colours are the theme's own.
 func TestApplyLook(t *testing.T) {
-	c := config.Default()
-	c.Opacity, c.Green, c.Amber = 1, color.NRGBA{0, 255, 0, 255}, color.NRGBA{0x11, 0x22, 0x33, 255}
-	p := applyLook(c, loadPalette())
-	if p.green != c.Green || p.yellow != c.Amber || p.island.A != 255 || p.blue == (color.NRGBA{}) {
+	base := loadPalette()
+	p := applyLook(config.Default(), base)
+	if p.island.A != 222 || p.green != base.green || p.blue != base.blue || p.red != base.red || p.yellow != base.yellow {
 		t.Fatalf("look: %+v", p)
-	}
-	if p := applyLook(config.Default(), loadPalette()); p != loadPalette() {
-		t.Fatal("the default look changes the theme's palette")
 	}
 }

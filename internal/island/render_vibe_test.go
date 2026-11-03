@@ -172,11 +172,11 @@ func vibeScenes() []vScene {
 			}, settle: 1300 * time.Millisecond},
 		{name: "16-needs-you", kind: "karaoke", lines: upbeatWords, title: "Neon Afternoon", artist: "Kite Club", pos: 52 * time.Second, feed: "song",
 			after: func(g *galleryScene) {
-				askAt(g.a, "PermissionRequest", "k", "kinvault", map[string]any{"tool_name": "Bash",
+				hookAt(g.a, "PermissionRequest", "k", "kinvault", map[string]any{"tool_name": "Bash",
 					"tool_input": map[string]any{"command": "go test -race ./store/... -count=1", "description": "Run the store tests under the race detector"}})
 			}, settle: 1200 * time.Millisecond, crop: 40},
 		{name: "17-screen-shared", kind: "karaoke", lines: upbeatWords, title: "Neon Afternoon", artist: "Kite Club", pos: 52 * time.Second, feed: "song",
-			setup: func(g *galleryScene) { g.a.ui.shared, g.a.ui.cfg.Discreet = true, true }},
+			setup: func(g *galleryScene) { g.a.ui.shared = true }},
 		{name: "18-hindi-line", kind: "karaoke", lines: hindiWords, title: "Subah ki Chai", artist: "Kite Club", pos: 46400 * time.Millisecond, feed: "song"},
 		{name: "19-arabic-line", kind: "karaoke", lines: arabicWords, title: "Layl Tawil", artist: "Kite Club", pos: 46400 * time.Millisecond, feed: "song"},
 		{name: "20-a-player-that-doesnt-say", kind: "karaoke", lines: upbeatWords, title: "Neon Afternoon", artist: "Kite Club", pos: 52 * time.Second, feed: "song",

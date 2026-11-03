@@ -5,10 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/Tejas242/ember/internal/ipc"
@@ -20,7 +18,6 @@ type hookInput struct {
 	Cwd         string          `json:"cwd"`
 	Tool        string          `json:"tool_name"`
 	ToolInput   json.RawMessage `json:"tool_input"`
-	Suggestions json.RawMessage `json:"permission_suggestions"`
 	NotifyType  string          `json:"notification_type"`
 	Message     string          `json:"message"` // Notification
 	LastMessage string          `json:"last_assistant_message"`
@@ -79,28 +76,7 @@ func (s *server) serve(c *net.UnixConn) {
 	}
 	switch m.Type {
 	case "hook":
-		if !m.Wait {
-			s.posts <- func(a *app) { a.hook(m, nil) }
-			return
-		}
-		answer := make(chan json.RawMessage, 1)
-		gone := make(chan struct{})
-		go func() { // the hook process exits if Claude cancels: drop the card
-			r.ReadByte()
-			close(gone)
-		}()
-		cardID := ""
-		s.posts <- func(a *app) { cardID = a.hook(m, answer) }
-		var out json.RawMessage
-		select {
-		case out = <-answer:
-		case <-gone:
-			s.posts <- func(a *app) { a.ui.RemoveCard(cardID); a.ui.Invalidate() }
-			return
-		case <-time.After(ipc.AskTimeout):
-		}
-		b, _ := json.Marshal(ipc.Reply{Output: out})
-		c.Write(append(b, '\n'))
+		s.posts <- func(a *app) { a.hook(m) }
 	case "edge": // edge's own address, from before plugins: it hears whether the plugin got it
 		ok := make(chan bool, 1)
 		s.posts <- func(a *app) { ok <- a.toPlugin("edge", m.Payload) }
@@ -114,7 +90,7 @@ func (s *server) serve(c *net.UnixConn) {
 		s.posts <- func(a *app) { a.toPlugin(m.Name, m.Payload) }
 	case "note", "line": // `ember note`, `ember status`: a moment, a pill line
 		s.posts <- func(a *app) { a.cli(m) }
-	case "cmd": // keyboard: allow / deny / always / terminal / answer <key>
+	case "cmd": // keyboard: open, close, toggle, next, prev, play, dash <name>
 		s.posts <- func(a *app) { a.command(m.Event, m.ID) }
 	case "status": // `ember doctor` asks what the island is connected to
 		st := make(chan ipc.Status, 1)
@@ -136,78 +112,4 @@ func project(cwd string) string {
 		return "~"
 	}
 	return filepath.Base(cwd)
-}
-
-func lines(s string) int {
-	if s == "" {
-		return 0
-	}
-	return strings.Count(s, "\n") + 1
-}
-
-// activity turns a tool call into a short present-tense label.
-func activity(tool string, in map[string]any) (label string, plus, minus int) {
-	str := func(k string) string { v, _ := in[k].(string); return v }
-	base := filepath.Base(str("file_path"))
-	switch tool {
-	case "Read":
-		return "Reading " + base, 0, 0
-	case "Edit":
-		return "Editing " + base, lines(str("new_string")), lines(str("old_string"))
-	case "MultiEdit":
-		edits, _ := in["edits"].([]any)
-		for _, e := range edits {
-			if m, ok := e.(map[string]any); ok {
-				n, _ := m["new_string"].(string)
-				o, _ := m["old_string"].(string)
-				plus, minus = plus+lines(n), minus+lines(o)
-			}
-		}
-		return "Editing " + base, plus, minus
-	case "Write":
-		return "Writing " + base, lines(str("content")), 0
-	case "Bash":
-		if d := str("description"); d != "" {
-			return d, 0, 0
-		}
-		return "Running " + str("command"), 0, 0
-	case "Grep", "Glob":
-		return "Searching " + str("pattern"), 0, 0
-	case "WebFetch":
-		if u, err := url.Parse(str("url")); err == nil {
-			return "Reading " + u.Host, 0, 0
-		}
-	case "WebSearch":
-		return "Searching the web", 0, 0
-	case "Task", "Agent":
-		return "Delegating: " + str("description"), 0, 0
-	case "Skill":
-		return "Using " + str("skill"), 0, 0
-	case "TodoWrite", "EnterPlanMode":
-		return "Planning", 0, 0
-	case "ExitPlanMode":
-		return "Presenting a plan", 0, 0
-	case "NotebookEdit":
-		return "Editing " + filepath.Base(str("notebook_path")), 0, 0
-	case "ToolSearch":
-		return "Loading tools", 0, 0
-	case "Artifact":
-		return "Publishing a page", 0, 0
-	case "Monitor":
-		if d := str("description"); d != "" {
-			return "Watching " + d, 0, 0
-		}
-		return "Watching", 0, 0
-	case "ScheduleWakeup":
-		return "Scheduling a check-in", 0, 0
-	case "SendMessage":
-		return "Messaging an agent", 0, 0
-	case "LSP":
-		return "Asking the language server", 0, 0
-	}
-	if strings.HasPrefix(tool, "mcp__") {
-		parts := strings.Split(tool, "__")
-		return "Using " + strings.ReplaceAll(parts[len(parts)-1], "_", " "), 0, 0
-	}
-	return tool, 0, 0
 }

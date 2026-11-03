@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
-	"strings"
 	"testing"
 	"time"
 
@@ -20,40 +19,11 @@ func hookPids(a *app, event, session, project string, pids []int, payload map[st
 	payload["session_id"] = session
 	payload["cwd"] = "/home/x/" + project
 	b, _ := json.Marshal(payload)
-	a.hook(ipc.Msg{Type: "hook", Event: event, Pids: pids, Payload: b}, nil)
-}
-
-// askAt is a hook that waits for an answer (a permission, a question).
-func askAt(a *app, event, session, project string, payload map[string]any) (string, chan json.RawMessage) {
-	payload["session_id"] = session
-	payload["cwd"] = "/home/x/" + project
-	b, _ := json.Marshal(payload)
-	ch := make(chan json.RawMessage, 1)
-	return a.hook(ipc.Msg{Type: "hook", Event: event, Wait: true, Payload: b}, ch), ch
-}
-
-func read(t *testing.T, name string, ch chan json.RawMessage) string {
-	t.Helper()
-	select {
-	case b := <-ch:
-		return string(b)
-	default:
-		t.Fatalf("%s got no answer", name)
-	}
-	return ""
-}
-
-func quiet(t *testing.T, name string, ch chan json.RawMessage) {
-	t.Helper()
-	select {
-	case b := <-ch:
-		t.Fatalf("%s was answered: %s", name, b)
-	default:
-	}
+	a.hook(ipc.Msg{Type: "hook", Event: event, Pids: pids, Payload: b})
 }
 
 func step(a *app, session, project, file string) {
-	hookAt(a, "PreToolUse", session, project, map[string]any{"tool_name": "Read", "tool_input": map[string]any{"file_path": "/x/" + file}})
+	hookAt(a, "PostToolUse", session, project, map[string]any{"tool_name": "Read", "tool_input": map[string]any{"file_path": "/x/" + file}})
 }
 
 // Two sessions working at once, both busy: the pill and the card keep to
@@ -125,10 +95,10 @@ func TestTwinSessionsHaveNames(t *testing.T) {
 		t.Fatalf("a twin with a topic: %q", na)
 	}
 	// the requests say which one is asking
-	id, _ := askAt(a, "PermissionRequest", "b", "ember", map[string]any{"tool_name": "Bash",
+	hookAt(a, "PermissionRequest", "b", "ember", map[string]any{"tool_name": "Bash",
 		"tool_input": map[string]any{"command": "rm -rf build", "description": "Clean the build"}})
-	if c := u.cards[0]; c.ID != id || c.Eyebrow != "ember 2 wants to run" {
-		t.Fatalf("card %q eyebrow %q", c.ID, c.Eyebrow)
+	if l := u.brief(); l.head != "ember 2 needs you" || l.sub != "Wants to run rm -rf build · waiting 0m" {
+		t.Fatalf("card %q / %q", l.head, l.sub)
 	}
 	if l := u.mainLine(); l.text != "ember 2 needs you" {
 		t.Fatalf("pill %q", l.text)
@@ -139,9 +109,8 @@ func TestTwinSessionsHaveNames(t *testing.T) {
 	}
 }
 
-// Requests from two sessions at once: both stay on the island, each answer
-// goes to the session that asked, and one cancelled in its terminal leaves
-// the other alone.
+// Requests from two sessions at once: Ember holds none of them; each session
+// shows what it asks, and answering one in its terminal clears only that one.
 func TestRequestsFromTwoSessions(t *testing.T) {
 	clock := time.Date(2026, 10, 15, 15, 0, 0, 0, time.Local)
 	a := newTestApp(&clock)
@@ -149,38 +118,28 @@ func TestRequestsFromTwoSessions(t *testing.T) {
 	hookAt(a, "UserPromptSubmit", "a", "edge", map[string]any{})
 	hookAt(a, "UserPromptSubmit", "b", "ember", map[string]any{})
 	hookAt(a, "UserPromptSubmit", "c", "kinvault", map[string]any{})
-	pa, cha := askAt(a, "PermissionRequest", "a", "edge", map[string]any{"tool_name": "Bash",
+	hookAt(a, "PermissionRequest", "a", "edge", map[string]any{"tool_name": "Bash",
 		"tool_input": map[string]any{"command": "make", "description": "Build it"}})
-	pb, chb := askAt(a, "PermissionRequest", "b", "ember", map[string]any{"tool_name": "Bash",
+	hookAt(a, "PermissionRequest", "b", "ember", map[string]any{"tool_name": "Bash",
 		"tool_input": map[string]any{"command": "go test ./...", "description": "Run the tests"}})
-	qc, chc := askAt(a, "AskUserQuestion", "c", "kinvault", map[string]any{"tool_name": "AskUserQuestion",
+	hookAt(a, "AskUserQuestion", "c", "kinvault", map[string]any{"tool_name": "AskUserQuestion",
 		"tool_input": map[string]any{"questions": []any{map[string]any{"question": "Which store?",
 			"options": []any{map[string]any{"label": "SQLite"}, map[string]any{"label": "Pebble"}}}}}})
-	if len(u.cards) != 3 || pa == pb || !strings.Contains(qc, "c") {
-		t.Fatalf("%d cards: %q %q %q", len(u.cards), pa, pb, qc)
-	}
-	// b gives up in its terminal (its hook exits): only b's card goes
-	u.RemoveCard(pb)
-	if len(u.cards) != 2 || u.top().ID != pa {
-		t.Fatalf("cards after b's cancel: %d, top %q", len(u.cards), u.top().ID)
-	}
-	quiet(t, "b", chb)
-	// allow goes to the top card: a's
-	a.command("allow", "")
-	if out := read(t, "a", cha); !strings.Contains(out, `"allow"`) {
-		t.Fatalf("a got %s", out)
-	}
-	quiet(t, "c", chc)
-	if u.sessions["a"].State != "work" || u.sessions["c"].State != "wait" {
-		t.Fatalf("states a %s, c %s", u.sessions["a"].State, u.sessions["c"].State)
-	}
-	// then c's question, answered with its second option
-	a.command("answer", "opt:2")
-	if out := read(t, "c", chc); !strings.Contains(out, "Pebble") {
-		t.Fatalf("c got %s", out)
-	}
 	if len(u.cards) != 0 {
-		t.Fatalf("%d cards left", len(u.cards))
+		t.Fatalf("%d cards: Ember must not put requests on the island to answer", len(u.cards))
+	}
+	for id, want := range map[string]string{"a": "Wants to run make", "b": "Wants to run go test ./...", "c": "Asks: Which store?"} {
+		if s := u.sessions[id]; s.State != "wait" || s.Asking != want {
+			t.Fatalf("%s: %q %q, want wait %q", id, s.State, s.Asking, want)
+		}
+	}
+	if l := u.mainLine(); l.text != "3 sessions need you" {
+		t.Fatalf("pill %q", l.text)
+	}
+	// a is answered in its terminal: only a goes back to work
+	hookAt(a, "PostToolUse", "a", "edge", map[string]any{"tool_name": "Bash"})
+	if u.sessions["a"].State != "work" || u.sessions["a"].Asking != "" || u.sessions["b"].State != "wait" || u.sessions["c"].State != "wait" {
+		t.Fatalf("states a %s, b %s, c %s", u.sessions["a"].State, u.sessions["b"].State, u.sessions["c"].State)
 	}
 }
 
@@ -283,7 +242,7 @@ func TestWelcomeBackWithTwoSessions(t *testing.T) {
 	a.ui.mind.away = true
 	hookAt(a, "Stop", "a", "ember", map[string]any{})
 	hookAt(a, "Stop", "b", "ember", map[string]any{})
-	askAt(a, "PermissionRequest", "c", "edge", map[string]any{"tool_name": "Bash", "tool_input": map[string]any{"command": "ls"}})
+	hookAt(a, "PermissionRequest", "c", "edge", map[string]any{"tool_name": "Bash", "tool_input": map[string]any{"command": "ls"}})
 	a.welcomeBack(clock)
 	m := a.ui.moment
 	if m == nil || m.sub != "ember 1 done · ember 2 done · edge asked you" || m.focus != "c" || m.mood != moodWait {
@@ -299,11 +258,11 @@ func TestSubagentsOfTwoSessions(t *testing.T) {
 	hookAt(a, "UserPromptSubmit", "b", "ember", map[string]any{})
 	for _, s := range [][3]string{{"a", "edge", "x"}, {"b", "ember", "y"}, {"b", "ember", "z"}} {
 		hookAt(a, "SubagentStart", s[0], s[1], map[string]any{"agent_id": s[2], "agent_type": "Explore"})
-		hookAt(a, "PreToolUse", s[0], s[1], map[string]any{"agent_id": s[2], "agent_type": "Explore",
+		hookAt(a, "PostToolUse", s[0], s[1], map[string]any{"agent_id": s[2], "agent_type": "Explore",
 			"tool_name": "Grep", "tool_input": map[string]any{"pattern": s[2]}})
 	}
 	sa, sb := a.ui.sessions["a"], a.ui.sessions["b"]
-	if sa.running() != 1 || sb.running() != 2 || sa.Agents["x"].Label != "Searching x" || sb.Agents["x"] != nil {
+	if sa.running() != 1 || sb.running() != 2 || sa.Agents["x"] == nil || sb.Agents["x"] != nil {
 		t.Fatalf("a %d agents, b %d", sa.running(), sb.running())
 	}
 	hookAt(a, "SubagentStop", "a", "edge", map[string]any{"agent_id": "y"}) // a's hook can't stop b's agent
@@ -369,11 +328,6 @@ func TestShowAllSessions(t *testing.T) {
 	rows, hidden := a.ui.board(a.ui.brief())
 	if hidden != 0 || len(rows) != 4 {
 		t.Fatalf("show all: %d rows, %d still hidden", len(rows), hidden)
-	}
-	for _, r := range rows {
-		if r.open {
-			t.Fatalf("%s is open in the full list", r.s.ID)
-		}
 	}
 	if h := a.ui.expandedHeight(); h > a.ui.H-14 {
 		t.Fatalf("card %d px", h)

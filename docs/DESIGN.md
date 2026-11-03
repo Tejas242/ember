@@ -28,8 +28,8 @@ subagent counts and no tool-call-by-tool-call chatter in the pill.
   all readable at 1×.
 - **Nothing slips by.** What finished or stopped while you weren't looking waits by the clock ("kinvault done") until
   you've seen it. A failed turn never shows up as a success.
-- **Ember is the thread.** The flame is the identity. In the card, the session's timeline hangs from it on a thin
-  rail, so the mascot and the work read as one thing.
+- **Ember is the thread.** The flame is the identity: the mascot sits at the head of the card, and the session it
+  speaks for is named beside it.
 
 ## Type
 
@@ -89,11 +89,10 @@ Radii: the card 22 (continuous superellipse), hovers 10, buttons fully round (26
 ```
 
 - **The hero** is the session that matters most: one waiting on you, else one working that you aren't looking at, else
-  the one that just finished. Its headline is the task in words, its facts line is one row (where, how long, what it
-  changed, failures in red), and its timeline hangs from Ember. Waiting says what it's asking (*Wants to run go test
-  …· waiting 1m*) and adds a blue *Answer in terminal* button. Done replaces the timeline with Claude's most
-  informative sentence beside a bar: green, amber if it admits a failure, red with the error if it stopped. With no
-  session, the hero is the day: a greeting, the day in one line, and 24 hour bars.
+  the one that just finished. Its headline is the task in words and its facts line is one row (where, how long, how
+  many agents). Waiting says what it's asking (*Wants to run go test …· waiting 1m*) and adds a blue *Answer in
+  terminal* button that goes there. Done says when it finished. Ember keeps no timeline, no summary and no day card:
+  with no session, the hero is a greeting and one quiet line.
 - **Other sessions** are one line each: *Done ·*, *Stopped ·*, *Needs you ·* say the outcome in its colour. Under the
   pointer a chevron replaces the time. Click one and it becomes the hero: the card cross-fades and the lines that
   stay glide to their places.
@@ -150,21 +149,9 @@ Ember in the card while a song plays (or the headphones in the music row, or `em
 
 ## Requests
 
-```
- [flame]  KINVAULT WANTS TO RUN                               2 more
-          Run the store tests with the race detector
-   ┌─────────────────────────────────────────────────────────────┐
-   │ go test -race ./store/... -run TestRepair -count=1          │
-   └─────────────────────────────────────────────────────────────┘
-   Always allows go test:* in this project
-   Answer in terminal                   Deny    Always   [ Allow ]
- ──────────── a hairline drains while it waits ────────────
-```
-
-An eyebrow says who wants what (*wants to run*, *wants to edit*, *asks*). The title is Claude's own words. The command
-is never cut where it matters: it wraps, and a very long one keeps its start and its end. A quiet line says what
-*Always* would allow before you press it. A question's options form one grouped list with hairlines and numbered
-keys, not separate boxes.
+Ember doesn't answer Claude's requests. The terminal asks; Ember reports who asks and what for (*Wants to run go
+test ./…*, *Asks: Which store?*) in the pill and the card, in blue, and a click goes to that terminal. Plugin cards
+(edge's nudges) are the only cards left on the island: an eyebrow saying who, a title, a body, choices and buttons.
 
 ## Motion
 
@@ -236,7 +223,7 @@ and it rests (no frames) when nothing moves.
 | Done | its size from how long the turn took (20 s small, 5 min the whole thing): a hop, sparks, a second hop; a flare if earned |
 | Stopped | it flinches back with `> <`, the flame gutters, two puffs of smoke; it stays slumped |
 | Wince, relief | a failed step; the first step that passes after three failures (a slow blink, an exhale) |
-| Nod, shake | you allow; you deny (the head held by a muscle, the eyes leading, the tip trailing) |
+| Nod, shake | you press a plugin card's button (the head held by a muscle, the eyes leading, the tip trailing) |
 | Sleep, wake | a yawn, then it banks low against the pill's wall, its light breathing; waking, it shoots up and looks around |
 | Moments | charging is a gulp of power with sparks, a screenshot's flash makes it blink hard, headphones put on |
 
@@ -281,8 +268,7 @@ Ember has a small mind. None of it is scripted animation. It is a handful of mod
   flickers between close calls. A request waiting on you, and anything you just pressed, always come first.
 - **Habits.** It learns which row you reach for in each situation (music while Claude works, say) and puts it
   higher. Older evidence fades, so a new habit takes over within a few uses.
-- **Judgement.** "Done" quotes the most informative sentence of Claude's reply (outcomes and numbers win over
-  preamble). Notes that arrive together merge ("Done · edge, ember"). A volume change hands a pending note back when
+- **Judgement.** Notes that arrive together merge ("Done · edge, ember"). A volume change hands a pending note back when
   it's finished. A step running long shows its minutes. A session that went silent for half an hour (a killed Claude
   never says Stop) settles to idle.
 

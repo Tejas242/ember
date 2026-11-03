@@ -76,9 +76,9 @@ func osdCases() []osdCase {
 			g.music(true)
 			g.a.ui.pinned = true
 		}, crop: osdTopCrop},
-		{label: "a request (Claude asks)", setup: func(t *testing.T, g *galleryScene) {
+		{label: "Claude asks (named in the pill, answered in the terminal)", setup: func(t *testing.T, g *galleryScene) {
 			g.work("k", "kinvault", "fix the race", 2)
-			askAt(g.a, "PermissionRequest", "k", "kinvault", map[string]any{"tool_name": "Bash",
+			hookAt(g.a, "PermissionRequest", "k", "kinvault", map[string]any{"tool_name": "Bash",
 				"tool_input": map[string]any{"command": "go test -race ./store/... -count=1", "description": "Run the store tests under the race detector"}})
 		}, crop: osdTopCrop},
 		{label: "edge's dashboard (the gate lock)", setup: func(t *testing.T, g *galleryScene) {

@@ -19,7 +19,7 @@ func newScene() *galleryScene {
 	g := &galleryScene{clock: time.Date(2026, 10, 15, 17, 24, 0, 0, time.Local)}
 	g.a = newTestApp(&g.clock)
 	u := NewUI(surfW, surfH, 22)
-	u.now, u.mind, u.day = g.a.ui.now, g.a.ui.mind, g.a.ui.day
+	u.now, u.mind = g.a.ui.now, g.a.ui.mind
 	u.start, u.lastBlink, u.bounceAt = g.clock, g.clock, g.clock.Add(-time.Hour)
 	g.a.ui = u
 	return g
@@ -42,16 +42,9 @@ var gallerySteps = []map[string]any{
 
 func (g *galleryScene) work(id, project, prompt string, n int) {
 	hookAt(g.a, "UserPromptSubmit", id, project, map[string]any{"prompt": prompt})
-	for i, st := range gallerySteps[:n] {
+	for _, st := range gallerySteps[:n] {
 		g.clock = g.clock.Add(41 * time.Second)
-		hookAt(g.a, "PreToolUse", id, project, map[string]any{"tool_name": st["tool_name"], "tool_input": st["tool_input"]})
-		if i < n-1 {
-			ev := "PostToolUse"
-			if st["fail"] == true {
-				ev = "PostToolUseFailure"
-			}
-			hookAt(g.a, ev, id, project, map[string]any{"tool_name": st["tool_name"]})
-		}
+		hookAt(g.a, "PostToolUse", id, project, map[string]any{"tool_name": st["tool_name"], "tool_input": st["tool_input"]})
 	}
 }
 

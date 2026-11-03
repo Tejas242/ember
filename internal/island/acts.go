@@ -31,7 +31,7 @@ var actLen = map[string]float64{
 
 // a flourish is an act Ember plays on its own: it goes through the gate.
 func (u *UI) flourish(kind string, every time.Duration) bool {
-	if !u.cfg.Flourishes || !u.may(kind, every) {
+	if u.cfg.Calm || !u.may(kind, every) {
 		return false
 	}
 	u.play(kind, 0)
@@ -121,7 +121,7 @@ func (u *UI) actStep(now time.Time) {
 			h := 1.2 + 1.7*a
 			ant := 0.04 + 0.06*a
 			land := ant + hopFor(h)
-			party := u.cfg.Celebrate // else a Done is only its colour and its face
+			party := !u.cfg.Calm // else a Done is only its colour and its face
 			beat(0, 0, func() {
 				if party {
 					b.jump(h, ant)
@@ -457,10 +457,6 @@ func (u *UI) posture(p *pose, now time.Time, t float64) {
 
 	// held parts
 	b.sqRest, b.leanRest, b.coalRest = 1, 0, 0
-	if u.compacting() { // squashed while Claude squeezes its context
-		b.sqRest = 0.82
-		p.lid = max(p.lid, 0.4)
-	}
 	yawning := u.act != nil && u.act.kind == "sleep" && now.Sub(u.act.at) < 1100*time.Millisecond
 	if m.asleep && u.lastView == vCompact && !yawning { // asleep: a coal, resting its head on the pill's wall
 		b.coalRest, b.leanRest = 0.55, -1.4 // banked low, a little tongue left: a flame asleep, not a cookie
@@ -469,10 +465,6 @@ func (u *UI) posture(p *pose, now time.Time, t float64) {
 	}
 	if u.extFocus() { // a plugin asks for focus (edge's contest round): game face, eyes front
 		p.slant, p.lid, p.lookX = 0.35, max(p.lid, 0.15), 0
-	}
-	if u.worried() {
-		p.scale *= 0.93
-		p.lid = max(p.lid, 0.3)
 	}
 	if pw := u.power; pw != nil && pw.state == 2 && pw.pct < 15 { // it runs on your battery
 		p.scale *= float32(0.85 + 0.15*pw.pct/15)
@@ -504,25 +496,6 @@ func (u *UI) posture(p *pose, now time.Time, t float64) {
 			p.slant = -0.5
 		}
 	}
-}
-
-func (u *UI) compacting() bool {
-	for _, s := range u.sessions {
-		if s.State == "work" && s.Label == "Compacting the conversation" {
-			return true
-		}
-	}
-	return false
-}
-
-// worried: steps keep failing in the turn Ember is watching.
-func (u *UI) worried() bool {
-	for _, s := range u.sessions {
-		if s.status() == "work" && s.Turn.streak >= 3 {
-			return true
-		}
-	}
-	return false
 }
 
 // wantPhones: a song is playing (and Ember is listening), or headphones just connected.

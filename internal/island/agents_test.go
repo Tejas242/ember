@@ -12,8 +12,7 @@ import (
 // fakeAgents gives a session n running subagents.
 func fakeAgents(s *Session, n int, now time.Time) {
 	for i := 0; i < n; i++ {
-		ag := s.agent(fmt.Sprintf("ag%d", i), "Explore", now)
-		ag.Desc, ag.Label = fmt.Sprintf("Map part %d", i+1), "Searching hook"
+		s.agent(fmt.Sprintf("ag%d", i), "Explore", now)
 	}
 }
 
@@ -23,28 +22,30 @@ func agentHookAt(a *app, event, agent string, payload map[string]any) {
 	hookAt(a, event, "s", "ember", payload)
 }
 
-// A subagent's tool calls are its own: the session's label and timeline
-// stay on the Agent call that launched it.
-func TestSubagentStepsStayTheirs(t *testing.T) {
+// A subagent's tool calls are its own: they keep it alive, and never touch
+// the session's state (a question the session asks stays asked).
+func TestSubagentCallsStayTheirs(t *testing.T) {
 	clock := time.Date(2026, 10, 15, 15, 0, 0, 0, time.Local)
 	a := newTestApp(&clock)
 	hookAt(a, "UserPromptSubmit", "s", "ember", map[string]any{"prompt": "map the hooks"})
-	hookAt(a, "PreToolUse", "s", "ember", map[string]any{"tool_name": "Agent",
-		"tool_input": map[string]any{"description": "Find hook handlers", "subagent_type": "Explore"}})
 	agentHookAt(a, "SubagentStart", "x1", map[string]any{})
+	hookAt(a, "PermissionRequest", "s", "ember", map[string]any{"tool_name": "Bash", "tool_input": map[string]any{"command": "go test ./..."}})
 	clock = clock.Add(10 * time.Second)
-	agentHookAt(a, "PreToolUse", "x1", map[string]any{"tool_name": "Grep", "tool_input": map[string]any{"pattern": "SubagentStart"}})
+	agentHookAt(a, "PostToolUse", "x1", map[string]any{"tool_name": "Grep"})
 	s := a.ui.sessions["s"]
-	if s.Label != "Delegating: Find hook handlers" || s.Turn.Count != 1 {
-		t.Fatalf("session label %q, %d steps: a subagent's call leaked into the session", s.Label, s.Turn.Count)
+	if s.State != "wait" || s.Asking != "Wants to run go test ./..." {
+		t.Fatalf("state %q asking %q: a subagent's call cleared the session's question", s.State, s.Asking)
 	}
-	ag := s.Agents["x1"]
-	if ag == nil || ag.Desc != "Find hook handlers" || ag.Label != "Searching SubagentStart" {
+	if ag := s.Agents["x1"]; ag == nil || !ag.Seen.Equal(clock) {
 		t.Fatalf("agent = %+v", ag)
 	}
+	hookAt(a, "PostToolUse", "s", "ember", map[string]any{"tool_name": "Bash"})
+	if s.State != "work" || s.Asking != "" {
+		t.Fatalf("answered in the terminal, still %q %q", s.State, s.Asking)
+	}
 	b := a.ui.brief()
-	if rows, _ := a.ui.board(b); b.mode != "work" || len(rows) != 1 || len(rows[0].agents) != 1 || !rows[0].open {
-		t.Fatalf("brief %s, rows %+v", b.mode, rows)
+	if rows, _ := a.ui.board(b); b.mode != "work" || len(rows) != 1 || !strings.Contains(b.sub, "1 agent") {
+		t.Fatalf("brief %s %q, rows %+v", b.mode, b.sub, rows)
 	}
 	if l := a.ui.mainLine(); !l.work {
 		t.Fatalf("pill %q", l.text)
@@ -52,7 +53,7 @@ func TestSubagentStepsStayTheirs(t *testing.T) {
 }
 
 // Background agents outlive the turn: the session stays busy, the pill says
-// what they're doing, and "Done" waits for them.
+// so, and "Done" waits for them.
 func TestAgentsOutliveTheTurn(t *testing.T) {
 	clock := time.Date(2026, 10, 15, 15, 0, 0, 0, time.Local)
 	a := newTestApp(&clock)
@@ -68,8 +69,8 @@ func TestAgentsOutliveTheTurn(t *testing.T) {
 		t.Fatalf("pill %q", l.text)
 	}
 	b := a.ui.brief()
-	if rows, _ := a.ui.board(b); b.mode != "work" || len(rows[0].agents) != 2 || !strings.Contains(b.head, "2 agents working") {
-		t.Fatalf("brief %s %q", b.mode, b.head)
+	if b.mode != "work" || !strings.Contains(b.sub, "2 agents") {
+		t.Fatalf("brief %s %q", b.mode, b.sub)
 	}
 	agentHookAt(a, "SubagentStop", "x1", map[string]any{})
 	agentHookAt(a, "SubagentStop", "x2", map[string]any{})
@@ -100,22 +101,14 @@ func TestAgentRaces(t *testing.T) {
 	}
 }
 
-// Many agents, each opened: the card trims their steps and stays inside the
-// surface, every agent still on the branch.
+// Many agents are a count, not rows: the card stays small and inside the surface.
 func TestManyAgentsFit(t *testing.T) {
 	clock := time.Date(2026, 10, 15, 15, 0, 0, 0, time.Local)
 	a := newTestApp(&clock)
 	hookAt(a, "UserPromptSubmit", "s", "ember", map[string]any{"prompt": "audit everything"})
-	for i := 0; i < 6; i++ {
-		hookAt(a, "PreToolUse", "s", "ember", map[string]any{"tool_name": "Read", "tool_input": map[string]any{"file_path": "/x/a.go"}})
-	}
 	fakeAgents(a.ui.sessions["s"], 5, clock)
-	for _, ag := range a.ui.sessions["s"].Agents {
-		ag.Hist = []Step{{Kind: "read", Text: "Read a.go"}, {Kind: "read", Text: "Read b.go"}, {Kind: "search", Text: "Searched x"}}
-		a.ui.opened["a:s:"+ag.ID] = true
-	}
 	rows, _ := a.ui.board(a.ui.brief())
-	if len(rows) != 1 || !rows[0].open || len(rows[0].agents) != 5 {
+	if len(rows) != 1 || a.ui.sessions["s"].running() != 5 {
 		t.Fatalf("rows %+v", rows)
 	}
 	if h := a.ui.expandedHeight(); h > a.ui.H-14 {

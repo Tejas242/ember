@@ -6,8 +6,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"regexp"
-	"sort"
 	"strings"
 	"time"
 
@@ -413,66 +411,4 @@ func (u *UI) habitContext() string {
 		mu = map[bool]string{true: "playing", false: "paused"}[u.track.Playing]
 	}
 	return cl + "|" + mu
-}
-
-// ---- judgement ----
-
-var (
-	mdNoise   = regexp.MustCompile("[*_`#>]+")
-	outcomeRe = regexp.MustCompile(`(?i)\b(pass(es|ed)?|fail(s|ed)?|fixed|added|removed|renamed|built|creat(ed|es)|updat(ed|es)|merged|works?|ready|done|deployed|install(ed)?|green|broke|error|found|wrote|refactor(ed)?|commit(ted)?)\b`)
-	hedgeRe   = regexp.MustCompile(`(?i)^(i'll|i will|let me|sure|okay|ok|here('s| is)|great|now|first|next)\b`)
-)
-
-// summarize picks the most informative sentence of Claude's last reply for
-// the "Done" note: outcomes and numbers score up, preamble scores down.
-func summarize(msg string) string {
-	var cands []string
-	for _, ln := range strings.Split(msg, "\n") {
-		ln = strings.TrimSpace(mdNoise.ReplaceAllString(ln, ""))
-		ln = strings.TrimLeft(ln, "-•0123456789. ")
-		if ln == "" || strings.HasPrefix(ln, "|") {
-			continue
-		}
-		for _, s := range regexp.MustCompile(`[.!?](\s+|$)`).Split(ln, -1) {
-			if s = strings.TrimSpace(s); len(s) > 3 {
-				cands = append(cands, s)
-			}
-		}
-		if len(cands) > 24 {
-			break
-		}
-	}
-	if len(cands) == 0 {
-		return ""
-	}
-	type scored struct {
-		s     string
-		score float64
-		i     int
-	}
-	var ss []scored
-	for i, c := range cands {
-		sc := 0.0
-		if outcomeRe.MatchString(c) {
-			sc += 2
-		}
-		if strings.ContainsAny(c, "0123456789") {
-			sc += 1.2
-		}
-		if hedgeRe.MatchString(c) {
-			sc -= 2.5
-		}
-		if n := len(c); n >= 18 && n <= 90 {
-			sc += 0.8
-		} else if n > 140 {
-			sc -= 1
-		}
-		if strings.HasSuffix(c, ":") {
-			sc -= 2
-		}
-		sc -= 0.15 * float64(i) // earlier is a little better
-		ss = append(ss, scored{c, sc, i})
-	}
-	sort.SliceStable(ss, func(a, b int) bool { return ss[a].score > ss[b].score })
-	return ss[0].s
 }

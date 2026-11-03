@@ -1,7 +1,6 @@
 package island
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -130,23 +129,13 @@ func TestHabitsLearnAndForget(t *testing.T) {
 	}
 }
 
-func TestSummarize(t *testing.T) {
-	msg := "Let me explain what I did.\n\n## Summary\nI looked at the code.\n- Fixed the race in store.go; all 42 tests pass.\n- Updated the README."
-	if got := summarize(msg); !strings.Contains(got, "42 tests pass") {
-		t.Fatalf("picked %q", got)
-	}
-	if summarize("") != "" {
-		t.Fatal("nothing from nothing")
-	}
-}
-
 func TestDoneNotesMerge(t *testing.T) {
 	clock := time.Now()
 	u := NewUI(440, 280, 22)
 	u.now = func() time.Time { return clock }
 	a := &app{ui: u}
-	a.done(&Session{ID: "1", Project: "edge"}, "ok", clock)
-	a.done(&Session{ID: "2", Project: "ember"}, "ok", clock.Add(time.Second))
+	a.done(&Session{ID: "1", Project: "edge"}, clock)
+	a.done(&Session{ID: "2", Project: "ember"}, clock.Add(time.Second))
 	if u.moment.verb+" "+u.moment.text != "Done edge, ember" || u.moment.sub != "2 sessions finished" {
 		t.Fatalf("got %q / %q", u.moment.text, u.moment.sub)
 	}

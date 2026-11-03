@@ -9,64 +9,34 @@ import (
 	"time"
 )
 
-// The card's layout: the hero (headline, and its timeline or recap), the
-// other sessions a line each, then music and the plugins' rows, divided by hairlines.
-// Layout first (what fits), then drawing. Every element arrives (rising and
-// fading in, one after another) and glides when it moves.
+// The card's layout: the hero (headline, and a way to its terminal when it
+// asks), the other sessions a line each, then music and the plugins' rows,
+// divided by hairlines. Layout first (what fits), then drawing. Every element
+// arrives (rising and fading in, one after another) and glides when it moves.
 
 const (
-	lineH      = 30 // another session, one line
-	agentH     = 22 // a subagent on the branch
-	agentStepH = 18 // one of its steps, when it's open
-	recapLineH = 16 // a line of Claude's last word
-	moreH      = 24 // "N more"
-	divH       = 13 // the space and hairline between sections
-	waitBtnH   = 36 // the hero's "Go to terminal"
-	dayH       = 46 // the day, hour by hour
-	cardFoot   = 8  // under the last section
+	lineH    = 30 // another session, one line
+	moreH    = 24 // "N more"
+	divH     = 13 // the space and hairline between sections
+	waitBtnH = 36 // the hero's "Go to terminal"
+	cardFoot = 8  // under the last section
 )
 
 type sessLayout struct {
-	s       *Session
-	hero    bool
-	open    bool // the hero, showing its timeline
-	steps   []Step
-	agents  []*Agent
-	openAg  map[string]bool
-	agSteps int      // steps an open agent shows
-	recap   []string // Claude's last word, wrapped (a finished hero)
-	mode    string
+	s    *Session
+	hero bool
+	mode string
 }
 
 // height of the hero's body (under its headline), or of a line.
 func (l *sessLayout) height() float32 {
-	if !l.open {
-		if l.hero { // "Show all": the headline stands for it
-			return 0
-		}
+	if !l.hero {
 		return lineH
 	}
-	h := float32(0)
-	switch l.mode {
-	case "wait":
-		h += waitBtnH
-	case "recap":
-		return float32(max(len(l.recap), 1))*recapLineH + 10
+	if l.mode == "wait" {
+		return waitBtnH
 	}
-	h += float32(len(l.steps)) * stepH
-	for _, ag := range l.agents {
-		h += agentH
-		if l.openAg[ag.ID] {
-			h += float32(min(len(ag.Hist), l.agSteps)) * agentStepH
-			if ag.Summary != "" {
-				h += agentStepH
-			}
-		}
-	}
-	if h > 0 {
-		h += 4
-	}
-	return h
+	return 0
 }
 
 // footerH is what music and the plugins' rows take. Showing every session, they step aside.
@@ -96,36 +66,15 @@ func (u *UI) board(b brief) (rows []sessLayout, hidden int) {
 		return nil, 0
 	}
 	budget := float32(u.room()-14) - u.headH(b) - cardFoot - u.footerH()
-	hero := sessLayout{s: b.s, hero: true, open: !u.allRows, mode: b.mode, agSteps: agentHist, openAg: map[string]bool{}}
-	if b.mode == "work" || b.mode == "wait" {
-		hero.agents = append(b.s.agentList(), reversed(b.s.Finished)...)
-		for _, ag := range hero.agents {
-			hero.openAg[ag.ID] = u.opened["a:"+b.s.ID+":"+ag.ID]
-		}
-		keep := b.keep
-		if b.mode == "wait" {
-			keep = min(keep, 2)
-		}
-		hero.steps = transcript(b.s, hero.agents, keep)
-	}
-	if b.mode == "recap" {
-		say := b.s.Recap.Summary
-		if b.s.Recap.Failed {
-			say = b.s.Recap.Error
-		}
-		if say != "" {
-			hero.recap = wrap(fSecond(), say, expW-textX-pad, 3)
-		}
-	}
-	rows = append(rows, hero)
+	rows = append(rows, sessLayout{s: b.s, hero: true, mode: b.mode})
 	var others []*Session
 	for _, s := range b.rows {
 		if s != b.s {
 			others = append(others, s)
 		}
 	}
-	if n := u.cfg.CardOthers; len(others) > n && !u.allRows { // [card] others
-		hidden, others = len(others)-n, others[:n]
+	if len(others) > cardOthers && !u.allRows {
+		hidden, others = len(others)-cardOthers, others[:cardOthers]
 	}
 	for _, s := range others {
 		rows = append(rows, sessLayout{s: s})
@@ -143,82 +92,16 @@ func (u *UI) board(b brief) (rows []sessLayout, hidden int) {
 		}
 		return h
 	}
-	for total() > budget {
-		h := &rows[0]
-		switch {
-		case h.agSteps > 1 && anyOpen(h.openAg): // agents' own steps first
-			h.agSteps--
-		case len(h.steps) > 1: // then the timeline, oldest first
-			h.steps = h.steps[:len(h.steps)-1]
-		case len(rows) > 1: // then the last lines fold into "N more"
-			rows = rows[:len(rows)-1]
-			hidden++
-		case closeLast(h):
-		case len(h.agents) > 0:
-			h.agents = h.agents[:len(h.agents)-1]
-		case len(h.steps) > 0:
-			h.steps = h.steps[:len(h.steps)-1]
-		default:
-			return rows, hidden
-		}
+	for total() > budget && len(rows) > 1 { // the last lines fold into "N more"
+		rows = rows[:len(rows)-1]
+		hidden++
 	}
 	return rows, hidden
-}
-
-// closeLast closes the lowest agent that's open on the hero's branch.
-func closeLast(l *sessLayout) bool {
-	for i := len(l.agents) - 1; i >= 0; i-- {
-		if id := l.agents[i].ID; l.openAg[id] {
-			l.openAg[id] = false
-			return true
-		}
-	}
-	return false
-}
-
-func anyOpen(m map[string]bool) bool {
-	for _, v := range m {
-		if v {
-			return true
-		}
-	}
-	return false
-}
-
-func reversed(a []*Agent) []*Agent {
-	out := make([]*Agent, len(a))
-	for i, x := range a {
-		out[len(a)-1-i] = x
-	}
-	return out
-}
-
-// transcript is a session's latest steps, newest first, less the launches
-// of agents that have a row on the branch.
-func transcript(s *Session, agents []*Agent, keep int) []Step {
-	launched := map[string]bool{}
-	for _, ag := range agents {
-		if ag.Desc != "" {
-			launched[ag.Desc] = true
-		}
-	}
-	var out []Step
-	for i := len(s.Turn.Steps) - 1; i >= 0 && len(out) < keep; i-- {
-		st := s.Turn.Steps[i]
-		if st.Kind == "agent" && launched[strings.TrimPrefix(st.Text, "Asked an agent: ")] {
-			continue
-		}
-		out = append(out, st)
-	}
-	return out
 }
 
 func (u *UI) expandedHeight() int {
 	b := u.brief()
 	h := u.headH(b)
-	if b.mode == "day" {
-		h += dayH
-	}
 	rows, hidden := u.board(b)
 	if len(rows) > 0 {
 		h += rows[0].height()
@@ -279,11 +162,6 @@ func (u *UI) drawExpanded(x, w float32) {
 	u.item(heroKey, i, x, w, 0, hh, func(y float32) { u.heroHead(b, x, w, y) })
 	i++
 	y := hh
-	if b.mode == "day" {
-		u.item("day", i, x, w, y, dayH, func(y float32) { u.dayStory(x, w, y) })
-		y += dayH
-		i++
-	}
 	rows, hidden := u.board(b)
 	if len(rows) > 0 {
 		hero := &rows[0]
@@ -420,265 +298,16 @@ func (u *UI) facts(s string, x, base, maxW float32, col color.NRGBA) float32 {
 	return x - x0
 }
 
-// heroBody: under the headline, by mode. Returns where it ends.
+// heroBody: under the headline, only when the session asks: the way to its
+// terminal. Returns where it ends.
 func (u *UI) heroBody(l *sessLayout, x, w, y float32, i *int) float32 {
-	p, s := u.pal, l.s
-	if !l.open {
+	if l.mode != "wait" || u.allRows {
 		return y
 	}
-	top := y
-	gx := x + railX
-	tx := x + textX
-	right := x + w - pad
-	switch l.mode {
-	case "wait":
-		u.item("wait:"+s.ID, *i, x, w, y, waitBtnH, func(y float32) { u.goThere(s, tx, y+4) })
-		y += waitBtnH
-		*i++
-	case "recap":
-		r := s.Recap
-		col := p.green
-		switch {
-		case r.Failed:
-			col = p.red
-		case r.troubled():
-			col = p.yellow
-		}
-		h := l.height()
-		u.item("recap:"+s.ID, *i, x, w, y, h, func(y float32) {
-			lines := l.recap
-			if len(lines) == 0 {
-				lines = []string{"Nothing to report"}
-			}
-			// the rail turns into a bar beside Claude's words: green, amber if it admits a failure, red if it stopped
-			u.dc.roundRect(gx-1, y+1, 2, float32(len(lines))*recapLineH-2, 1, alpha(col, 0.75))
-			tc := p.secondary()
-			if r.Failed {
-				tc = mix(p.red, p.fg, 0.35)
-			}
-			for j, ln := range lines {
-				u.dc.text(fSecond(), ln, tx, y+12+float32(j)*recapLineH, tc)
-			}
-		})
-		*i++
-		return top + h
-	}
-	railTop := float32(38) // just under Ember
-	if l.mode == "wait" {
-		railTop = y + 4
-	}
-	// the thread first, so the steps sit on it: from Ember down to the last
-	// step, or to where the last agent's branch leaves it
-	railEnd := float32(0)
-	if len(l.steps) > 0 {
-		railEnd = y + float32(len(l.steps)-1)*stepH + stepH/2
-	}
-	ay := y + float32(len(l.steps))*stepH
-	for _, ag := range l.agents {
-		railEnd = ay + agentH/2 - 7
-		ay += agentH
-		if l.openAg[ag.ID] {
-			ay += float32(min(len(ag.Hist), l.agSteps)) * agentStepH
-			if ag.Summary != "" {
-				ay += agentStepH
-			}
-		}
-	}
-	if railEnd > railTop+2 {
-		u.dc.roundRect(gx-0.5, railTop, 1, railEnd-railTop, 0.5, alpha(p.fg, 0.16))
-	}
-	if len(l.steps) > 0 && !l.steps[0].Done && s.State == "work" { // the live stretch, Ember to the step at hand
-		first := y + stepH/2
-		u.dc.roundRect(gx-0.75, railTop, 1.5, first-railTop, 0.75, alpha(p.green, 0.45))
-		// each new step: a bead of light runs down the thread from Ember into it
-		if k := float64(u.now().Sub(l.steps[0].At)) / float64(beadTime); k < 1 && first > railTop {
-			u.tweening = true
-			by := railTop + (first-railTop)*float32(easeInOut(k))
-			u.dc.circle(gx, by, 4, alpha(p.green, 0.18*(1-k)))
-			u.dc.circle(gx, by, 2, alpha(mix(p.green, colorWhite, 0.4), 1-k*k))
-		}
-	}
-	for j, st := range l.steps {
-		key := fmt.Sprintf("st:%s:%d", s.ID, st.At.UnixNano())
-		cy := y + stepH/2
-		u.item(key, *i, x, w, y, stepH, func(yy float32) { u.step(s, st, j == 0, gx, tx, right, yy+stepH/2) })
-		_ = cy
-		y += stepH
-		*i++
-	}
-	for _, ag := range l.agents {
-		open := l.openAg[ag.ID]
-		u.shownOpen["a:"+s.ID+":"+ag.ID] = open
-		n := 0
-		if open {
-			n = min(len(ag.Hist), l.agSteps)
-		}
-		h := float32(agentH) + float32(n)*agentStepH
-		if open && ag.Summary != "" {
-			h += agentStepH
-		}
-		u.item("ag:"+s.ID+":"+ag.ID, *i, x, w, y, h, func(yy float32) {
-			u.agentRow(s, ag, open, gx, tx, right, yy+agentH/2)
-			yy += agentH
-			for k := 0; k < n; k++ {
-				st := ag.Hist[len(ag.Hist)-1-k]
-				sy := yy + agentStepH/2
-				col := p.faint
-				if st.Failed {
-					col = p.red
-				}
-				u.dc.icon(st.Kind, tx+4, sy, 9, col)
-				u.dc.text(fCaption(), ellipsize(fCaption(), st.Text, right-tx-14), tx+14, sy+3.5, p.muted)
-				yy += agentStepH
-			}
-			if open && ag.Summary != "" {
-				u.dc.text(fCaption(), ellipsize(fCaption(), "→ "+ag.Summary, right-tx-14), tx+14, yy+agentStepH/2+3.5, p.muted)
-			}
-		})
-		y += h
-		*i++
-	}
-	if len(l.steps) > 0 || len(l.agents) > 0 {
-		y += 4
-	}
-	return y
-}
-
-// step: one step of the timeline. Its kind sits on the rail, its words
-// beside it, what it changed and when at the right. The step in progress
-// glows green, pulses, shimmers and counts its seconds.
-func (u *UI) step(s *Session, st Step, newest bool, gx, tx, right, cy float32) {
-	p, now := u.pal, u.now()
-	current := newest && !st.Done && s.State == "work"
-	col, txtCol, f := p.muted, p.secondary(), fSecond()
-	cur := u.tw(fmt.Sprintf("cur:%s:%d", s.ID, st.At.UnixNano()), map[bool]float64{true: 1}[current], map[bool]float64{true: 1}[current])
-	switch {
-	case st.Failed:
-		col, txtCol = p.red, mix(p.red, p.fg, 0.35)
-	case cur > 0.001: // the live step's colours ease away when it's over
-		col, txtCol = mix(col, p.green, cur), mix(txtCol, p.fg, cur)
-		if current {
-			f = fBody()
-		}
-	}
-	u.dc.circle(gx, cy, 7.5, color2(p))
-	u.dc.icon(st.Kind, gx, cy, 11, col)
-	if current {
-		u.lives = append(u.lives, live{r: image.Rect(int(gx-12), int(cy-12), int(gx+13), int(cy+13)), draw: func(c *canvas, t float64) {
-			q := math.Mod(t/beat, 1)
-			r := 7.5 + 4.5*float32(easeOut(q))
-			c.frame(gx-r, cy-r, 2*r, 2*r, r, 1, alpha(p.green, 0.45*(1-q)*math.Min(1, q*6)))
-		}})
-	}
-	rx := right
-	when := strings.TrimSuffix(ago(now.Sub(st.At)), " ago")
-	switch {
-	case current && stalled(s, now):
-		when = "quiet " + mins(now.Sub(s.Seen))
-	case current:
-		d := now.Sub(st.At)
-		when = mins(d)
-		if d < time.Minute {
-			when = fmt.Sprintf("%ds", int(d.Seconds()))
-		}
-	case st.Failed:
-		when = "failed"
-	case when == "just now":
-		when = "now"
-	}
-	wc := p.faint
-	if st.Failed {
-		wc = p.red
-	}
-	if current && !strings.HasSuffix(when, "s") { // minutes roll; seconds just tick
-		wc := p.muted
-		if stalled(s, now) {
-			wc = p.yellow
-		}
-		rx -= u.rollText(u.dc, "step:"+s.ID, when, fCaption(), rx, cy+4, wc) + 10
-	} else if current {
-		ww := measure(fCaption(), when)
-		u.dc.text(fCaption(), when, rx-ww, cy+4, p.muted)
-		rx -= ww + 10
-	} else {
-		ww := measure(fCaption(), when)
-		u.dc.text(fCaption(), when, rx-ww, cy+4, wc)
-		rx -= ww + 10
-	}
-	if st.Minus > 0 {
-		m := fmt.Sprintf("−%d", st.Minus)
-		rx -= measure(fCaption(), m)
-		u.dc.text(fCaption(), m, rx, cy+4, alpha(p.red, 0.85))
-		rx -= 5
-	}
-	if st.Plus > 0 {
-		pl := fmt.Sprintf("+%d", st.Plus)
-		rx -= measure(fCaption(), pl)
-		u.dc.text(fCaption(), pl, rx, cy+4, alpha(p.green, 0.85))
-		rx -= 5
-	}
-	text := st.Text
-	if current && s.Label != "" { // the live step speaks in the present
-		text = s.Label
-	}
-	t := ellipsize(f, text, rx-6-tx)
-	u.dc.text(f, t, tx, cy+4.5, txtCol)
-	if current {
-		u.shimmerLive(f, t, tx, cy+4.5, mix(p.fg, colorWhite, 0.55))
-	}
-}
-
-// agentRow: a subagent on a branch off the rail: a spark that turns while
-// it runs (a check once it's done), its task, what it's doing, how long.
-func (u *UI) agentRow(s *Session, ag *Agent, open bool, gx, tx, right, cy float32) {
-	p, now := u.pal, u.now()
-	key := "a:" + s.ID + ":" + ag.ID
-	hk := u.hl(key)
-	if hk > 0.01 {
-		u.panel(tx-8, cy-agentH/2+1, right-tx+14, agentH-2, radRow, alpha(p.fg, 0.05*hk))
-	}
-	// the branch: down the rail and round into the agent
-	u.dc.arc(gx+7, cy-7, 7, 1, math.Pi/2, math.Pi, alpha(p.fg, 0.16))
-	u.dc.roundRect(gx+7, cy-0.5, tx-gx-7-3, 1, 0.5, alpha(p.fg, 0.16))
-	ix := tx + 4
-	done := !ag.End.IsZero()
-	if done {
-		u.dc.icon("check", ix, cy, 10, alpha(p.green, 0.8))
-	} else {
-		u.lives = append(u.lives, live{r: image.Rect(int(ix-7), int(cy-7), int(ix+8), int(cy+8)), draw: func(c *canvas, t float64) {
-			sparkle(c, ix, cy, 5.5, t, p.yellow)
-		}})
-	}
-	rx := right
-	if len(ag.Hist) > 0 || ag.Summary != "" {
-		u.chevron(rx-3, cy, u.tw("chev:"+key, map[bool]float64{true: 1}[open], 0), mix(p.faint, p.fg, 0.4*hk))
-		rx -= 13
-	}
-	when := mins(now.Sub(ag.Start))
-	if !done && now.Sub(ag.Start) < time.Minute {
-		when = fmt.Sprintf("%ds", int(now.Sub(ag.Start).Seconds()))
-	}
-	if done {
-		when = "done"
-	}
-	ww := measure(fCaption(), when)
-	u.dc.text(fCaption(), when, rx-ww, cy+4, p.faint)
-	rx -= ww + 10
-	nf := fBody()
-	nx := tx + 14
-	name := ellipsize(nf, ag.name(), (rx-nx)*0.6)
-	if ag.Label == "" || done {
-		name = ellipsize(nf, ag.name(), rx-nx)
-	}
-	ncol := p.fg
-	if done {
-		ncol = p.muted
-	}
-	nw := u.dc.text(nf, name, nx, cy+4, ncol)
-	if ag.Label != "" && !done {
-		u.dc.text(fCaption(), ellipsize(fCaption(), ag.Label, rx-nx-nw-8), nx+nw+8, cy+4, p.muted)
-	}
-	u.hits = append(u.hits, hit{image.Rect(int(tx-8), int(cy-agentH/2), int(right+6), int(cy+agentH/2)), key})
+	s := l.s
+	u.item("wait:"+s.ID, *i, x, w, y, waitBtnH, func(y float32) { u.goThere(s, x+textX, y+4) })
+	*i++
+	return y + waitBtnH
 }
 
 // sessionLine: another session, on one line. Click it and it's the hero.
@@ -704,8 +333,8 @@ func (u *UI) sessionLine(s *Session, x, w, y float32) {
 		}
 	case s.State == "wait":
 		when = ago(now.Sub(s.Seen))
-	case s.Recap != nil:
-		when = ago(now.Sub(s.Recap.At))
+	case s.Outcome != nil:
+		when = ago(now.Sub(s.Outcome.At))
 	}
 	if k > 0.01 { // under the pointer, a chevron says "open this here"
 		u.chevron(right-3, cy, 0, alpha(mix(p.faint, p.fg, 0.5), k))
@@ -739,13 +368,10 @@ func (u *UI) sessionLine(s *Session, x, w, y float32) {
 		}
 	case s.running() > 0:
 		what, col = agentsText(s.running())+" working", p.muted
-	case s.Recap != nil && s.Recap.Failed:
-		verb, verbCol, what, col = "Stopped", p.red, s.Recap.Error, p.muted
-	case s.Recap != nil && now.Sub(s.Recap.At) < recapFresh:
-		verb, verbCol, what, col = "Done", p.green, firstClause(s.Recap.Summary), p.muted
-		if what == "" {
-			what = s.task()
-		}
+	case s.Outcome != nil && s.Outcome.Failed:
+		verb, verbCol, what, col = "Stopped", p.red, s.Outcome.Error, p.muted
+	case s.Outcome != nil && now.Sub(s.Outcome.At) < outcomeFresh:
+		verb, verbCol, what, col = "Done", p.green, s.task(), p.muted
 	}
 	ax := tx + nw + 8
 	if verb != "" {
@@ -759,14 +385,6 @@ func (u *UI) sessionLine(s *Session, x, w, y float32) {
 	if s.State == "work" {
 		u.shimmerLive(fSecond(), t, ax, base, mix(p.fg, colorWhite, 0.25))
 	}
-}
-
-// firstClause: a summary's opening, up to its first comma, colon or stop.
-func firstClause(s string) string {
-	if i := strings.IndexAny(s, ",:;."); i > 12 {
-		return s[:i]
-	}
-	return s
 }
 
 // moreLink: "2 more" / "Show less", centred, quiet.
@@ -790,8 +408,6 @@ func (u *UI) moreLink(hidden int, x, w, y float32) {
 }
 
 // ---- the glyphs ----
-
-const beadTime = 420 * time.Millisecond
 
 // beat is the one rhythm every pulse keeps (rings, the halo, orbits), so
 // the island breathes together instead of flickering in many tempos.
@@ -821,35 +437,14 @@ func (u *UI) sessionGlyph(s *Session, gx, gy float32) {
 				c.circle(gx+10*float32(math.Cos(b)), gy+10*float32(math.Sin(b)), 1.3, p.yellow)
 			}
 		}})
-	case s.Recap != nil && s.Recap.Failed:
+	case s.Outcome != nil && s.Outcome.Failed:
 		u.dc.line(pt{gx - 3, gy - 3}, pt{gx + 3, gy + 3}, 1.6, p.red)
 		u.dc.line(pt{gx + 3, gy - 3}, pt{gx - 3, gy + 3}, 1.6, p.red)
-	case s.Recap != nil && now.Sub(s.Recap.At) < recapFresh:
-		col := p.green
-		if s.Recap.troubled() {
-			col = p.yellow
-		}
-		u.dc.icon("check", gx, gy, 10, col)
+	case s.Outcome != nil && now.Sub(s.Outcome.At) < outcomeFresh:
+		u.dc.icon("check", gx, gy, 10, p.green)
 	default:
 		u.dc.arc(gx, gy, 5, 1.1, 0, 2*math.Pi, alpha(p.fg, 0.2))
 	}
-}
-
-// sparkle is a running subagent: a four-pointed spark that turns and
-// breathes.
-func sparkle(c *canvas, cx, cy, r float32, t float64, col color.NRGBA) {
-	rot := t * 1.8
-	k := float32(0.82 + 0.18*math.Sin(t*4.1))
-	var ps []pt
-	for i := 0; i < 8; i++ {
-		a := rot + float64(i)*math.Pi/4
-		rr := r * k
-		if i%2 == 1 {
-			rr = r * 0.32
-		}
-		ps = append(ps, pt{cx + rr*float32(math.Cos(a)), cy + rr*float32(math.Sin(a))})
-	}
-	c.poly(col, ps...)
 }
 
 // chevron points right when k is 0 and down when it's 1.
@@ -868,56 +463,6 @@ func (u *UI) arrow(x, cy float32, col color.NRGBA) {
 	u.dc.line(pt{x, cy + 3}, pt{x + 6, cy - 3}, 1.3, col)
 	u.dc.line(pt{x + 1.5, cy - 3}, pt{x + 6, cy - 3}, 1.3, col)
 	u.dc.line(pt{x + 6, cy - 3}, pt{x + 6, cy + 1.5}, 1.3, col)
-}
-
-// color2 is the card's own colour, to sit an icon on the rail cleanly.
-func color2(p palette) color.NRGBA { return mix(p.bg, p.island, 0.5) }
-
-// dayStory: the day, hour by hour: when Claude was busy, and now.
-func (u *UI) dayStory(x, w, y float32) {
-	p, now := u.pal, u.now()
-	bx, bw := x+textX, w-textX-pad
-	top := 1
-	for _, c := range u.day.Hours {
-		top = max(top, c)
-	}
-	slot := bw / 24
-	bwid := max(slot-4, 3)
-	floor := y + 26
-	age := now.Sub(u.trAt)
-	for h := 0; h < 24; h++ {
-		c := u.day.Hours[h]
-		bh := float32(2)
-		if c > 0 { // the bars rise one after another as the card opens
-			g := phase(age, time.Duration(90+16*h)*time.Millisecond, 380*time.Millisecond)
-			if g < 1 {
-				u.tweening = true
-			}
-			bh = 2 + (1+19*float32(math.Sqrt(float64(c)/float64(top))))*float32(g)
-		}
-		col := alpha(p.fg, 0.12)
-		switch {
-		case h == now.Hour():
-			col = p.green
-		case c > 0:
-			col = alpha(p.green, 0.5)
-		case h > now.Hour():
-			col = alpha(p.fg, 0.05)
-		}
-		bx0 := bx + float32(h)*slot + (slot-bwid)/2
-		u.dc.roundRect(bx0, floor-bh, bwid, bh, min(1.5, bwid/2), col)
-		if h == now.Hour() { // this hour breathes on the island's beat
-			bx0, bh := bx0, bh
-			u.lives = append(u.lives, live{r: image.Rect(int(bx0)-4, int(floor-bh)-4, int(bx0+bwid)+5, int(floor)+4), draw: func(c *canvas, t float64) {
-				q := 0.5 + 0.5*math.Sin(t*2*math.Pi/(2*beat))
-				c.frame(bx0-2, floor-bh-2, bwid+4, bh+4, 2.5, 1, alpha(p.green, 0.12+0.3*q))
-			}})
-		}
-	}
-	for _, h := range []int{0, 6, 12, 18} {
-		lbl := map[int]string{0: "12a", 6: "6a", 12: "12p", 18: "6p"}[h]
-		u.dc.text(fCaption(), lbl, bx+float32(h)*slot+(slot-bwid)/2, y+40, p.faint)
-	}
 }
 
 // goThere: the way to a session's terminal, a filled blue button at x.
