@@ -3,7 +3,7 @@
 Each release's section here becomes its notes on GitHub. Versions follow [semver](https://semver.org): the config
 file, the commands and the plugin protocol are the public surface.
 
-## Unreleased (1.3)
+## 1.3.0
 
 **Claude as a counter**
 - The pill shows Ember, the session you aren't watching, a bead per session (never orange: light, blue for asks, green
