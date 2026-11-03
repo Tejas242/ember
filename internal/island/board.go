@@ -350,8 +350,8 @@ func (u *UI) sessionLine(s *Session, x, w, y float32) {
 		verb, verbCol, what, col = "asks", p.blue, s.Asking, p.muted
 	case s.State == "work":
 		what, col = "working", p.muted
-		if !s.Since.IsZero() {
-			what += " " + mins(now.Sub(s.Since))
+		if d := now.Sub(s.Since); !s.Since.IsZero() && d >= time.Minute {
+			what += " " + mins(d)
 		}
 	case s.running() > 0:
 		what, col = "working", p.muted
@@ -395,40 +395,6 @@ func (u *UI) moreLink(hidden int, x, w, y float32) {
 // beat is the one rhythm every pulse keeps (rings, the halo, orbits), so
 // the island breathes together instead of flickering in many tempos.
 const beat = 1.6
-
-// sessionGlyph says a session's state at a glance. Working: an orbit with a
-// bead going round it, and a smaller satellite per subagent on an outer
-// track. Waiting: a blue pulse. Done: a check. Idle: an empty ring.
-func (u *UI) sessionGlyph(s *Session, gx, gy float32) {
-	p, now := u.pal, u.now()
-	switch {
-	case s.State == "wait":
-		u.dc.circle(gx, gy, 3.6, p.blue)
-		u.lives = append(u.lives, live{r: image.Rect(int(gx-12), int(gy-12), int(gx+13), int(gy+13)), draw: func(c *canvas, t float64) {
-			q := math.Mod(t/beat, 1)
-			r := 4 + 6*float32(easeOut(q))
-			c.frame(gx-r, gy-r, 2*r, 2*r, r, 1.2, alpha(p.blue, 0.6*(1-q)*math.Min(1, q*6)))
-		}})
-	case s.status() == "work":
-		u.dc.arc(gx, gy, 6, 1.1, 0, 2*math.Pi, alpha(p.green, 0.4))
-		n := min(s.running(), 4)
-		u.lives = append(u.lives, live{r: image.Rect(int(gx-12), int(gy-12), int(gx+13), int(gy+13)), draw: func(c *canvas, t float64) {
-			a := t * 2 * math.Pi / (2 * beat) // one turn every two beats
-			c.circle(gx+6*float32(math.Cos(a)), gy+6*float32(math.Sin(a)), 1.9, p.green)
-			for i := 0; i < n; i++ { // the subagents, round the other way
-				b := -t*1.7 + float64(i)*2*math.Pi/float64(n)
-				c.circle(gx+10*float32(math.Cos(b)), gy+10*float32(math.Sin(b)), 1.3, p.yellow)
-			}
-		}})
-	case s.Outcome != nil && s.Outcome.Failed:
-		u.dc.line(pt{gx - 3, gy - 3}, pt{gx + 3, gy + 3}, 1.6, p.red)
-		u.dc.line(pt{gx + 3, gy - 3}, pt{gx - 3, gy + 3}, 1.6, p.red)
-	case s.Outcome != nil && now.Sub(s.Outcome.At) < outcomeFresh:
-		u.dc.icon("check", gx, gy, 10, p.green)
-	default:
-		u.dc.arc(gx, gy, 5, 1.1, 0, 2*math.Pi, alpha(p.fg, 0.2))
-	}
-}
 
 // chevron points right when k is 0 and down when it's 1.
 func (u *UI) chevron(cx, cy float32, k float64, col color.NRGBA) {

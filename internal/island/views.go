@@ -495,6 +495,7 @@ func (u *UI) measure(v view) (float64, float64) {
 func (u *UI) drawCompact(x, w, h float32) {
 	p, now := u.pal, u.now()
 	l := u.compactLine()
+	h = min(h, u.BarH) // an ask's second line hangs below the bar's height: the first stays where it is
 	left, right, _ := u.pillLayout(l, h)
 	lx := x + pillEnd
 	for _, s := range left {

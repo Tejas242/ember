@@ -190,12 +190,35 @@ func TestGallery(t *testing.T) {
 			g.a.ui.mind.lastEvent = g.clock.Add(-time.Hour)
 		}),
 		pill("working", func(g *galleryScene) { g.work("k", "kinvault", "fix the race in the store's compaction path", 5) }),
-		pill("working: three sessions, subagents", func(g *galleryScene) {
+		pill("counter: 3 sessions, 5 agents working", func(g *galleryScene) {
 			g.work("k", "kinvault", "fix the race in the store's compaction path", 5)
 			g.agent("k", "kinvault", "a1", "Map the store's locking", 2)
 			g.agent("k", "kinvault", "a2", "Find every compaction caller", 1)
 			g.work("e", "edge", "add a hint ladder", 2)
+			g.agent("e", "edge", "b1", "Read the contract", 1)
+			g.agent("e", "edge", "b2", "Read the tests", 1)
 			g.work("m", "ember", "redesign the island", 3)
+			g.agent("m", "ember", "c1", "Check the renders", 1)
+		}),
+		pill("4 sessions, one asks (the ask outranks the beads)", func(g *galleryScene) { g.counter() }),
+		pill("asks: two lines, the question (first 5 s)", func(g *galleryScene) {
+			g.work("j", "jobwatch", "clean the build output", 2)
+			hookAt(g.a, "PermissionRequest", "j", "jobwatch", map[string]any{"tool_name": "Bash",
+				"tool_input": map[string]any{"command": "rm -rf build/ && go test ./... -race -count=1 -run Integration"}})
+		}),
+		pill("asks: settled", func(g *galleryScene) {
+			g.work("j", "jobwatch", "clean the build output", 2)
+			hookAt(g.a, "PermissionRequest", "j", "jobwatch", map[string]any{"tool_name": "Bash",
+				"tool_input": map[string]any{"command": "rm -rf build/ && go test ./... -race -count=1 -run Integration"}})
+			g.clock = g.clock.Add(10 * time.Second)
+		}),
+		pill("done, unseen: kinvault done", func(g *galleryScene) {
+			g.work("k", "kinvault", "fix the race", 3)
+			hookAt(g.a, "Stop", "k", "kinvault", map[string]any{"last_assistant_message": "Fixed."})
+			g.a.ui.moment = nil
+		}),
+		pill("limit hit, then Claude's back", func(g *galleryScene) {
+			g.a.ui.Moment(moment{key: "claude:back", act: "claude", mood: moodHappy, text: "Claude's back", until: g.clock.Add(time.Hour)})
 		}),
 		pill("working, music as the satellite", func(g *galleryScene) {
 			g.work("k", "kinvault", "fix the race in the store's compaction path", 5)
@@ -279,6 +302,16 @@ func TestGallery(t *testing.T) {
 			hookAt(g.a, "Notification", "k", "kinvault", map[string]any{"notification_type": "permission_prompt"})
 			g.work("e", "edge", "add a hint ladder", 2)
 			g.music(true)
+		}),
+		card("Claude's rows: asks, working, done, stopped", func(g *galleryScene) { g.counter() }),
+		card("limits at 84%: the foot line", func(g *galleryScene) {
+			g.work("k", "kinvault", "fix the race in the store's compaction path", 4)
+			g.music(true)
+			g.limit(84, 100*time.Minute)
+		}),
+		card("limits at 100%", func(g *galleryScene) {
+			g.work("k", "kinvault", "fix the race in the store's compaction path", 4)
+			g.limit(100, 100*time.Minute)
 		}),
 		card("just finished", func(g *galleryScene) {
 			g.work("k", "kinvault", "fix the race in the store's compaction path", 5)
@@ -382,11 +415,6 @@ func TestGallery(t *testing.T) {
 	}, func(g *galleryScene) {
 		g.a.ui.Moment(moment{key: "osd:volume", icon: "volume", tint: g.a.ui.pal.fg, meter: true, level: 0.05, right: "5", until: g.clock.Add(time.Hour), osd: true})
 	}, []int{0, 3, 6, 9, 12, 16, 22, 30}, pillCrop)
-	strip("hero", "another session becomes the hero", func(g *galleryScene) {
-		g.work("e", "edge", "add a hint ladder to the daily problem flow", 3)
-		g.work("k", "kinvault", "fix the race in the store's compaction path", 4)
-		g.a.ui.pinned = true
-	}, func(g *galleryScene) { g.a.ui.press("s:e", 1); g.a.ui.Invalidate() }, open, cardCrop)
 
 	if noPlugins() {
 		return
@@ -432,4 +460,31 @@ func (g *galleryScene) edge() {
 	}
 	st := edgeFixture()
 	edgeSays(g.a.ui, &adapter.Status{Today: 1, Need: 2, Streak: 4}, st)
+}
+
+// counter: three sessions with five agents between them, one asking, one
+// finished while you looked elsewhere.
+func (g *galleryScene) counter() {
+	g.work("k", "kinvault", "fix the race in the store's compaction path", 4)
+	g.agent("k", "kinvault", "a1", "Map the store's locking", 2)
+	g.agent("k", "kinvault", "a2", "Find every compaction caller", 1)
+	g.agent("k", "kinvault", "a3", "Audit the tests", 1)
+	g.work("e", "edge", "add a hint ladder", 2)
+	g.agent("e", "edge", "b1", "Read the contract", 1)
+	g.agent("e", "edge", "b2", "Read the tests", 1)
+	hookAt(g.a, "PermissionRequest", "e", "edge", map[string]any{"tool_name": "Edit",
+		"tool_input": map[string]any{"file_path": "/x/edge/ladder.go"}})
+	g.work("j", "jobwatch", "clean the build output", 2)
+	hookAt(g.a, "PermissionRequest", "j", "jobwatch", map[string]any{"tool_name": "Bash",
+		"tool_input": map[string]any{"command": "rm -rf build/"}})
+	g.work("m", "ember", "redesign the island", 3)
+	hookAt(g.a, "Stop", "m", "ember", map[string]any{"last_assistant_message": "Done."})
+	g.a.ui.moment = nil
+	g.clock = g.clock.Add(14 * time.Minute)
+	g.work("q", "quota", "tidy the config", 1)
+}
+
+// limit: the status line says the 5 hour window is pct full and resets in d.
+func (g *galleryScene) limit(pct float64, d time.Duration) {
+	g.a.ui.lim.f = limitsFile{H5: &pct, H5At: g.clock.Add(d).Unix(), T: g.clock.Unix()}
 }

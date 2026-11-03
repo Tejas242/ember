@@ -29,7 +29,7 @@ const (
 	growTime  = 5 * time.Second // an ask is two lines tall this long
 	growH     = 20              // and the second line's room
 	growChars = 52              // the question, cut at this many characters
-	growMaxW  = 340
+	growMaxW  = 380
 	doneHold  = 20 * time.Minute // a finish waits this long for you to look, then it lives in the card
 )
 
