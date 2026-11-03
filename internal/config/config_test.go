@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"image/color"
 	"os"
 	"reflect"
 	"slices"
@@ -43,36 +42,23 @@ away_after_s = 300
 idle = "both"
 [card]
 hover_delay_ms = 0
-steps = 2
-others = 0
 [moments]
-done_s = 2.5
 osd_ms = 900
 [claude]
-answer = false
-wait_s = 30
 settle_min = 10
 agent_quiet_min = 5
-[look]
-opacity = 1
-green = "#00ff00"
-amber = '0x112233'
 [ember]
 motion = "calm"
 dance = false
-flourishes = false
-celebrate = false
 `)
 	if len(warns) > 0 {
 		t.Fatal(warns)
 	}
 	want := Default()
 	want.Clock24, want.AwayAfter, want.Pill = true, 5*time.Minute, "both"
-	want.HoverDelay, want.CardSteps, want.CardOthers = 0, 2, 0
-	want.DoneFor, want.OSDFor = 2500*time.Millisecond, 900*time.Millisecond
-	want.Answer, want.Wait, want.Settle, want.AgentQuiet = false, 30*time.Second, 10*time.Minute, 5*time.Minute
-	want.Opacity, want.Green, want.Amber = 1, color.NRGBA{0, 255, 0, 255}, color.NRGBA{0x11, 0x22, 0x33, 255}
-	want.Calm, want.Dance, want.Flourishes, want.Celebrate = true, false, false, false
+	want.HoverDelay, want.OSDFor = 0, 900*time.Millisecond
+	want.Settle, want.AgentQuiet = 10*time.Minute, 5*time.Minute
+	want.Calm, want.Dance = true, false
 	if !reflect.DeepEqual(c, want) {
 		t.Fatalf("\n got %+v\nwant %+v", c, want)
 	}
@@ -86,11 +72,7 @@ func TestConfigWarnings(t *testing.T) {
 	c, warns, _ := parse(`clock = "25h"
 hover_delay_ms = soon
 [card]
-steps = 9
 colour = "red"
-[look]
-opacity = NaN
-red = "crimson"
 [show]
 music = yes
 [future]
@@ -102,20 +84,17 @@ enabled = "sometimes"
 	want := []string{
 		"config: line 1: clock must be 12h or 24h",
 		"config: line 2: hover_delay_ms must be a number from 0 to 5000",
-		"config: line 4: card.steps must be a whole number from 1 to 4",
-		"config: line 5: unknown key card.colour",
-		"config: line 7: look.opacity must be a number from 0.3 to 1",
-		`config: line 8: look.red must be a colour like "#72dd71", or "" to follow the theme`,
-		"config: line 10: show.music must be true or false",
-		"config: line 11: unknown section [future]",
-		`config: line 13: expected key = value, got "just a line"`,
-		"config: line 15: plugins.edge.enabled must be auto, true or false",
+		"config: line 4: unknown key card.colour",
+		"config: line 6: show.music must be true or false",
+		"config: line 7: unknown section [future]",
+		`config: line 9: expected key = value, got "just a line"`,
+		"config: line 11: plugins.edge.enabled must be auto, true or false",
 	}
 	if !reflect.DeepEqual(warns, want) {
 		t.Fatalf("warnings:\n%s", strings.Join(warns, "\n"))
 	}
 	d := Default()
-	if c.Clock24 || c.HoverDelay != d.HoverDelay || c.CardSteps != d.CardSteps || c.Opacity != d.Opacity || !c.Music || c.Red != d.Red {
+	if c.Clock24 || c.HoverDelay != d.HoverDelay || !c.Music {
 		t.Fatalf("bad values didn't keep their defaults: %+v", c)
 	}
 	if !c.PluginOn("edge", true) || c.PluginOn("edge", false) {
@@ -158,7 +137,7 @@ func TestCheckConfig(t *testing.T) {
 		t.Fatal(warns)
 	}
 	if slices.Contains(missing, "clock") || slices.Contains(missing, "card.hover_delay_ms") || slices.Contains(missing, "show.music") ||
-		!slices.Contains(missing, "card.steps") || !slices.Contains(missing, "look.opacity") {
+		!slices.Contains(missing, "claude.settle_min") || slices.Contains(missing, "card.steps") {
 		t.Fatal(missing)
 	}
 	writeFile(t, p, DefaultText)
@@ -218,13 +197,12 @@ func TestPluginGrants(t *testing.T) {
 
 // Paste gives missing keys as the shipped lines, under their sections.
 func TestPaste(t *testing.T) {
-	got := Paste([]string{"clock", "card.others", "card.steps", "claude.wait_s"})
+	got := Paste([]string{"clock", "card.hover_delay_ms", "claude.settle_min"})
 	want := `clock        = "12h"  # 12h | 24h
 [card]
-steps          = 4    # timeline steps, at most (1-4; fewer when other rows need the room)
-others         = 3    # sessions listed besides the first; the rest fold into "N more" (0-3)
+hover_delay_ms = 150  # how long the pointer rests on the pill before the card drops
 [claude]
-wait_s          = 85    # how long a request waits on the island before the terminal asks (5-85)`
+settle_min      = 30    # a session silent this long is taken as stopped (a killed Claude never says so)`
 	if got != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
 	}
@@ -245,11 +223,45 @@ func TestMotion(t *testing.T) {
 // counts as the new one.
 func TestPrivacy(t *testing.T) {
 	c, warns, keys := parse("[show]\nprivacy = false\n")
-	if len(warns) > 0 || c.Privacy || !c.Discreet || !slices.Contains(keys, "privacy.dot") {
+	if len(warns) > 0 || c.Privacy || !slices.Contains(keys, "privacy.dot") {
 		t.Fatalf("%v %+v %v", warns, c, keys)
 	}
-	c, warns, _ = parse("[privacy]\ndot = false\ndiscreet = false\n")
-	if len(warns) > 0 || c.Privacy || c.Discreet {
+	c, warns, _ = parse("[privacy]\ndot = false\n")
+	if len(warns) > 0 || c.Privacy {
 		t.Fatalf("%v %+v", warns, c)
+	}
+}
+
+// An old config with keys Ember 1.3 retired loads as before; the keys only
+// get a warning (which `ember doctor` prints) and change nothing.
+func TestRetiredKeysOnlyWarn(t *testing.T) {
+	old := `[card]
+steps = 2
+others = 1
+[moments]
+done_s = 3
+[claude]
+answer = false
+wait_s = 30
+[look]
+opacity = 0.5
+green = "#00ff00"
+[ember]
+flourishes = false
+celebrate = false
+[privacy]
+discreet = false
+`
+	c, warns, keys := parse(old)
+	if len(warns) != 10 || len(keys) != 0 {
+		t.Fatalf("%d warnings, keys %v:\n%s", len(warns), keys, strings.Join(warns, "\n"))
+	}
+	for _, w := range warns {
+		if !strings.Contains(w, "no longer used") {
+			t.Errorf("not a retirement notice: %s", w)
+		}
+	}
+	if !reflect.DeepEqual(c, Default()) {
+		t.Fatalf("retired keys changed the config: %+v", c)
 	}
 }

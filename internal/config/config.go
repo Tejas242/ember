@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Tejas242/ember/internal/ipc"
 	"github.com/Tejas242/ember/internal/xdg"
 )
 
@@ -23,23 +22,13 @@ type Config struct {
 	AwayAfter  time.Duration // away_after_s: idle this long and you're away
 	Pill       string        // [pill] idle: clock | date | both
 	HoverDelay time.Duration // [card] hover_delay_ms (top-level before [card] existed; still read there)
-	CardSteps  int           // [card] steps: timeline steps, at most
-	CardOthers int           // [card] others: other sessions listed under the story
-	DoneFor    time.Duration // [moments] done_s
 	OSDFor     time.Duration // [moments] osd_ms
-	Answer     bool          // [claude] answer: requests on the island, not only in the terminal
-	Wait       time.Duration // [claude] wait_s: before a request goes back to the terminal
 	Settle     time.Duration // [claude] settle_min: a silent session is taken as stopped
 	AgentQuiet time.Duration // [claude] agent_quiet_min: a silent subagent is taken as gone
-	Opacity    float64       // [look] opacity of the island's body
 	BarHeight  float64       // [look] bar_height: the bar's thickness; 0 asks Noctalia (else 24)
 
-	Green, Blue, Red, Amber color.NRGBA // [look] colours; zero follows the Noctalia theme
-
-	Calm       bool // [ember] motion = "calm": no hops, sparks, light bands, breathing halo or dance
-	Dance      bool // [ember] dance: to your music, in headphones
-	Flourishes bool // [ember] flourishes: the stretch, the yawn, the eye-roll, hello
-	Celebrate  bool // [ember] celebrate: hops and sparks when a task is done
+	Calm  bool // [ember] motion = "calm": no hops, sparks, light bands, breathing halo or dance
+	Dance bool // [ember] dance: to your music, in headphones
 
 	Claude      bool // [show] claude
 	Music       bool // [show] music
@@ -49,7 +38,6 @@ type Config struct {
 	Devices     bool // [show] devices: Bluetooth audio connecting
 	Screenshots bool // [show] screenshots
 	Privacy     bool // [privacy] dot (once [show] privacy): a dot while the screen is shared
-	Discreet    bool // [privacy] discreet: while it's shared, no Claude words, no previews, no hover
 	Done        bool // [show] done: "Done · project" when Claude finishes
 
 	Lyrics bool // [vibe] lyrics: the vibe stage may look a song's words up (LRCLIB); false keeps it offline
@@ -60,7 +48,6 @@ type Config struct {
 
 // The defaults the island's own code also uses.
 const (
-	DefaultCardSteps  = 4                       // [card] steps: timeline steps shown, at most
 	DefaultOSDFor     = 1600 * time.Millisecond // [moments] osd_ms
 	DefaultAgentQuiet = 20 * time.Minute        // [claude] agent_quiet_min: a silent agent was killed
 )
@@ -68,11 +55,10 @@ const (
 // Default is the config with no file.
 func Default() Config {
 	return Config{AwayAfter: 2 * time.Minute, Pill: "clock", HoverDelay: 150 * time.Millisecond,
-		CardSteps: DefaultCardSteps, CardOthers: 3, DoneFor: 6 * time.Second, OSDFor: DefaultOSDFor,
-		Answer: true, Wait: ipc.AskTimeout - 5*time.Second, Settle: 30 * time.Minute, AgentQuiet: DefaultAgentQuiet, Opacity: 0.87,
-		Dance: true, Flourishes: true, Celebrate: true,
+		OSDFor: DefaultOSDFor, Settle: 30 * time.Minute, AgentQuiet: DefaultAgentQuiet,
+		Dance:  true,
 		Claude: true, Music: true, Edge: true, Battery: true,
-		OSD: true, Devices: true, Screenshots: true, Privacy: true, Discreet: true, Done: true, Lyrics: true}
+		OSD: true, Devices: true, Screenshots: true, Privacy: true, Done: true, Lyrics: true}
 }
 
 // Path is the config file.
@@ -93,36 +79,23 @@ idle = "clock"  # what the pill shows when nothing's going on: clock | date | bo
 
 [card]
 hover_delay_ms = 150  # how long the pointer rests on the pill before the card drops
-steps          = 4    # timeline steps, at most (1-4; fewer when other rows need the room)
-others         = 3    # sessions listed besides the first; the rest fold into "N more" (0-3)
 
 [moments]
-done_s = 6     # how long "Done · project" stays up
 osd_ms = 1600  # how long a volume or brightness level stays up
 
 [claude]
-answer          = true  # answer permission requests and questions on the island; false: only the terminal asks
-wait_s          = 85    # how long a request waits on the island before the terminal asks (5-85)
 settle_min      = 30    # a session silent this long is taken as stopped (a killed Claude never says so)
 agent_quiet_min = 20    # the same for a subagent
 
 [look]
-opacity    = 0.87  # the island's body: 1 is solid, lower lets the blur through (0.3-1)
-bar_height = 0     # your bar's thickness in px, so the pill sits on its line; 0 asks Noctalia, else 24 (16-64)
-# colours are hex, like "#72dd71"; "" follows Noctalia's theme
-green   = ""    # working, done
-blue    = ""    # waiting on you
-red     = ""    # errors
-amber   = ""    # nudges, low battery
+bar_height = 0  # your bar's thickness in px, so the pill sits on its line; 0 asks Noctalia, else 24 (16-64)
 
 [ember]
-motion     = "full"  # full | calm: calm keeps the colours but drops hops, sparks, bands of light, the breathing halo and the dance (reduced motion, and less CPU)
-dance      = true    # dance to your music, in headphones
-flourishes = true    # things it does on its own: the morning stretch, a yawn at bedtime, the eye-roll, hello
-celebrate  = true    # hops and sparks when a long task is done
+motion = "full"  # full | calm: calm keeps the colours but drops hops, sparks, bands of light, the breathing halo, the little things it does on its own and the dance (reduced motion, and less CPU)
+dance  = true    # dance to your music, in headphones
 
 [show]
-claude      = true  # Claude Code sessions, permission requests, questions
+claude      = true  # Claude Code sessions: who is working, who asks, who is done
 done        = true  # "Done · project" when a session finishes and you're elsewhere
 music       = true  # the playing track (MPRIS)
 edge        = true  # edge's practice status, if edge runs
@@ -133,7 +106,6 @@ screenshots = true  # a preview when a screenshot is saved
 
 [privacy]
 dot      = true  # a dot while your screen is being shared or recorded (once [show] privacy, still read)
-discreet = true  # while it's shared: Done without Claude's words, no screenshot previews, the card opens on click only
 
 [vibe]
 lyrics = true  # click Ember in the card while a song plays: its words, from an .lrc beside the file, a cache, or LRCLIB; false: no network
@@ -289,13 +261,6 @@ func parse(text string) (c Config, warns, keys []string) {
 				warn("%s must be true or false", key)
 			}
 		}
-		count := func(dst *int, lo, hi int) {
-			if n, err := strconv.Atoi(v); err == nil && n >= lo && n <= hi {
-				*dst = n
-			} else {
-				warn("%s must be a whole number from %d to %d", key, lo, hi)
-			}
-		}
 		number := func(lo, hi float64) (float64, bool) {
 			n, err := strconv.ParseFloat(v, 64)
 			if err != nil || math.IsNaN(n) || n < lo || n > hi {
@@ -309,16 +274,6 @@ func parse(text string) (c Config, warns, keys []string) {
 				*dst = time.Duration(n * float64(unit))
 			}
 		}
-		hex := func(dst *color.NRGBA) {
-			if v == "" {
-				*dst = color.NRGBA{}
-			} else if col, ok := HexColor(v); ok {
-				*dst = col
-			} else {
-				warn(`%s must be a colour like "#72dd71", or "" to follow the theme`, key)
-			}
-		}
-
 		canon := key
 		switch key {
 		case "hover_delay_ms":
@@ -346,38 +301,16 @@ func parse(text string) (c Config, warns, keys []string) {
 			}
 		case "card.hover_delay_ms":
 			span(&c.HoverDelay, time.Millisecond, 0, 5000)
-		case "card.steps":
-			count(&c.CardSteps, 1, DefaultCardSteps)
-		case "card.others":
-			count(&c.CardOthers, 0, 3)
-		case "moments.done_s":
-			span(&c.DoneFor, time.Second, 1, 60)
 		case "moments.osd_ms":
 			span(&c.OSDFor, time.Millisecond, 300, 10000)
-		case "claude.answer":
-			flag(&c.Answer)
-		case "claude.wait_s":
-			span(&c.Wait, time.Second, 5, (ipc.AskTimeout - 5*time.Second).Seconds()) // the hook gives up at ipc.AskTimeout
 		case "claude.settle_min":
 			span(&c.Settle, time.Minute, 1, 1440)
 		case "claude.agent_quiet_min":
 			span(&c.AgentQuiet, time.Minute, 1, 1440)
-		case "look.opacity":
-			if n, ok := number(0.3, 1); ok {
-				c.Opacity = n
-			}
 		case "look.bar_height":
 			if n, ok := number(0, 64); ok && (n == 0 || n >= 16) {
 				c.BarHeight = n
 			}
-		case "look.green":
-			hex(&c.Green)
-		case "look.blue":
-			hex(&c.Blue)
-		case "look.red":
-			hex(&c.Red)
-		case "look.amber":
-			hex(&c.Amber)
 		case "ember.motion":
 			switch v {
 			case "full", "calm":
@@ -387,10 +320,6 @@ func parse(text string) (c Config, warns, keys []string) {
 			}
 		case "ember.dance":
 			flag(&c.Dance)
-		case "ember.flourishes":
-			flag(&c.Flourishes)
-		case "ember.celebrate":
-			flag(&c.Celebrate)
 		case "show.claude":
 			flag(&c.Claude)
 		case "show.music":
@@ -409,17 +338,28 @@ func parse(text string) (c Config, warns, keys []string) {
 			flag(&c.Privacy)
 		case "vibe.lyrics":
 			flag(&c.Lyrics)
-		case "privacy.discreet":
-			flag(&c.Discreet)
 		case "show.done":
 			flag(&c.Done)
 		default:
+			if retired[canon] {
+				warn("%s is no longer used in Ember 1.3 (ignored; you can delete the line)", key)
+				continue
+			}
 			warn("unknown key %s", key)
 			continue
 		}
 		keys = append(keys, canon)
 	}
 	return c, warns, keys
+}
+
+// retired are keys earlier versions read. An old config that still has them
+// loads fine: they do nothing, and only `ember doctor` says so.
+var retired = map[string]bool{
+	"claude.answer": true, "claude.wait_s": true,
+	"card.steps": true, "card.others": true, "moments.done_s": true,
+	"look.opacity": true, "look.green": true, "look.blue": true, "look.red": true, "look.amber": true,
+	"ember.flourishes": true, "ember.celebrate": true, "privacy.discreet": true,
 }
 
 // stripComment cuts a # comment that isn't inside quotes.

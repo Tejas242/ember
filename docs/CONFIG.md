@@ -15,36 +15,23 @@ idle = "clock"  # what the pill shows when nothing's going on: clock | date | bo
 
 [card]
 hover_delay_ms = 150  # how long the pointer rests on the pill before the card drops
-steps          = 4    # timeline steps, at most (1-4; fewer when other rows need the room)
-others         = 3    # sessions listed besides the first; the rest fold into "N more" (0-3)
 
 [moments]
-done_s = 6     # how long "Done · project" stays up
 osd_ms = 1600  # how long a volume or brightness level stays up
 
 [claude]
-answer          = true  # answer permission requests and questions on the island; false: only the terminal asks
-wait_s          = 85    # how long a request waits on the island before the terminal asks (5-85)
 settle_min      = 30    # a session silent this long is taken as stopped (a killed Claude never says so)
 agent_quiet_min = 20    # the same for a subagent
 
 [look]
-opacity    = 0.87  # the island's body: 1 is solid, lower lets the blur through (0.3-1)
-bar_height = 0     # your bar's thickness in px, so the pill sits on its line; 0 asks Noctalia, else 24 (16-64)
-# colours are hex, like "#72dd71"; "" follows Noctalia's theme
-green   = ""    # working, done
-blue    = ""    # waiting on you
-red     = ""    # errors
-amber   = ""    # nudges, low battery
+bar_height = 0  # your bar's thickness in px, so the pill sits on its line; 0 asks Noctalia, else 24 (16-64)
 
 [ember]
-motion     = "full"  # full | calm: calm keeps the colours but drops hops, sparks, bands of light, the breathing halo and the dance (reduced motion, and less CPU)
-dance      = true    # dance to your music, in headphones
-flourishes = true    # things it does on its own: the morning stretch, a yawn at bedtime, the eye-roll, hello
-celebrate  = true    # hops and sparks when a long task is done
+motion = "full"  # full | calm: calm keeps the colours but drops hops, sparks, bands of light, the breathing halo, the little things it does on its own and the dance (reduced motion, and less CPU)
+dance  = true    # dance to your music, in headphones
 
 [show]
-claude      = true  # Claude Code sessions, permission requests, questions
+claude      = true  # Claude Code sessions: who is working, who asks, who is done
 done        = true  # "Done · project" when a session finishes and you're elsewhere
 music       = true  # the playing track (MPRIS)
 edge        = true  # edge's practice status, if edge runs
@@ -55,7 +42,6 @@ screenshots = true  # a preview when a screenshot is saved
 
 [privacy]
 dot      = true  # a dot while your screen is being shared or recorded (once [show] privacy, still read)
-discreet = true  # while it's shared: Done without Claude's words, no screenshot previews, the card opens on click only
 
 [vibe]
 lyrics = true  # click Ember in the card while a song plays: its words, from an .lrc beside the file, a cache, or LRCLIB; false: no network
@@ -71,21 +57,22 @@ grants = ["media", "entry"]  # vibe hears the song only while its stage is open;
 ```
 
 A value Ember can't use, an unknown key or a stray line never stops it: that line keeps its default, and
-`ember doctor` says which line and why (`config: line 12: card.steps must be a whole number from 1 to 4`). Doctor also
-lists settings newer than your file, so you can copy them from here. `hover_delay_ms` at the top of the file, where
+`ember doctor` says which line and why (`config: line 12: show.music must be true or false`). Doctor also
+lists settings newer than your file, so you can copy them from here. Keys Ember 1.3 retired (`[claude] answer` and
+`wait_s`, `[card] steps` and `others`, `[moments] done_s`, `[look]` opacity and colours, `[ember] flourishes` and
+`celebrate`, `[privacy] discreet`) do nothing now; doctor says so and the file still loads. `hover_delay_ms` at the top of the file, where
 it lived before `[card]`, still works. `EMBER_AWAY_AFTER` (a Go duration, like `20s`) overrides `away_after_s` for
 testing.
 
 `[ember]` is about the flame. `motion = "calm"` is reduced motion: Ember keeps its colours and its face but no
 longer hops or throws sparks, bands of light don't cross the pill, a request waiting on you doesn't breathe a halo,
-and it doesn't dance. It also costs less CPU, since fewer frames are drawn. `dance`, `flourishes` (what it does on
-its own: the morning stretch, a yawn near your bedtime, the eye-roll, hello) and `celebrate` (the hops and sparks
-of a Done) turn just those off.
+what it does on its own (the morning stretch, a yawn near your bedtime, the eye-roll, hello) stays quiet, and it
+doesn't dance. It also costs less CPU, since fewer frames are drawn. `dance` turns just the dance off.
 
 `[privacy]` is for when someone can see your screen (niri tells Ember when it's being cast or recorded). `dot`
-shows a dot while it is; it used to be `[show] privacy`, which still works. `discreet` keeps Claude's words off a
-shared screen: a Done says only "Done kinvault", a screenshot shows the camera instead of its preview, and the card
-opens when you click, not when the pointer passes. Requests still show, since they need you.
+shows a dot while it is; it used to be `[show] privacy`, which still works. While the screen is shared Ember is
+always discreet: a Done says only "Done kinvault", a screenshot shows the camera instead of its preview, and the card
+opens when you click, not when the pointer passes.
 
 `[vibe]` is the stage you get by clicking Ember in the card while a song plays (the vibe plugin). Its words come
 from an `.lrc` file beside the song, then a cache in `~/.cache/ember/lyrics`, then LRCLIB (lrclib.net), asked only
