@@ -157,6 +157,7 @@ ember close | toggle
 ember next | prev                       switch what the pill shows
 ember play                              play / pause
 ember dash [name]                       open or close a plugin's dashboard
+ember go                                go to the terminal that asks, else the newest unseen finish, else the newest working
 ```
 
 For example, in niri:
@@ -165,6 +166,7 @@ For example, in niri:
 binds {
     Mod+Shift+P { spawn "ember" "play"; }
     Mod+Shift+C { spawn "ember" "toggle"; }
+    Mod+G       { spawn "ember" "go"; }
 }
 ```
 

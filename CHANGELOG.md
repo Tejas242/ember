@@ -5,6 +5,17 @@ file, the commands and the plugin protocol are the public surface.
 
 ## Unreleased (1.3)
 
+**Claude as a counter**
+- The pill shows Ember, the session you aren't watching, a bead per session (never orange: light, blue for asks, green
+  for an unseen finish, red for a stop, a ring for idle), the agents as a number and the time.
+- A new ask grows the island to two lines for five seconds with the question, then settles to *jobwatch asks*. A
+  finish stays until you focus that terminal (or 20 minutes), then lives in the card as *done 14m ago*; the "while you
+  were away" note is gone. Sessions in the card are 24 px rows that go to their terminal.
+- `ember go` (bind it to Mod+G): the oldest ask, else the newest unseen finish, else the newest working session.
+- Limits: at 80% the card ends with *Claude · 5h 84% · resets 4:10 PM*, and *Claude's back* shows when a limit you
+  hit resets. Ember reads `limits.json` from your status line (one shell line, in `ember doctor` and docs/CONFIG.md)
+  or from `ember limits`. It never edits your files.
+
 **Ember stops holding Claude**
 - The permission and question hooks no longer wait on the island. Every hook is async and returns at once, so the
   terminal asks immediately (before, a request could sit on the island for up to 85 s). Ember still learns what is

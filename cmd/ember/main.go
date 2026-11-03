@@ -79,6 +79,8 @@ func init() {
 		{group: groupControl, name: "next", summary: "switch what the pill shows", run: send("next")},
 		{group: groupControl, name: "prev", summary: "switch back", run: send("prev")},
 		{group: groupControl, name: "play", summary: "play / pause the music", run: send("play")},
+		{group: groupControl, name: "go", summary: "go to the terminal that asks, else the newest finish you haven't seen, else the newest working", run: send("go")},
+		{group: groupControl, name: "limits", summary: "read Claude's status line JSON on stdin; Ember shows the limits (see ember doctor)", run: runLimits},
 
 		{group: groupPlugins, name: "plugins", args: "[name]", max: 1, summary: "each plugin: its state, its health, its last error", run: runPlugins},
 		{group: groupPlugins, name: "dash", args: "[name]", max: 1, summary: "open or close a plugin's dashboard", run: withArg("dash")},

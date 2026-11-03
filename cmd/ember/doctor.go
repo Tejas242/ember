@@ -14,6 +14,7 @@ import (
 	"github.com/Tejas242/ember/internal/ipc"
 	"github.com/Tejas242/ember/internal/plugin"
 	"github.com/Tejas242/ember/internal/wayland"
+	"github.com/Tejas242/ember/internal/xdg"
 )
 
 // doctor checks every piece Ember depends on and says what to do about
@@ -127,6 +128,12 @@ func doctor() {
 		line(true, "claude hooks", fmt.Sprintf("%d hooks in %s", n, settings), "")
 	}
 
+	if !limitsFresh() {
+		note("limits", "Ember can't show Claude's limits yet. Add this line at the end of ~/.claude/statusline.sh (it needs $p5 $r5 $p7 $r7 from your status line):")
+		fmt.Printf("  %-14s   %s\n", "", limitsShellLine)
+		fmt.Printf("  %-14s   or pipe the status line's JSON to `ember limits`.\n", "")
+	}
+
 	c, _ := config.Load(config.Path())
 	if c.BarHeight == 0 && !noctalia() {
 		note("bar", "guessing a 24 px bar (no Noctalia); set [look] bar_height in "+tilde(config.Path())+" to your bar's height")
@@ -187,6 +194,12 @@ func doctor() {
 		fmt.Printf("\n%d problem(s).\n", bad)
 		os.Exit(1)
 	}
+}
+
+// limitsFresh: the status line wrote limits.json in the last day.
+func limitsFresh() bool {
+	fi, err := os.Stat(filepath.Join(xdg.RuntimeDir(), "ember", "limits.json"))
+	return err == nil && time.Since(fi.ModTime()) < 24*time.Hour
 }
 
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }

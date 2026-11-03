@@ -110,3 +110,29 @@ layer-rule {
     background-effect { blur true; }
 }
 ```
+
+## Claude as a counter, and its limits
+
+The pill shows Claude as a counter: Ember, the session you aren't watching, one bead per session (light and pulsing
+while it works, blue when it asks, green when it finished and you haven't looked, red when it stopped, a hollow ring
+when idle; four at most, then `+n`), the agents as a number, and the time. A new ask grows the island to two lines
+for five seconds, with the question (cut at 52 characters); then it settles to *jobwatch asks*. A finish stays as
+*kinvault done* until you focus that terminal, or for 20 minutes, and then lives in the card as *done 14m ago*.
+Clicking a pill about an ask or a finish takes you to that terminal, and so does a session's row in the card.
+
+`ember go` does the same from a key: the oldest ask, else the newest finish you haven't seen, else the newest
+session working; Ember shakes its head if there is none. In niri: `Mod+G { spawn "ember" "go"; }`.
+
+**Limits.** At 80% of the 5 hour or 7 day limit the card gets a last line, *Claude · 5h 84% · resets 4:10 PM*
+(amber, red at 100%). It reads `$XDG_RUNTIME_DIR/ember/limits.json` every ten seconds, which your Claude Code status
+line writes. Ember never edits your status line. Add this one line at its end (it uses the `$p5 $r5 $p7 $r7`
+variables the status line already has; `ember doctor` prints it too):
+
+```bash
+[ "$p5" != "-" ] && { d="$XDG_RUNTIME_DIR/ember"; mkdir -p "$d"; printf '{"h5":%s,"h5_at":%s,"d7":%s,"d7_at":%s,"t":%s}\n' "$p5" "$r5" "${p7/-/null}" "${r7/-/null}" "$(date +%s)" >"$d/limits.tmp" && mv "$d/limits.tmp" "$d/limits.json"; }
+```
+
+Or, if you'd rather not touch the script, pipe the status line's JSON to `ember limits` (a Go process every few
+seconds per session, which is why the shell line is better). The numbers only move while a session is open, so Ember
+hides the line once its reset time has passed, and adds *as of 2:02 PM* when the file is over 15 minutes old. When a
+limit you hit (100%) resets, the pill says *Claude's back* for four seconds.
