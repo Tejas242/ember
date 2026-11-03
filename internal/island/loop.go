@@ -193,7 +193,7 @@ func (a *app) nextWake(animating bool) time.Duration {
 		return 16 * time.Millisecond // normally the frame callback comes first
 	default:
 		next = u.nextTick(now)
-		if u.bud.burst {
+		if u.bud.burst && u.baseTick() > time.Second/12 { // at 12 a second or faster, blinks ride the base tick
 			next = minTime(next, now.Add(u.burstEvery())) // a blink, a glance, a swing
 		}
 		next = minTime(next, now.Truncate(time.Minute).Add(time.Minute))
