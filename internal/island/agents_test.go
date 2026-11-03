@@ -47,8 +47,8 @@ func TestSubagentCallsStayTheirs(t *testing.T) {
 	if rows, _ := a.ui.board(b); b.mode != "work" || len(rows) != 1 || !strings.Contains(b.sub, "1 agent") {
 		t.Fatalf("brief %s %q, rows %+v", b.mode, b.sub, rows)
 	}
-	if l := a.ui.mainLine(); !l.work {
-		t.Fatalf("pill %q", l.text)
+	if l := a.ui.mainLine(); len(l.beads) != 1 || l.beads[0] != beadWork {
+		t.Fatalf("pill %q: beads %v", l.text, l.beads)
 	}
 }
 
@@ -65,8 +65,8 @@ func TestAgentsOutliveTheTurn(t *testing.T) {
 	if s.status() != "work" || a.ui.moment != nil {
 		t.Fatalf("status %s, moment %+v", s.status(), a.ui.moment)
 	}
-	if l := a.ui.mainLine(); !l.work {
-		t.Fatalf("pill %q", l.text)
+	if l := a.ui.mainLine(); len(l.beads) != 1 || l.agentN != 2 {
+		t.Fatalf("pill %q: %d beads, %d agents", l.text, len(l.beads), l.agentN)
 	}
 	b := a.ui.brief()
 	if b.mode != "work" || !strings.Contains(b.sub, "2 agents") {

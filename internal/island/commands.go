@@ -81,5 +81,8 @@ func (a *app) command(cmd, arg string) {
 	case "play":
 		a.key("music:toggle")
 		return
+	case "go":
+		a.goTo()
+		return
 	}
 }

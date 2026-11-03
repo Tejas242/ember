@@ -97,6 +97,8 @@ type worldState struct {
 // presses and drags, and what you opened or picked in the card.
 type pointerState struct {
 	unfolded                map[string]bool                          // dashboard sections you unfolded: "<plugin>:<index>"
+	lim                     limitsState                              // Claude's rate limits, from the file `ember limits` writes
+	growLast                string                                   // the question the pill is folding away
 	allRows                 bool                                     // the card shows every session, one line each ("Show all"), until it closes
 	hero                    string                                   // the session you made the card's hero, until it closes
 	dash                    string                                   // the open dashboard's plugin, if any

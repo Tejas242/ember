@@ -151,8 +151,8 @@ func (u *UI) press(k string, button int) {
 		u.moment = nil
 	case k == "pill":
 		// a waiting session or a "done" moment: go to it; otherwise open now
-		if ss := u.sessionList(); len(ss) > 0 && ss[0].State == "wait" {
-			u.key("focus:" + ss[0].ID)
+		if s := u.pillTarget(); s != nil {
+			u.key("focus:" + s.ID)
 			return
 		}
 		if m := u.moment; m != nil {
@@ -182,8 +182,6 @@ func (u *UI) press(k string, button int) {
 		u.pinned, u.suppress = false, true
 	case k == "rows:all": // "Show all" / "Show less"
 		u.allRows = !u.allRows
-	case strings.HasPrefix(k, "s:"): // another session in the card: it becomes the hero
-		u.hero, u.staggerAt = strings.TrimPrefix(k, "s:"), u.now()
 	case k == "dash", k == "page:back", k == "page:words": // so does a dashboard's, and a stage's way back
 		u.closeDash(proto.CloseUser)
 	case strings.HasPrefix(k, "dash:"): // a plugin's row in the card: its dashboard

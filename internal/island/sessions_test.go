@@ -42,7 +42,7 @@ func TestTwoSessionsHoldStill(t *testing.T) {
 		}
 		step(a, s, p, "f.go")
 		l, b := a.ui.mainLine(), a.ui.brief()
-		if l.text != "ember" || l.badge != "+1" || !l.work {
+		if l.text != "ember" || len(l.beads) != 2 || l.agentN != 0 {
 			t.Fatalf("after a step in %s: pill %q %q", s, l.text, l.badge)
 		}
 		if b.mode != "work" || b.s.ID != "b" || len(b.rows) != 2 || b.rows[1].ID != "a" {
@@ -100,7 +100,7 @@ func TestTwinSessionsHaveNames(t *testing.T) {
 	if l := u.brief(); l.head != "ember 2 needs you" || l.sub != "Wants to run rm -rf build · waiting 0m" {
 		t.Fatalf("card %q / %q", l.head, l.sub)
 	}
-	if l := u.mainLine(); l.text != "ember 2 needs you" {
+	if l := u.mainLine(); l.text != "ember 2 asks" {
 		t.Fatalf("pill %q", l.text)
 	}
 	delete(u.sessions, "b") // alone again: just the project
@@ -133,7 +133,7 @@ func TestRequestsFromTwoSessions(t *testing.T) {
 			t.Fatalf("%s: %q %q, want wait %q", id, s.State, s.Asking, want)
 		}
 	}
-	if l := u.mainLine(); l.text != "3 sessions need you" {
+	if l := u.mainLine(); l.text != "3 ask" {
 		t.Fatalf("pill %q", l.text)
 	}
 	// a is answered in its terminal: only a goes back to work
@@ -231,9 +231,9 @@ func TestDoneMergesAcrossSessions(t *testing.T) {
 	}
 }
 
-// Away while two sessions moved on: one line says what each did, and the
-// click goes to the one that's asking.
-func TestWelcomeBackWithTwoSessions(t *testing.T) {
+// Away while two sessions moved on: no "while you were away" note. The pill
+// keeps what finished and what asks, until you look.
+func TestAwayLeavesTheBeads(t *testing.T) {
 	clock := time.Date(2026, 10, 15, 15, 0, 0, 0, time.Local)
 	a := newTestApp(&clock)
 	hookAt(a, "UserPromptSubmit", "a", "ember", map[string]any{})
@@ -243,10 +243,15 @@ func TestWelcomeBackWithTwoSessions(t *testing.T) {
 	hookAt(a, "Stop", "a", "ember", map[string]any{})
 	hookAt(a, "Stop", "b", "ember", map[string]any{})
 	hookAt(a, "PermissionRequest", "c", "edge", map[string]any{"tool_name": "Bash", "tool_input": map[string]any{"command": "ls"}})
-	a.welcomeBack(clock)
-	m := a.ui.moment
-	if m == nil || m.sub != "ember 1 done · ember 2 done · edge asked you" || m.focus != "c" || m.mood != moodWait {
-		t.Fatalf("%+v", m)
+	a.presence(false)
+	if a.ui.moment != nil {
+		t.Fatalf("a note was made: %+v", a.ui.moment)
+	}
+	if a.ui.sessions["a"].Unseen.IsZero() || a.ui.sessions["c"].State != "wait" {
+		t.Fatal("the pill lost what happened while away")
+	}
+	if s := a.ui.goTarget(); s == nil || s.ID != "c" {
+		t.Fatalf("go: %+v, want the one that asks", s)
 	}
 }
 

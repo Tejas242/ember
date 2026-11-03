@@ -27,7 +27,7 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 		u.allRows, u.hero = false, "" // "Show all" and the hero you picked last as long as the card's open
 	}
 	for _, s := range u.sessions { // an outcome you've now seen leaves the pill
-		if !s.Unseen.IsZero() && (u.watching[s.ID] || now.Sub(s.Unseen) > 30*time.Minute || (v == vExpanded && now.Sub(u.trAt) > time.Second)) {
+		if !s.Unseen.IsZero() && (u.watching[s.ID] || now.Sub(s.Unseen) > doneHold || (v == vExpanded && now.Sub(u.trAt) > time.Second)) {
 			s.Unseen, u.dirty = time.Time{}, true
 		}
 	}

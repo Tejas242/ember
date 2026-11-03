@@ -15,7 +15,7 @@ import (
 // arrives (rising and fading in, one after another) and glides when it moves.
 
 const (
-	lineH    = 30 // another session, one line
+	lineH    = 24 // another session, one line
 	moreH    = 24 // "N more"
 	divH     = 13 // the space and hairline between sections
 	waitBtnH = 36 // the hero's "Go to terminal"
@@ -49,6 +49,9 @@ func (u *UI) footerH() float32 {
 		h += divH + musicH
 	}
 	h += float32(len(u.extRows())) * (divH + extH)
+	if u.limitLine().text != "" {
+		h += divH + limitH
+	}
 	return h
 }
 
@@ -199,6 +202,11 @@ func (u *UI) drawExpanded(x, w float32) {
 		y += extH
 		i++
 	}
+	if l := u.limitLine(); l.text != "" { // Claude's limits come last, and only when they matter
+		u.divider(x, w, y)
+		y += divH
+		u.item("limits", i, x, w, y, limitH, func(y float32) { u.drawLimit(l, x, y) })
+	}
 }
 
 // divider: a hairline between sections, inside the margins.
@@ -310,81 +318,56 @@ func (u *UI) heroBody(l *sessLayout, x, w, y float32, i *int) float32 {
 	return y + waitBtnH
 }
 
-// sessionLine: another session, on one line. Click it and it's the hero.
+// sessionLine: another session, one 24 px row. A bead for its state, the
+// project, the state in words (for an ask, the question), its agents and a ›
+// that takes you to its terminal. Click anywhere on it to go there.
 func (u *UI) sessionLine(s *Session, x, w, y float32) {
 	p, now := u.pal, u.now()
-	key := "s:" + s.ID
+	key := "focus:" + s.ID
 	k := u.hl(key)
 	if k > 0.01 {
-		u.panel(x+pad-8, y+2, w-2*pad+16, lineH-4, radRow, alpha(p.fg, 0.055*k))
+		u.panel(x+pad-8, y+1, w-2*pad+16, lineH-2, radRow, alpha(p.fg, 0.055*k))
 	}
-	u.hits = append(u.hits, hit{image.Rect(int(x+pad-8), int(y+2), int(x+w-pad+8), int(y+lineH-2)), key})
+	u.hits = append(u.hits, hit{image.Rect(int(x+pad-8), int(y+1), int(x+w-pad+8), int(y+lineH-1)), key})
 	cy := y + lineH/2
-	u.sessionGlyph(s, x+railX, cy)
-	right := x + w - pad
 	base := cy + 4.5
-	rx := right
-	when := ""
-	switch {
-	case s.status() == "work" && !s.Since.IsZero():
-		when = mins(now.Sub(s.Since))
-		if now.Sub(s.Since) < time.Minute {
-			when = "<1m"
-		}
-	case s.State == "wait":
-		when = ago(now.Sub(s.Seen))
-	case s.Outcome != nil:
-		when = ago(now.Sub(s.Outcome.At))
-	}
-	if k > 0.01 { // under the pointer, a chevron says "open this here"
-		u.chevron(right-3, cy, 0, alpha(mix(p.faint, p.fg, 0.5), k))
-	}
-	if when != "" {
-		ww := measure(fCaption(), when)
-		u.dc.text(fCaption(), when, rx-ww-12*float32(k), base-0.5, alpha(p.faint, 1-0.6*k))
-		rx -= ww + 10
-	}
+	u.drawBeads([]beadKind{beadOf(s)}, x+railX-beadD/2, cy)
+	right := x + w - pad
+	u.chevron(right-3, cy, 0, mix(p.faint, p.fg, 0.7*k)) // › go there
+	rx := right - 16
 	if n := s.running(); n > 0 {
 		t := fmt.Sprint(n)
 		tw := measure(fBadge(), t)
-		u.dc.text(fBadge(), t, rx-tw, base-1, p.yellow)
-		u.dc.icon("agent", rx-tw-7, cy, 10, p.yellow)
-		rx -= tw + 22
+		u.dc.text(fBadge(), t, rx-tw, base-1, p.faint)
+		rx -= tw + 10
 	}
 	tx := x + textX
 	nw := u.dc.text(fBody(), ellipsize(fBody(), u.short(s), (rx-tx)*0.45), tx, base, p.fg)
 	verb, verbCol := "", p.fg
-	what, col := "Idle", p.faint
+	what, col := "idle", p.faint
 	switch {
 	case s.State == "wait":
-		what, col = "Needs you", p.blue
-		if s.Asking != "" {
-			verb, verbCol, what, col = "Needs you", p.blue, s.Asking, p.muted
-		}
+		verb, verbCol, what, col = "asks", p.blue, s.Asking, p.muted
 	case s.State == "work":
-		what, col = s.Label, p.muted
-		if what == "" {
-			what = "Thinking"
+		what, col = "working", p.muted
+		if !s.Since.IsZero() {
+			what += " " + mins(now.Sub(s.Since))
 		}
 	case s.running() > 0:
-		what, col = agentsText(s.running())+" working", p.muted
+		what, col = "working", p.muted
 	case s.Outcome != nil && s.Outcome.Failed:
-		verb, verbCol, what, col = "Stopped", p.red, s.Outcome.Error, p.muted
+		verb, verbCol, what, col = "stopped", p.red, ago(now.Sub(s.Outcome.At)), p.muted
 	case s.Outcome != nil && now.Sub(s.Outcome.At) < outcomeFresh:
-		verb, verbCol, what, col = "Done", p.green, s.task(), p.muted
+		verb, verbCol, what, col = "done", p.green, ago(now.Sub(s.Outcome.At)), p.muted
 	}
 	ax := tx + nw + 8
 	if verb != "" {
 		ax += u.dc.text(fSecond(), verb, ax, base, verbCol)
 		if what != "" {
-			ax += u.dc.text(fSecond(), " · ", ax, base, p.faint)
+			ax += 6
 		}
 	}
-	t := ellipsize(fSecond(), what, rx-ax)
-	u.dc.text(fSecond(), t, ax, base, col)
-	if s.State == "work" {
-		u.shimmerLive(fSecond(), t, ax, base, mix(p.fg, colorWhite, 0.25))
-	}
+	u.dc.text(fSecond(), ellipsize(fSecond(), what, rx-ax-8), ax, base, col)
 }
 
 // moreLink: "2 more" / "Show less", centred, quiet.

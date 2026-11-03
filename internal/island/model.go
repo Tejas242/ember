@@ -48,6 +48,7 @@ type Session struct {
 	Outcome                   *Outcome  `json:"Recap"` // how the last turn ended (the old key: sessions saved before 1.3 still load)
 	Unseen                    time.Time // it finished or stopped while you weren't looking at it
 	Asking                    string    // what it waits on you for: the permission or question the terminal shows
+	AskAt                     time.Time // when it began to wait
 }
 
 // Outcome is how a turn ended: done, or stopped on an error. That is all

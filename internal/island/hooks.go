@@ -157,7 +157,6 @@ func (a *app) hook(m ipc.Msg) {
 		}
 		a.ui.mind.kick(now, 0.35, -0.6) // a start, and a low mood that takes a while to lift
 		if a.ui.mind.away {
-			a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"fail", a.ui.name(s), s.ID})
 			return
 		}
 		a.ui.Moment(moment{key: "fail:" + s.ID, act: "claude", mood: moodError, verb: "Stopped", text: a.ui.short(s),
@@ -184,6 +183,7 @@ func (a *app) hook(m ipc.Msg) {
 		if in.NotifyType == "permission_prompt" || in.NotifyType == "elicitation_dialog" {
 			if s.State != "wait" {
 				a.ui.play("needs", 0)
+				s.AskAt = now
 			}
 			s.State = "wait"
 			if s.Asking == "" {
@@ -208,7 +208,6 @@ func (a *app) hook(m ipc.Msg) {
 		}
 		a.ui.mind.kick(now, 0.2, 0.35) // pleased
 		if a.ui.mind.away {            // tell them when they're back
-			a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"done", a.ui.name(s), s.ID})
 			return
 		}
 		if !a.ui.cfg.Done || a.looking(s) || s.running() > 0 {
@@ -274,13 +273,11 @@ func (a *app) welcomeBack(now time.Time) {
 func (a *app) asks(s *Session, what string, now time.Time) {
 	if s.State != "wait" {
 		a.ui.play("needs", 0)
+		s.AskAt = now
 	}
 	s.State = "wait"
 	s.Asking = what
 	a.ui.mind.kick(now, 0.4, -0.05)
-	if a.ui.mind.away {
-		a.ui.mind.missed = append(a.ui.mind.missed, missedNote{"wait", a.ui.name(s), s.ID})
-	}
 }
 
 // wanting is what a permission request is about, in the session's words:

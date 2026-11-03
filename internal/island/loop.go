@@ -164,6 +164,9 @@ func (a *app) housekeep(saveDue *bool) {
 	if a.reloadConfig() {
 		a.ui.Invalidate()
 	}
+	if a.readLimits() {
+		a.ui.Invalidate()
+	}
 	if a.ui.now().Sub(a.detectedAt) > redetectEvery { // a tool installed or removed meanwhile
 		a.reconcile()
 	}

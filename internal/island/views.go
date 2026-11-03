@@ -43,7 +43,10 @@ type line struct {
 	timer    string // how long it has been at it, at the right end
 	timerCol color.NRGBA
 	subCol   color.NRGBA // the secondary words' colour, if not the usual
-	agents   int         // subagents running: an amber spark and a count
+	beads    []beadKind  // Claude as a counter: one bead per session
+	agentN   int         // and the agents working, as a quiet numeral
+	hair     bool        // a hairline before the timer
+	grow     string      // an ask's question: the island is two lines tall for a moment
 	chip     string      // a quiet value at the right end (a plugin's: edge's task)
 	chipCol  color.NRGBA
 	lock     bool
@@ -59,7 +62,7 @@ type line struct {
 }
 
 // tick is the part of the line that changes with time alone.
-func (l line) tick() string { return l.timer + "|" + l.chip + "|" + l.sub }
+func (l line) tick() string { return l.timer + "|" + l.chip + "|" + l.sub + "|" + l.grow }
 
 const meterW = 86
 
@@ -109,24 +112,25 @@ func (u *UI) mainLine() line {
 		}
 		switch {
 		case len(waiting) == 1:
-			return line{key: "claude:wait", mood: moodWait, text: u.short(waiting[0]) + " needs you", textCol: p.blue, halo: true}
+			l := line{key: "claude:wait", mood: moodWait, text: u.short(waiting[0]) + " asks", textCol: p.blue, halo: true, timerCol: p.muted}
+			l.grow = u.growText(waiting[0])
+			return l
 		case len(waiting) > 1:
-			return line{key: "claude:wait", mood: moodWait, text: fmt.Sprintf("%d sessions need you", len(waiting)), textCol: p.blue, halo: true}
+			return line{key: "claude:wait", mood: moodWait, text: fmt.Sprintf("%d ask", len(waiting)), textCol: p.blue, halo: true}
 		case len(working) > 0:
+			// the counter: the session you aren't watching, a bead per session,
+			// the agents as a number. What it does step by step is the card's job.
 			s := working[0]
-			// subagents are detail of the same work: the card has them
-			l := line{key: "claude:work", mood: moodWork, text: u.short(s), textCol: p.fg, work: true, timerCol: p.muted}
-			if len(working) > 1 {
-				l.badge = fmt.Sprintf("+%d", len(working)-1)
-			}
+			l := line{key: "claude:work", mood: moodWork, text: u.short(s), textCol: p.fg, timerCol: p.muted, beads: u.beads(ss), agentN: agentTotal(ss)}
 			if d := now.Sub(s.Since); !s.Since.IsZero() && d >= time.Minute {
-				l.timer = mins(d)
+				l.timer, l.hair = mins(d), true
 			}
 			if stalled(s, now) { // nothing heard for a while: it may be stuck
 				l.timerCol = p.yellow
 				if l.timer == "" {
 					l.timer = mins(now.Sub(s.Since))
 				}
+				l.hair = true
 			}
 			return l
 		}
@@ -289,18 +293,13 @@ func (u *UI) pillLayout(l line, h float32) (left, right []seg, w float32) {
 		lw := lettersW(l.letters, 15)
 		right = append(right, seg{w: lw, gap: 10, draw: func(x float32) { u.letters(l.letters, x, cy, 15, 1) }})
 	}
+	if l.hair && l.timer != "" { // the counter's hairline, before the time
+		right = append(right, seg{w: 1, gap: 8, draw: func(x float32) { u.dc.roundRect(x, cy-6, 1, 12, 0.5, alpha(p.fg, 0.14)) }})
+	}
 	if l.timer != "" {
 		tw := tabWidth(fTimer(), l.timer)
 		right = append(right, seg{w: tw, gap: 8, draw: func(x float32) {
 			u.rollText(u.dc, "pill:timer", l.timer, fTimer(), x+tw, base, l.timerCol)
-		}})
-	}
-	if l.agents > 0 {
-		t := fmt.Sprint(l.agents)
-		tw := measure(fBadge(), t)
-		right = append(right, seg{w: 12 + tw, gap: 10, draw: func(x float32) {
-			u.dc.icon("agent", x+5, cy, 10, p.yellow)
-			u.dc.text(fBadge(), t, x+12, base-0.5, p.yellow)
 		}})
 	}
 	if l.chip != "" {
@@ -379,9 +378,17 @@ func (u *UI) pillLayout(l line, h float32) (left, right []seg, w float32) {
 			u.drawTrail(l.trail, x+8, cy, h)
 		}})
 	}
+	var tail []seg // after the words: the counter, a bead per session, then the agents
+	if len(l.beads) > 0 {
+		tail = append(tail, seg{w: beadsW(l.beads), gap: 8, draw: func(x float32) { u.drawBeads(l.beads, x, cy) }})
+		if l.agentN > 0 {
+			t := fmt.Sprint(l.agentN)
+			tail = append(tail, seg{w: measure(fBadge(), t), gap: 7, draw: func(x float32) { u.dc.text(fBadge(), t, x, cy+3.5, p.faint) }})
+		}
+	}
 	slices.Reverse(right) // laid out from the right end inwards
 	fixed := float32(2 * pillEnd)
-	for _, s := range append(append([]seg{}, left...), right...) {
+	for _, s := range append(append(append([]seg{}, left...), tail...), right...) {
 		fixed += s.w + s.gap
 	}
 
@@ -449,6 +456,7 @@ func (u *UI) pillLayout(l line, h float32) (left, right []seg, w float32) {
 			}
 		}})
 	}
+	left = append(left, tail...)
 	w = fixed + gap + words
 	lo := float32(70)
 	if m != nil && m.meter {
@@ -475,7 +483,13 @@ func (u *UI) measure(v view) (float64, float64) {
 	if u.hiddenUnderFull() { // folded up into the top edge
 		return 0, 0
 	}
-	return u.compactWidth(u.compactLine()), float64(u.BarH)
+	l := u.compactLine()
+	w, h := u.compactWidth(l), float64(u.BarH)
+	if l.grow != "" { // an ask: two lines, the question under who asks
+		w = math.Max(w, math.Min(growMaxW, float64(measure(fPillSub(), l.grow))+2*pillEnd+leadW+leadGap))
+		h += growH
+	}
+	return w, h
 }
 
 func (u *UI) drawCompact(x, w, h float32) {
@@ -494,6 +508,7 @@ func (u *UI) drawCompact(x, w, h float32) {
 		s.draw(rx)
 		rx -= s.gap
 	}
+	u.drawGrow(l, x, w, h)
 	if l.music && u.track != nil && u.art == nil { // no cover to ring: the song as a hairline along the rim
 		u.progressLive(x+12, h-1, w-24, 1, u.accent(p.fg), 0)
 	}
