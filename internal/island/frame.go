@@ -22,6 +22,8 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 	u.dt = dt
 	u.pageEnds(now)
 	v := u.currentView()
+	u.noteCards(v, true)
+	u.flushEnded()
 	key := u.viewKey(v)
 	if v != vExpanded {
 		u.allRows, u.hero = false, "" // "Show all" and the hero you picked last as long as the card's open
@@ -258,7 +260,16 @@ func (u *UI) moving(settled bool, p float64, sliding, flashing bool) bool {
 func (u *UI) transition(v view, key string, now time.Time) {
 	switch {
 	case v == vExpanded && u.lastView != vExpanded:
-		u.openCtx, u.openAt = u.habitContext(), now
+		u.openCtx, u.openAt, u.openActs, u.openVia = u.habitContext(), now, 0, "hover"
+		if u.pinned {
+			u.openVia = "click"
+		}
+	}
+	if u.lastView == vExpanded && v != vExpanded { // usage log: how the card was opened, how long, whether you used it
+		u.logOpen(u.openVia, now.Sub(u.openAt), u.openActs > 0)
+	}
+	if u.lastView == vCompact && v != vCompact && v != vExpanded {
+		u.logSurface("grow", map[view]string{vCard: "card", vDash: "dash"}[v])
 	}
 }
 

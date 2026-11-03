@@ -170,9 +170,22 @@ func (a *app) extCard(name string, w *proto.Card) {
 		c.Chips = append(c.Chips, Button{Key: b.Key, Label: b.Label, Primary: b.Primary})
 	}
 	id := w.ID
+	c.OnSeen = func() { // receipts (receipts.go): what actually happened to the card
+		if a.host != nil {
+			a.host.Send(name, proto.Event{Type: "seen", Card: id})
+		}
+	}
+	c.OnDrop = func(why string) {
+		if a.host != nil {
+			a.host.Send(name, proto.Event{Type: "expired", Card: id, Why: why})
+		}
+	}
 	c.OnPick = func(k string) {
 		if a.host == nil {
 			return
+		}
+		if k != "dismiss" {
+			c.acted = k
 		}
 		if k == "dismiss" {
 			a.host.CardClosed(name, id)

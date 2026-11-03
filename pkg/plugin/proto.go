@@ -461,14 +461,15 @@ type Media struct {
 }
 
 // Event is something Ember tells a plugin: Type is click, button, dash,
-// tool, media or stop, and the fields that go with it are set.
+// tool, media, seen, expired or stop, and the fields that go with it are set.
 type Event struct {
 	Type   string `json:"type"`
 	Target string `json:"target,omitempty"` // click
-	Card   string `json:"card,omitempty"`   // button
+	Card   string `json:"card,omitempty"`   // button, seen, expired
 	Key    string `json:"key,omitempty"`    // button
 	State  string `json:"state,omitempty"`  // dash: open | close
 	Reason string `json:"reason,omitempty"` // dash close: user | pointer | media_idle | song_end | other
+	Why    string `json:"why,omitempty"`    // expired: unseen | fullscreen | away | osd | replaced
 
 	Payload json.RawMessage `json:"payload,omitempty"` // tool: what the plugin's tool sent
 

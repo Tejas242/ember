@@ -127,6 +127,9 @@ func (a *app) hook(m ipc.Msg) {
 		return
 	}
 
+	before := s.Asking
+	defer func() { a.ui.logAsk(s, before, m.Event, now) }() // usage log
+
 	switch m.Event {
 	case "SessionEnd":
 		a.end(in.SessionID, now)

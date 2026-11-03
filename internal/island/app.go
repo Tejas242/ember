@@ -139,6 +139,7 @@ func Run(version string) error {
 	}
 	bar := readBar()
 	a := &app{ui: NewUI(surfW, surfH, bar.h), win: win, posts: posts, started: time.Now(), version: version}
+	a.ui.usage = NewUsageLog("", version)
 	a.ui.onKey = a.key
 	a.ui.audio = &source.Audio{}
 	a.ui.habits = loadHabits()

@@ -272,6 +272,26 @@ Ember has a small mind. None of it is scripted animation. It is a handful of mod
   it's finished. A step running long shows its minutes. A session that went silent for half an hour (a killed Claude
   never says Stop) settles to idle.
 
+## Usage log
+
+Ember keeps a private log of how it is used, `~/.local/state/ember/events.jsonl`: appended one JSON line at a
+time, moved to `events.jsonl.1` at 1 MB (one old file is kept), never sent anywhere, never shown. Every line has
+`ts`, `ember` (version), `phase` (edge's trial phase from its stats file, empty when edge isn't running) and `k`,
+the kind:
+
+| k | fields |
+| --- | --- |
+| `surface` | `what` (`grow` or `moment`), `src` (`card`, `dash`, or who the moment is from) |
+| `open` | `via` (`hover`/`click`), `dwell_ms`, `acted` (a row was used) |
+| `row_action` | `key` (the control, e.g. `x:btn:edge:start`) |
+| `card` | `id`, `res` (`acted`/`expired`/`removed`), `visible_ms`, or `unseen: true` when it never showed |
+| `ask` | `resolved_ms`, `via` (the hook that ended it) |
+| `focus` | `app`: a Claude terminal was focused with no ask pending (app id only, never a title) |
+| `cost` | `cpu_pct` of one core and `rss_kb`, every 10 minutes |
+
+It holds no words from Claude or from plugins. The code is `internal/island/usage.go` (the file) and
+`usage_events.go` (the events); anywhere in the island, `u.Log(kind, key, value, …)` adds a line.
+
 ## Cost
 
 All drawing is in software. Steady frames repaint only the live rectangles (Ember, shimmer, equaliser, halo,
