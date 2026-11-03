@@ -16,10 +16,8 @@ import (
 )
 
 const (
-	surfW, surfH = 580, 480 // room for a dashboard; the input region is only the shape
-	roomH        = 380      // the most a card or the open island may take
-	flickerEvery = time.Second / 12
-	idleEvery    = time.Second / 6
+	surfW, surfH = 580, 480              // room for a dashboard; the input region is only the shape
+	roomH        = 380                   // the most a card or the open island may take
 	frameGrace   = 34 * time.Millisecond // a frame callback that never comes doesn't stall us
 )
 
@@ -166,9 +164,6 @@ func Run(version string) error {
 
 func (a *app) setTrack(t *Track) {
 	prev := a.ui.track
-	if a.ui.audio != nil { // the equaliser listens only while a song plays
-		a.ui.audio.Set(t != nil && t.Playing && a.ui.cfg.Music)
-	}
 	if t != nil && !t.Playing { // when it stopped: a song paused long ago leaves the card
 		t.PausedAt = a.ui.now()
 		if prev != nil && !prev.Playing && prev.Title == t.Title && !prev.PausedAt.IsZero() {
@@ -176,6 +171,7 @@ func (a *app) setTrack(t *Track) {
 		}
 	}
 	a.ui.track = t
+	a.syncAudio() // the equaliser listens only while a song plays
 	a.ui.heardPlayhead()
 	if t != nil && t.Playing && (prev == nil || prev.Title != t.Title) {
 		a.ui.mind.novel["music"] = a.ui.now()
@@ -211,6 +207,7 @@ func (a *app) presence(idle bool) {
 		m.away, m.awaySince = true, now
 		return
 	}
+	m.step(now, a.ui.senses()) // nothing was drawn while you were away (loop.go): the mind catches up over the whole gap, still away
 	m.away = false
 	m.kick(now, 0.45, 0.1) // you're back: Ember perks up
 	a.ui.returned(m.awaySince, now)

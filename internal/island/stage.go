@@ -1016,7 +1016,7 @@ func (u *UI) singFace(ps *pose, st *stageState, m mouthShape) {
 }
 
 // stageFPS is how often a stage's live parts repaint: 24 a second on a
-// locked beat, 15 for a sway or a talk, 8 paused, 12 calm; on battery 15,
+// locked beat, 15 for a sway or a talk, 8 paused, 12 calm; on battery 12,
 // under a fifth 10.
 func (u *UI) stageFPS() int {
 	fps := 24
@@ -1030,7 +1030,7 @@ func (u *UI) stageFPS() int {
 		fps = min(fps, 12)
 	}
 	if pw := u.power; pw != nil && pw.state == 2 {
-		fps = min(fps, 15)
+		fps = min(fps, 12)
 		if pw.pct < 20 {
 			fps = min(fps, 10)
 		}

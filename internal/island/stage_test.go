@@ -161,7 +161,7 @@ func TestStageFPS(t *testing.T) {
 		{func() { u.dancing = false }, 15},
 		{func() { u.track.Playing = false }, 8},
 		{func() { u.track.Playing, u.dancing, u.cfg.Calm = true, true, true }, 12},
-		{func() { u.cfg.Calm, u.power = false, &power{state: 2, pct: 50} }, 15},
+		{func() { u.cfg.Calm, u.power = false, &power{state: 2, pct: 50} }, 12},
 		{func() { u.power.pct = 12 }, 10},
 	} {
 		c.set()

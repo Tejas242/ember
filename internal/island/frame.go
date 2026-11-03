@@ -14,6 +14,7 @@ import (
 // frames restore only the live rectangles.
 func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 	now := u.now()
+	u.bud.skipped, u.bud.psOK = false, false
 	dt := now.Sub(u.lastTick).Seconds()
 	if dt <= 0 || dt > 0.05 {
 		dt = 1.0 / 60
@@ -209,6 +210,10 @@ func (u *UI) renderDamage() (animating bool, damage image.Rectangle) {
 		return u.moving(settled, p, sliding, flashing) || leaving > 0, damage
 	}
 	u.stepEmber(dt, now)
+	if mv := u.moving(settled, p, sliding, flashing); !mv && u.quietFrame(t, now) { // nothing a viewer could see changed: send no frame
+		u.bud.skipped, u.dmg = true, u.dmg[:0]
+		return false, image.Rectangle{}
+	}
 	er := u.emberRect()
 	u.dmg = append(u.dmg[:0], er.Union(u.lastEmber))
 	for _, l := range u.lives {
@@ -250,6 +255,12 @@ func (u *UI) moving(settled bool, p float64, sliding, flashing bool) bool {
 		return true
 	}
 	if u.dancing && u.continuous() { // a dance repaints Ember at its own rate (24 a second): its swing, its face and its blinks ride it
+		return false
+	}
+	if u.bud.on { // blinks, glances and swings are bursts: the loop ticks them at 24 a second, no frame callbacks
+		_, _, staged := u.stageNow()
+		own := (u.dancing && u.continuous()) || staged                                                           // a dance and a stage tick at their own rate, which the burst must not raise
+		u.bud.burst = !own && (u.mind.blinkLive(now) || (u.tier() < 2 && (u.eyesMoving() || u.body.swinging()))) // (nearly empty: only blinks)
 		return false
 	}
 	return u.mind.blinking(now) || u.face.busy(now) || u.body.swinging()

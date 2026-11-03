@@ -59,19 +59,26 @@ func simulate(g *galleryScene, d time.Duration, each func(el time.Duration)) sim
 // callback (still moving) or the timer nextWake sets.
 func simLoop(g *galleryScene, d time.Duration, each func(el time.Duration)) simStats {
 	u := g.a.ui
+	u.bud.on = true // the live loop's budget
 	start, end := g.clock, g.clock.Add(d)
 	var st simStats
 	for g.clock.Before(end) {
 		if each != nil {
 			each(g.clock.Sub(start))
 		}
-		animating, _ := u.renderDamage()
-		for _, r := range wayland.MergeRects(append([]image.Rectangle(nil), u.dmg...)) {
-			st.damage += r.Dx() * r.Dy()
+		if u.gated() { // away or under full screen: the loop draws nothing
+			g.clock = g.clock.Add(g.a.nextWake(false))
+			continue
 		}
-		st.frames++
-		if u.lastFull {
-			st.full++
+		animating, _ := u.renderDamage()
+		if !u.bud.skipped { // a skipped frame is never sent
+			for _, r := range wayland.MergeRects(append([]image.Rectangle(nil), u.dmg...)) {
+				st.damage += r.Dx() * r.Dy()
+			}
+			st.frames++
+			if u.lastFull {
+				st.full++
+			}
 		}
 		if animating {
 			g.clock = g.clock.Add(time.Second / 60)
@@ -129,7 +136,9 @@ func simCases() []simCase {
 			return songFeeder(g.a.ui)
 		}},
 		{"asleep", func(g *galleryScene) func(time.Duration) {
-			g.a.ui.mind.asleep = true
+			g.clock = time.Date(2026, 10, 15, 23, 40, 0, 0, time.Local) // late, and nothing has happened for ten minutes
+			m := g.a.ui.mind
+			m.asleep, m.arousal, m.lastEvent = true, 0.1, g.clock.Add(-10*time.Minute)
 			return nil
 		}},
 	}
