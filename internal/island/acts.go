@@ -580,7 +580,11 @@ func (u *UI) drawEmber(t float64, now time.Time) {
 		return
 	}
 	m := u.mind
-	ps := u.emberPose(t, now)
+	ps := u.bud.ps
+	if !u.bud.psOK {
+		ps = u.emberPose(t, now)
+	}
+	u.bud.psOK, u.bud.last, u.bud.lastAt = false, ps, now
 	if debugPose != nil {
 		*debugPose = ps
 	}

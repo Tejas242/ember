@@ -166,6 +166,7 @@ type emberState struct {
 	body             *body         // Ember's physical self
 	act              *act          // what it's acting out, if anything
 	dancing          bool          // it has caught the song's beat
+	bud              budgetState   // the frame budget (budget.go)
 	groove           groove        // its sense of rhythm
 	dancer           dancer        // how it moves to it
 	travelTo         float32       // where its slot last was: a jump in it is a trip, taken with a hop
@@ -664,17 +665,6 @@ func (u *UI) continuous() bool {
 }
 
 func (u *UI) nextBlink() time.Time { return u.mind.blinkAt }
-
-// shimmering: the pill's label is lit while Claude works.
-func (u *UI) shimmering() bool {
-	if u.cfg.Calm {
-		return false
-	}
-	if u.lastView != vCompact {
-		return u.lastView == vExpanded && u.senses().working
-	}
-	return u.primary() == "claude" && u.compactLine().work
-}
 
 // viewKey changes when what's on screen changes identity (a cross-fade).
 func (u *UI) viewKey(v view) string {

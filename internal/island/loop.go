@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"image"
 	"log"
-	"math"
 	"os"
 	"time"
 
@@ -46,6 +45,7 @@ const housekeepEvery = 10 * time.Second
 
 func (a *app) loop(ctx context.Context) error {
 	win := a.win
+	a.ui.bud.on = true
 	f := &frames{}
 	win.OnFrame = func() { f.due = true }
 	log.Printf("ember up (bar %.0fpx)", a.ui.BarH)
@@ -53,6 +53,9 @@ func (a *app) loop(ctx context.Context) error {
 	draw := func() {
 		var damage image.Rectangle
 		f.animating, damage = a.ui.renderDamage()
+		if a.ui.bud.skipped { // the flame moved less than half a pixel: nothing to send
+			return
+		}
 		if a.ui.wantOverlay() { // a key's OSD over a fullscreen window: up above it, until it has folded away
 			win.SetLayer(wayland.LayerOverlay)
 		} else {
@@ -121,6 +124,8 @@ func (a *app) loop(ctx context.Context) error {
 			f.waiting = false // niri skipped the callback (nothing on screen changed)
 		}
 		switch {
+		case a.ui.gated(): // away, or under a full-screen window: nothing to see, nothing drawn; what happened is drawn when it ends
+			f.due, f.waiting = false, false
 		case f.due:
 			f.due, f.waiting = false, false
 			if f.animating || a.ui.dirty {
@@ -152,6 +157,7 @@ func (a *app) housekeep(saveDue *bool) {
 		a.ui.returned(a.lastHouse, a.ui.now())
 	}
 	a.lastHouse = a.ui.now()
+	a.syncAudio() // the battery may have fallen under a fifth
 	if !a.ui.mind.away {
 		a.ui.bond.present(a.ui.now())
 	}
@@ -170,41 +176,24 @@ func (a *app) housekeep(saveDue *bool) {
 }
 
 // nextWake: animation runs on frame callbacks; otherwise sleep until the next
-// blink, flicker tick, minute, hover delay or expiry.
+// blink, glance, tick of the state's budget (budget.go), minute, hover delay
+// or expiry.
 func (a *app) nextWake(animating bool) time.Duration {
 	u := a.ui
 	now := u.now()
-	if animating || u.dirty {
+	var next time.Time
+	switch {
+	case u.gated():
+		next = now.Add(time.Minute) // a post, a key or the end of the gate wakes the loop sooner
+	case animating || u.dirty:
 		return 16 * time.Millisecond // normally the frame callback comes first
+	default:
+		next = u.nextTick(now)
+		if u.bud.burst {
+			next = minTime(next, now.Add(u.burstEvery())) // a blink, a glance, a swing
+		}
+		next = minTime(next, now.Truncate(time.Minute).Add(time.Minute))
 	}
-	next := u.nextBlink()
-	if u.continuous() {
-		next = now.Add(flickerEvery)
-		if u.lastView != vCompact || u.eqShown || u.dancing || (u.body.phones.seated && u.danceable()) { // a dance needs every beat
-			next = now.Add(time.Second / 24) // the card's pulses, a listening equaliser: only their squares repaint
-		}
-		if _, _, ok := u.stageNow(); ok { // a stage: as often as the song asks, less on battery
-			next = now.Add(time.Second / time.Duration(u.stageFPS()))
-		}
-		if u.shimmering() { // a band of light crosses smoothly, then rests
-			if t := now.Sub(u.start).Seconds(); shimmerPassing(t) {
-				next = now.Add(time.Second / 40)
-			} else {
-				rest := time.Duration((shimmerEvery - math.Mod(t, shimmerEvery)) * float64(time.Second))
-				next = minTime(next, now.Add(rest))
-			}
-		}
-	} else if u.hiddenUnderFull() {
-		next = now.Add(time.Minute) // folded away under a fullscreen window: a key, or the window, wakes it
-	} else if u.mind.asleep {
-		next = now.Add(time.Second / 4) // slow breaths, drifting z's
-	} else if u.glancing() {
-		next = now.Add(time.Second / 30) // eyes move smoothly; nothing else needs the rate
-	} else {
-		next = minTime(next, now.Add(idleEvery)) // Ember breathes even when nothing happens
-	}
-
-	next = minTime(next, now.Truncate(time.Minute).Add(time.Minute))
 	for _, c := range u.cards {
 		if !c.Expires.IsZero() {
 			next = minTime(next, c.Expires)
@@ -217,6 +206,30 @@ func (a *app) nextWake(animating bool) time.Duration {
 		next = minTime(next, u.leftAt.Add(leaveGrace+10*time.Millisecond))
 	}
 	return max(next.Sub(now), 5*time.Millisecond)
+}
+
+// nextTick: when this state next needs a frame if nothing else asks.
+func (u *UI) nextTick(now time.Time) time.Time {
+	m := u.mind
+	next := now.Add(time.Hour)
+	if u.nextBlink().After(now) { // (one under way is the burst's)
+		next = u.nextBlink()
+	}
+	if m.glanceAt.After(now) {
+		next = minTime(next, m.glanceAt) // it starts looking away on time
+	}
+	switch {
+	case u.continuous():
+		next = now.Add(u.baseTick())
+		if _, _, ok := u.stageNow(); ok { // a stage: as often as the song asks, less on battery
+			next = now.Add(time.Second / time.Duration(u.stageFPS()))
+		}
+	case m.asleep:
+		next = minTime(next, now.Add(u.tick(2.5, 1.7, 0.7))) // slow breaths, drifting z's
+	default:
+		next = minTime(next, now.Add(u.tick(4, 3, 1.5))) // Ember breathes even when nothing happens
+	}
+	return next
 }
 
 func minTime(a, b time.Time) time.Time {

@@ -231,9 +231,6 @@ func easeInOut(x float64) float64 {
 	return 1 - math.Pow(-2*x+2, 3)/2
 }
 
-// shimmering: a shimmer's band is crossing right now (frames should come quickly).
-func shimmerPassing(t float64) bool { return math.Mod(t, shimmerEvery) < shimmerPass }
-
 // shimmerLive sweeps a soft band of light across text already drawn at
 // (x, base): the label looks lit from inside while work is going on.
 func (u *UI) shimmerLive(f fontFace, s string, x, base float32, col color.NRGBA) {

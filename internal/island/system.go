@@ -49,6 +49,7 @@ type power struct {
 func charging(s uint32) bool { return s == 1 || s == 4 || s == 5 }
 
 func (a *app) powerChanged(prev, p power) {
+	a.syncAudio() // under a fifth on battery parec stops
 	if !a.ui.cfg.Battery {
 		return
 	}

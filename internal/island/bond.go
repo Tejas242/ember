@@ -105,7 +105,7 @@ func (u *UI) calm() bool {
 // wrong, or someone is watching your screen. Claude working doesn't stop it:
 // it works to music too.
 func (u *UI) danceable() bool {
-	return !u.cfg.Calm && u.mayDance()
+	return !u.cfg.Calm && u.mayDance() && u.tier() < 2 // under a fifth of battery it stops: static headphones
 }
 
 // mayDance is danceable, calm or not: on a stage, calm sways.
