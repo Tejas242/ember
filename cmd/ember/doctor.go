@@ -50,7 +50,7 @@ func doctor() {
 		line(true, "wayland", os.Getenv("WAYLAND_DISPLAY")+" · zwlr_layer_shell_v1", "")
 	}
 	if dir := filepath.Dir(exe); !onPath(dir, os.Getenv("PATH")) {
-		line(false, "path", tilde(dir)+" isn't on your PATH, so `ember allow` and friends aren't found", "add it to PATH, or run "+tilde(exe))
+		line(false, "path", tilde(dir)+" isn't on your PATH, so `ember open` and friends aren't found", "add it to PATH, or run "+tilde(exe))
 	}
 
 	active := exec.Command("systemctl", "--user", "is-active", "--quiet", "ember.service").Run() == nil
@@ -101,7 +101,7 @@ func doctor() {
 				note(s.Name, s.Detail)
 			}
 		}
-		note("now", fmt.Sprintf("%d Claude session(s), %d request(s) waiting", st.Sessions, st.Pending))
+		note("now", fmt.Sprintf("%d Claude session(s), %d card(s) open", st.Sessions, st.Pending))
 	}
 
 	h, _ := os.UserHomeDir()

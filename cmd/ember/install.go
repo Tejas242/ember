@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -290,7 +291,7 @@ func knownEvent(ev string) bool {
 			return true
 		}
 	}
-	return false
+	return slices.Contains(retiredHooks, ev)
 }
 
 // withoutEmber is a settings hook entry with Ember's hooks taken out, or nil

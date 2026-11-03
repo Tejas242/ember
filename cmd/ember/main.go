@@ -79,12 +79,6 @@ func init() {
 		{group: groupControl, name: "next", summary: "switch what the pill shows", run: send("next")},
 		{group: groupControl, name: "prev", summary: "switch back", run: send("prev")},
 		{group: groupControl, name: "play", summary: "play / pause the music", run: send("play")},
-		{group: groupControl, name: "allow", summary: "allow the oldest permission request", run: send("allow")},
-		{group: groupControl, name: "deny", summary: "deny it", run: send("deny")},
-		{group: groupControl, name: "always", summary: "allow it, and what Claude suggests from now on", run: send("always")},
-		{group: groupControl, name: "terminal", summary: "hand it back to Claude's own prompt", run: send("terminal")},
-		{group: groupControl, name: "answer", args: "opt:N | submit", min: 1, max: 1, need: "an answer: opt:N or submit",
-			summary: "answer the oldest question", run: withArg("answer")},
 
 		{group: groupPlugins, name: "plugins", args: "[name]", max: 1, summary: "each plugin: its state, its health, its last error", run: runPlugins},
 		{group: groupPlugins, name: "dash", args: "[name]", max: 1, summary: "open or close a plugin's dashboard", run: withArg("dash")},

@@ -31,34 +31,6 @@ func SendHook(event string, payload []byte, pids []int) {
 	c.Write(append(b, '\n'))
 }
 
-// Ask shows a hook on the island and waits for the user's answer: the hook
-// output to print, or nil to fall back to Claude's own prompt. It returns nil
-// at once if the island isn't running, and after AskTimeout at the latest.
-func Ask(event string, payload []byte) []byte { return AskHook(event, payload, Ancestors()) }
-
-// AskHook is Ask for a hook whose process tree is pids.
-func AskHook(event string, payload []byte, pids []int) []byte {
-	c, err := dialIsland()
-	if err != nil {
-		return nil
-	}
-	defer c.Close()
-	b, _ := json.Marshal(Msg{Type: "hook", Event: event, Wait: true, Pids: pids, Payload: payload})
-	c.SetDeadline(time.Now().Add(AskTimeout + 5*time.Second))
-	if _, err := c.Write(append(b, '\n')); err != nil {
-		return nil
-	}
-	line, err := bufio.NewReader(c).ReadBytes('\n')
-	if err != nil {
-		return nil
-	}
-	var r Reply
-	if json.Unmarshal(line, &r) != nil || len(r.Output) == 0 || string(r.Output) == "null" {
-		return nil
-	}
-	return r.Output
-}
-
 // Edge sends one message from edge (status, card, remove) to the island and
 // reports whether the edge plugin got it: the island answers {"ok":…}; an
 // island too old to answer within 300 ms counts as delivered.
@@ -93,7 +65,7 @@ func SetStatus(id string, payload []byte) bool {
 // ClearStatus takes the pill line id away.
 func ClearStatus(id string) bool { return oneShot(Msg{Type: "line", ID: id, Event: "clear"}) }
 
-// Cmd sends a keyboard command (allow, deny, always, terminal, answer <key>).
+// Cmd sends a keyboard command (open, close, toggle, next, prev, play, dash <name>).
 func Cmd(cmd, arg string) bool { return oneShot(Msg{Type: "cmd", Event: cmd, ID: arg}) }
 
 func oneShot(m Msg) bool {

@@ -13,8 +13,8 @@ import (
 	"github.com/Tejas242/ember/internal/ipc"
 )
 
-// The demo plays a whole session on the island, and answers only its own
-// request when nobody does: a fake island that never answers proves it.
+// The demo plays a whole session on the island and holds nothing: its
+// question is only reported.
 func TestDemo(t *testing.T) {
 	demoPace = 0
 	defer func() { demoPace = 1 }()
@@ -29,8 +29,6 @@ func TestDemo(t *testing.T) {
 	defer ln.Close()
 	var mu sync.Mutex
 	var events []string
-	var allowArg string
-	var held net.Conn // the request, held until the demo answers it
 	handle := func(c net.Conn) {
 		line, _ := bufio.NewReader(c).ReadBytes('\n')
 		var m ipc.Msg
@@ -50,18 +48,6 @@ func TestDemo(t *testing.T) {
 				t.Errorf("%s: session %q pids %v: want a demo session with no terminal of its own", m.Event, in.SessionID, m.Pids)
 			}
 			events = append(events, m.Event)
-			if m.Wait {
-				held = c
-				return
-			}
-		case m.Type == "cmd":
-			allowArg = m.Event + " " + m.ID
-			if held != nil { // like the island: the answer goes to the request only once it's there
-				r, _ := json.Marshal(ipc.Reply{Output: json.RawMessage(`{"hookSpecificOutput":{"decision":{"behavior":"allow"}}}`)})
-				held.Write(append(r, '\n'))
-				held.Close()
-				held = nil
-			}
 		}
 		c.Close()
 	}
@@ -90,12 +76,9 @@ func TestDemo(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	got := strings.Join(events, " ")
-	for _, want := range []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest", "Stop", "SessionEnd"} {
+	for _, want := range []string{"SessionStart", "UserPromptSubmit", "PostToolUse", "PermissionRequest", "Stop", "SessionEnd"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("no %s in %s", want, got)
 		}
-	}
-	if !strings.HasPrefix(allowArg, "allow "+ipc.DemoSession) {
-		t.Errorf("the demo answered %q: it must name its own session", allowArg)
 	}
 }

@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/Tejas242/ember/internal/config"
-	"github.com/Tejas242/ember/internal/ipc"
 	"github.com/Tejas242/ember/internal/plugin"
 	"github.com/Tejas242/ember/internal/wayland"
 )
@@ -167,8 +166,8 @@ func sandbox(t *testing.T) string {
 	return d
 }
 
-// Claude waits on a request longer than the island and its client do, and
-// never on anything else for long.
+// Ember never holds Claude: every hook is async and short, none is one of
+// the retired ones, and the table stays small.
 func TestHookTable(t *testing.T) {
 	seen := map[string]bool{}
 	for _, h := range emberHooks {
@@ -177,11 +176,19 @@ func TestHookTable(t *testing.T) {
 			t.Errorf("%s twice", key)
 		}
 		seen[key] = true
-		if !h.async && h.timeout <= ipc.AskTimeout+5*time.Second {
-			t.Errorf("%s: Claude would kill the hook (%v) before the island answers", key, h.timeout)
+		if !h.async || h.timeout > 10*time.Second {
+			t.Errorf("%s: Claude would wait for it (async %v, timeout %v)", key, h.async, h.timeout)
 		}
-		if h.async && h.timeout > 10*time.Second {
-			t.Errorf("%s: async hook with a %v timeout", key, h.timeout)
+		if slices.Contains(retiredHooks, h.arg) && h.event+"/"+h.matcher != "PreToolUse/AskUserQuestion" {
+			t.Errorf("%s: installs a retired hook", key)
+		}
+	}
+	if len(emberHooks) != 11 {
+		t.Errorf("%d hooks, want 11", len(emberHooks))
+	}
+	for _, gone := range []string{"PreCompact", "PostCompact", "PostToolUseFailure", "PreToolUse/*"} {
+		if seen[gone+"/"] || seen[gone] {
+			t.Errorf("%s is installed again", gone)
 		}
 	}
 	out, err := patchSettings([]byte(`{}`), "/opt/ember", true)
@@ -191,8 +198,95 @@ func TestHookTable(t *testing.T) {
 	if n, _ := hookCountIn(out, "/opt/ember"); n != len(emberHooks) {
 		t.Fatalf("install wrote %d hooks, doctor counts %d", len(emberHooks), n)
 	}
-	if !strings.Contains(string(out), `"timeout": 100`) {
-		t.Fatal("the request hooks' timeout isn't AskTimeout+10s")
+}
+
+// Ember 1.2 wrote 15 hooks, two of them blocking. An install over them
+// leaves exactly the new set (nothing doubled, nothing retired), keeps other
+// tools' hooks, and uninstall then takes every Ember hook out, old or new.
+func TestInstallRetiresOldHooks(t *testing.T) {
+	h := sandbox(t)
+	fakeSystemctl(t)
+	exe := "/opt/ember/bin/ember"
+	settings := filepath.Join(h, ".claude", "settings.json")
+	os.MkdirAll(filepath.Dir(settings), 0o755)
+
+	old := map[string][]any{}
+	add := func(ev, matcher, arg string, async bool) {
+		hk := map[string]any{"type": "command", "command": exe + " hook " + arg, "timeout": 100}
+		if async {
+			hk["async"] = true
+		}
+		old[ev] = append(old[ev], map[string]any{"matcher": matcher, "hooks": []any{hk}})
+	}
+	add("PermissionRequest", "*", "PermissionRequest", false)
+	add("PreToolUse", "AskUserQuestion", "AskUserQuestion", false)
+	for _, ev := range []string{"SessionStart", "UserPromptSubmit", "Notification", "Stop", "StopFailure", "SessionEnd",
+		"SubagentStart", "SubagentStop", "PreCompact", "PostCompact"} {
+		add(ev, "", ev, true)
+	}
+	add("PreToolUse", "*", "PreToolUse", true)
+	add("PostToolUse", "*", "PostToolUse", true)
+	add("PostToolUseFailure", "*", "PostToolUseFailure", true)
+	old["PreToolUse"] = append(old["PreToolUse"], map[string]any{"matcher": "Bash", "hooks": []any{
+		map[string]any{"type": "command", "command": "/home/x/.local/bin/edge hook PreToolUse"}}})
+	raw, _ := json.Marshal(map[string]any{"hooks": old})
+	if err := os.WriteFile(settings, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := hookCountIn(raw, exe); n != 15 {
+		t.Fatalf("the fixture has %d Ember hooks, want 15", n)
+	}
+
+	if err := install(exe); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(settings)
+	if n, stale := hookCountIn(got, exe); n != len(emberHooks) || stale != 0 {
+		t.Fatalf("%d Ember hooks (%d stale), want %d", n, stale, len(emberHooks))
+	}
+	var cfg struct {
+		Hooks map[string][]struct {
+			Matcher string `json:"matcher"`
+			Hooks   []struct {
+				Command string `json:"command"`
+				Async   bool   `json:"async"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(got, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	for _, gone := range []string{"PreCompact", "PostCompact", "PostToolUseFailure"} {
+		if _, ok := cfg.Hooks[gone]; ok {
+			t.Errorf("%s hook still installed", gone)
+		}
+	}
+	for _, e := range cfg.Hooks["PreToolUse"] {
+		for _, hk := range e.Hooks {
+			if e.Matcher == "*" || (strings.Contains(hk.Command, exe) && e.Matcher != "AskUserQuestion") {
+				t.Errorf("PreToolUse %q still runs %s", e.Matcher, hk.Command)
+			}
+		}
+	}
+	for ev, es := range cfg.Hooks {
+		for _, e := range es {
+			for _, hk := range e.Hooks {
+				if strings.Contains(hk.Command, exe) && !hk.Async {
+					t.Errorf("%s: %s would hold Claude", ev, hk.Command)
+				}
+			}
+		}
+	}
+	if !strings.Contains(string(got), "edge hook PreToolUse") {
+		t.Error("lost edge's own hook")
+	}
+
+	if err := uninstall(false); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = os.ReadFile(settings)
+	if n, _ := hookCountIn(got, exe); n != 0 || !strings.Contains(string(got), "edge hook PreToolUse") {
+		t.Fatalf("uninstall left %d Ember hooks: %s", n, got)
 	}
 }
 

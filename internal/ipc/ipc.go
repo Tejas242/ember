@@ -1,6 +1,6 @@
 // Package ipc is how the ember command talks to the running island: one
-// JSON line over a unix socket in the runtime dir, and, for a request that
-// waits, one JSON line back.
+// JSON line over a unix socket in the runtime dir, and, for a few queries,
+// one JSON line back.
 package ipc
 
 import (
@@ -10,10 +10,6 @@ import (
 
 	"github.com/Tejas242/ember/internal/xdg"
 )
-
-// AskTimeout is how long a permission or question waits on the island
-// before Claude falls back to its own terminal prompt.
-const AskTimeout = 90 * time.Second
 
 // SockPath is the island's socket.
 func SockPath() string {
@@ -25,15 +21,9 @@ type Msg struct {
 	Type    string          `json:"type"`           // hook | plugin | edge | cmd | status | note | line
 	Name    string          `json:"name,omitempty"` // plugin: which one
 	Event   string          `json:"event,omitempty"`
-	Wait    bool            `json:"wait,omitempty"`
 	Pids    []int           `json:"pids,omitempty"`
 	Payload json.RawMessage `json:"payload,omitempty"`
 	ID      string          `json:"id,omitempty"`
-}
-
-// Reply answers a hook that waits.
-type Reply struct {
-	Output json.RawMessage `json:"output,omitempty"`
 }
 
 // Ack answers an "edge" message: whether the edge plugin's running process got it.

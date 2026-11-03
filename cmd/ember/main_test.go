@@ -24,13 +24,13 @@ func TestRoute(t *testing.T) {
 		{argv: []string{"uninstall", "--help"}, code: 0, out: "usage: ember uninstall [--purge]\n"},
 		{argv: []string{"install", "--force"}, code: 2, err: `ember install: unexpected argument "--force" (see ember help install)`},
 		{argv: []string{"uninstall", "now"}, code: 2, err: `ember uninstall: unexpected argument "now"`},
-		{argv: []string{"allow", "x"}, code: 2, err: `ember allow: unexpected argument "x"`},
+		{argv: []string{"toggle", "x"}, code: 2, err: `ember toggle: unexpected argument "x"`},
 		{argv: []string{"open"}, run: "open"},
 		{argv: []string{"open", "music"}, run: "open"},
 		{argv: []string{"open", "music", "x"}, code: 2, err: `ember open: unexpected argument "x"`},
-		{argv: []string{"answer"}, code: 2, err: "ember answer: needs an answer: opt:N or submit (see ember help answer)"},
-		{argv: []string{"answer", "opt:1"}, run: "answer"},
-		{argv: []string{"answer", "--help"}, code: 0, out: "usage: ember answer opt:N | submit"},
+		{argv: []string{"note"}, code: 2, err: "ember note: needs the note's text (see ember help note)"},
+		{argv: []string{"dash", "pomodoro"}, run: "dash"},
+		{argv: []string{"dash", "--help"}, code: 0, out: "usage: ember dash [name]"},
 		{argv: []string{"hook"}, code: 2, err: "ember hook: needs a Claude Code hook event"},
 		{argv: []string{"hook", "Stop"}, run: "hook"},
 		{argv: []string{"hook", "Stop", "x"}, code: 2, err: `unexpected argument "x"`},
@@ -84,7 +84,7 @@ func TestCommandTable(t *testing.T) {
 
 // `ember help <cmd>` prints what `ember <cmd> --help` does.
 func TestHelpCommand(t *testing.T) {
-	for _, name := range []string{"install", "answer", "--version"} {
+	for _, name := range []string{"install", "dash", "--version"} {
 		var a, b, e bytes.Buffer
 		if code := help([]string{name}, &a, &e); code != 0 || e.Len() > 0 {
 			t.Fatalf("help %s: code %d err %q", name, code, e.String())
