@@ -64,6 +64,9 @@ func fakePlugin(mode string) {
 		}
 		say(`{"type":"moment","text":"one"}`)
 		say(`{"type":"moment","text":"two"}`) // within 10 s: dropped
+	case "cards": // one card a second at most: the second is dropped, and the plugin is told
+		say(`{"type":"card","id":"first","title":"One","ttl_s":60}`)
+		say(`{"type":"card","id":"second","title":"Two","ttl_s":60}`)
 	case "cheers":
 		for _, k := range []string{"hop", "nod", "hop", "celebrate", "celebrate"} {
 			say(`{"type":"cheer","kind":"` + k + `"}`)
@@ -92,6 +95,10 @@ func fakePlugin(mode string) {
 		json.Unmarshal(in.Bytes(), &ev)
 		if ev.Type == "stop" {
 			return
+		}
+		if ev.Type == "seen" || ev.Type == "expired" {
+			say(fmt.Sprintf(`{"type":"log","text":"receipt %s %s %s"}`, ev.Type, ev.Card, ev.Why))
+			continue
 		}
 		say(fmt.Sprintf(`{"type":"log","text":"got %s %s%s"}`, ev.Type, ev.Target, ev.Key))
 	}
@@ -519,4 +526,25 @@ func TestTimedPagesCoalesce(t *testing.T) {
 	if len(s.msgs) != 2 {
 		t.Fatalf("%d pages applied, want the first and the last", len(s.msgs))
 	}
+}
+
+// A card Ember never queued (over the rate limit) is told to the plugin as
+// expired unseen; the one it took is not. Seen and expired events reach it.
+func TestReceiptsReachPlugin(t *testing.T) {
+	h, s, _ := fakeHost(t, "cards", "card")
+	eventually(t, "the second card dropped and told", func() bool {
+		return strings.Contains(strings.Join(info(h).Log, "|"), "receipt expired second unseen")
+	})
+	if l := strings.Join(info(h).Log, "|"); strings.Contains(l, "receipt expired first") {
+		t.Fatalf("the card Ember took was reported dropped: %s", l)
+	}
+	if got := strings.Join(s.types(), ","); got != "card" {
+		t.Fatalf("applied %s: only the first card", got)
+	}
+	h.Send("fake", proto.Event{Type: "seen", Card: "first"})
+	h.Send("fake", proto.Event{Type: "expired", Card: "x", Why: "away"})
+	eventually(t, "both receipts", func() bool {
+		l := strings.Join(info(h).Log, "|")
+		return strings.Contains(l, "receipt seen first ") && strings.Contains(l, "receipt expired x away")
+	})
 }

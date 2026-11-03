@@ -134,6 +134,19 @@ func (p *proc) send(ev proto.Event) bool {
 	}
 }
 
+// receipt tells the plugin a card it sent was dropped unseen. The caller holds
+// p.mu, so this writes to the queue without send's lock; a full queue loses it.
+func (p *proc) receipt(id string) {
+	b, err := proto.Line("expired", proto.Event{Type: "expired", Card: id, Why: "unseen"})
+	if err != nil {
+		return
+	}
+	select {
+	case p.out <- b:
+	default:
+	}
+}
+
 func (p *proc) cardClosed(id string) {
 	p.mu.Lock()
 	delete(p.cards, id)
@@ -483,6 +496,7 @@ func (p *proc) offer(m proto.Message, now time.Time) {
 				p.info.Dropped++
 				p.info.Violations++
 				p.info.LastError = fmt.Sprintf("card %q: %d open, or more than one a second", m.Card.ID, len(p.cards))
+				p.receipt(m.Card.ID) // it was never queued, never drawn
 				return
 			}
 		}

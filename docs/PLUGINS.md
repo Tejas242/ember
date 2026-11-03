@@ -299,12 +299,22 @@ milestone): at most once an hour per plugin. Neither is a flourish, and Ember ma
 | `{"type":"hello","v":1,"ember":"v1.4.0","caps":[…],"grants":[…]}` | first, always; `grants` are what the config grants it |
 | `{"type":"click","target":"docs"}` | a click on its moment or row: the target's name, or `"row"` for a row without one |
 | `{"type":"button","card":"break","key":"break"}` | a button or a chip on its card; the card has closed |
+| `{"type":"seen","card":"break"}` | its card was drawn on screen for the first time (not when it was queued or sent: a card held behind a full-screen window, or while you are away, is not seen yet). Once per card |
+| `{"type":"expired","card":"break","why":"fullscreen"}` | its card ended without ever being drawn. `why`: `unseen` (ran out, or Ember dropped it for the rate limit), `fullscreen`, `away` or `osd` (it ran out while held for that), `replaced` (taken back by the plugin, or pushed out by a newer card, before it was drawn) |
 | `{"type":"dash","state":"open"}` | its dashboard opened (`"close"`: it closed, with `reason`: `user`, `pointer`, `media_idle`, `song_end` or `other`) |
 | `{"type":"media","media_key":"8f2c41d07a9e","player":"spotify","title":"…","artist":"…","album":"…","length_ms":204000,"pos_ms":51000,"at_ms":1792234567000,"playing":true,"url":"…","track_id":"…"}` | the song playing (the `media` grant): only while its dashboard is open, once as it opens and then when it changes (a new song, play, pause, a seek); without `media_key`, nothing plays. Nothing else about your listening reaches a plugin |
 | `{"type":"tool","payload":{…}}` | a message from the plugin's own tool (below) |
 | `{"type":"stop"}` | the island is stopping: exit within 2 seconds (then SIGTERM, then SIGKILL) |
 
 A plugin must keep reading its stdin: a plugin that stops reading may miss events, but never blocks Ember.
+
+**Receipts** (Ember 1.3). A plugin only says what it wants shown; Ember decides when. `seen` and `expired` tell the
+plugin what really happened to each card, so it can count what was read and not what was sent. A card that was
+seen gets no `expired`, and a card that expired was never seen: each card id gets at most one of the two. The
+button or dismissal that ends a seen card is the `button` event as before. Ember's version is in the hello's `ember`
+field, so a plugin can tell whether to expect receipts (1.3 or later); an older Ember sends none, and a plugin
+must work without them. Both are additive: a plugin that ignores unknown events is unaffected. edge's adapter
+forwards them as `edge receipt seen|expired <card> [why]`.
 
 **A tool's messages.** A plugin often fronts a tool that has its own daemon. The tool can reach its plugin
 through Ember's socket, `$XDG_RUNTIME_DIR/ember.sock`, with one line, `{"type":"plugin","name":"<plugin>",

@@ -118,7 +118,13 @@ type pointerState struct {
 	pressAt                 time.Time
 	hits                    []hit
 	onKey                   func(key string)
-	focus                   string // activity picked by scrolling / the bubble
+	usage                   *UsageLog            // the private usage log (nil: none)
+	askAt                   map[string]time.Time // when each session started asking (usage log)
+	openVia                 string               // how the open card was opened: hover | click
+	openActs                int                  // row actions in the card that's open (usage log)
+	cost                    costMeter
+	ended                   []*Card // cards that left, not yet told to their plugins (receipts.go)
+	focus                   string  // activity picked by scrolling / the bubble
 	focusAt                 time.Time
 	seekRect                image.Rectangle
 	seekPreview             float64                    // where a dragged playhead is, 0..1
@@ -259,6 +265,7 @@ func (u *UI) AddCard(c *Card) {
 	}
 	for i, old := range u.cards {
 		if old.ID == c.ID {
+			c.seenAt, c.heldWhy = old.seenAt, old.heldWhy // the same card again (its words changed): one card for receipts
 			u.cards[i] = c
 			return
 		}
@@ -270,6 +277,7 @@ func (u *UI) AddCard(c *Card) {
 func (u *UI) RemoveCard(id string) {
 	for i, c := range u.cards {
 		if c.ID == id {
+			u.cardEnds(c, "removed")
 			u.cards = append(u.cards[:i], u.cards[i+1:]...)
 			return
 		}
@@ -291,12 +299,15 @@ func (u *UI) expire() bool {
 			if c.OnExpire != nil {
 				c.OnExpire()
 			}
+			u.cardEnds(c, "expired")
 			changed = true
 			continue
 		}
 		kept = append(kept, c)
 	}
 	u.cards = kept
+	u.noteCards(u.currentView(), false)
+	u.flushEnded()
 	if u.moment != nil && now.After(u.moment.until) {
 		u.moment, changed = nil, true
 		if m := u.under; m != nil {
@@ -339,6 +350,9 @@ func (u *UI) Moment(m moment) {
 		}
 	}
 	fresh := u.moment == nil || u.moment.key != m.key
+	if fresh && !m.osd {
+		u.logSurface("moment", momentSrc(m.key))
+	}
 	u.moment = &m
 	if fresh {
 		u.momentAct(m)

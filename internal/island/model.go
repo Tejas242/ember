@@ -33,6 +33,13 @@ type Card struct {
 	OnExpire func()
 	Born     time.Time // when it appeared: the countdown line starts here
 
+	OnSeen func()           // first drawn on screen (receipts.go)
+	OnDrop func(why string) // ended without ever being drawn, and why
+
+	seenAt, endAt time.Time
+	heldWhy       string // why it waited, as last noted: away | fullscreen | osd
+	endHow, acted string // how it ended; the button that took it, if one did
+
 	chipKeys []string // the chips' hit keys, "chip:"+key
 }
 

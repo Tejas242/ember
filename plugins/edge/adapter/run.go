@@ -22,6 +22,7 @@ type Options struct {
 	Now       func() time.Time       // the clock
 	Every     time.Duration          // how often time-worded things are refreshed (5 s)
 	Read      func(string) ([]byte, error)
+	Receipt   func(args ...string) error // runs `edge receipt <args…>` (seen <card> | expired <card> <why>)
 }
 
 // StatsPath is where edge keeps its live stats: $XDG_RUNTIME_DIR/edge/stats.json.
@@ -54,6 +55,23 @@ func EdgeAction(key string) error {
 	return nil
 }
 
+// EdgeReceipt runs `edge receipt …` and waits for it. An older edge that
+// doesn't know the command, or no edge at all, is an error the caller ignores.
+func EdgeReceipt(args ...string) error {
+	path, err := exec.LookPath("edge")
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, path, append([]string{"receipt"}, args...)...).Run()
+}
+
+// receipts: what Ember says happened to the cards edge pushed, handed to
+// edge one short process at a time, in order, off the loop. A burst past
+// the queue is dropped, and failures are not heard.
+const receiptsQueue = 32
+
 // quiet is how long edge may say nothing before it counts as stopped (it
 // says its status at least once a minute), and how long without a push
 // before the stats file is read instead.
@@ -64,16 +82,17 @@ const (
 
 // adapter is the plugin's state: what edge last said, and what Ember was last sent.
 type adapter struct {
-	p      *plugin.Plugin
-	o      Options
-	status *Status
-	reread func() // the stats file, read now (set by run; a "stats" ping without a body asks for it)
-	stats  *Stats
-	heard  time.Time         // edge's last word (a push)
-	open   bool              // the dashboard is open
-	sent   map[string][]byte // the last of each kind: only a change is sent again
-	press  chan string       // presses, run one at a time: edge's actions change its state
-	acted  chan error        // what each came to
+	p        *plugin.Plugin
+	o        Options
+	status   *Status
+	reread   func() // the stats file, read now (set by run; a "stats" ping without a body asks for it)
+	stats    *Stats
+	heard    time.Time         // edge's last word (a push)
+	open     bool              // the dashboard is open
+	sent     map[string][]byte // the last of each kind: only a change is sent again
+	press    chan string       // presses, run one at a time: edge's actions change its state
+	receipts chan []string     // `edge receipt` arguments, run one at a time
+	acted    chan error        // what each came to
 
 	// Ember takes a new card at most once a second and holds three open;
 	// past that it drops them unseen. edge often says two at once (Accepted,
@@ -111,6 +130,9 @@ func Run(p *plugin.Plugin, o Options) error {
 	if o.Read == nil {
 		o.Read = os.ReadFile
 	}
+	if o.Receipt == nil {
+		o.Receipt = EdgeReceipt
+	}
 	a := &adapter{p: p, o: o, sent: map[string][]byte{}, press: make(chan string, 8), acted: make(chan error, 8), heard: o.Now(),
 		cardOpen: map[string]time.Time{}}
 	go func() {
@@ -123,6 +145,13 @@ func Run(p *plugin.Plugin, o Options) error {
 		}
 	}()
 	defer close(a.press)
+	a.receipts = make(chan []string, receiptsQueue)
+	go func() {
+		for args := range a.receipts {
+			o.Receipt(args...) // an edge without the command fails; nobody needs to hear it
+		}
+	}()
+	defer close(a.receipts)
 	var seen time.Time
 	poll := func() { // the file, at start and when edge's pushes stop: edge rewrites it atomically, only on a change
 		fi, err := os.Stat(o.StatsPath)
@@ -185,6 +214,25 @@ func (a *adapter) event(ev plugin.Event) {
 	case "dash":
 		a.open = ev.State == "open"
 		a.show()
+	case "seen": // Ember drew the card
+		a.receipt("seen", ev.Card)
+	case "expired": // it ended without being drawn; why says why
+		if ev.Why == "" {
+			ev.Why = "unseen"
+		}
+		delete(a.cardOpen, ev.Card)
+		a.receipt("expired", ev.Card, ev.Why)
+	}
+}
+
+// receipt hands one to the worker; with a full queue it is dropped (never blocks).
+func (a *adapter) receipt(args ...string) {
+	if a.receipts == nil || len(args) < 2 || args[1] == "" {
+		return
+	}
+	select {
+	case a.receipts <- args:
+	default:
 	}
 }
 
@@ -239,7 +287,7 @@ func (a *adapter) message(m Message) {
 // queued one's place.
 func (a *adapter) card(c plugin.Card, hop bool) {
 	if i := slices.IndexFunc(a.cardQ, func(q queuedCard) bool { return q.c.ID == c.ID }); i >= 0 {
-		a.cardQ[i] = queuedCard{c, hop}
+		a.cardQ[i] = queuedCard{c, hop} // the older words never got to Ember: the newer card is the one that gets a receipt
 	} else {
 		a.cardQ = append(a.cardQ, queuedCard{c, hop})
 	}

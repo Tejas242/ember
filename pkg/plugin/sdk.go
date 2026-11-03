@@ -83,7 +83,7 @@ func Serve(name string, in io.Reader, out io.Writer, fn func(p *Plugin) error) e
 			switch ev.Type {
 			case "stop":
 				return
-			case "click", "button", "dash", "tool", "media":
+			case "click", "button", "dash", "tool", "media", "seen", "expired":
 				select {
 				case p.events <- ev:
 				default: // the plugin isn't reading its events: it misses this one
@@ -94,7 +94,8 @@ func Serve(name string, in io.Reader, out io.Writer, fn func(p *Plugin) error) e
 	return fn(p)
 }
 
-// Events are what Ember tells the plugin: clicks, buttons, its dashboard
+// Events are what Ember tells the plugin: clicks, buttons, receipts for its
+// cards (seen, expired), its dashboard
 // opening and closing (with why it closed), its tool's messages, and, with
 // the media grant while its page is open, the song playing. The channel
 // closes when Ember says stop.

@@ -110,6 +110,9 @@ func (a *app) deskChanged() {
 		w, ok := a.sessionWindow(s.Pids)
 		if watching := ok && w.ID == a.desk.focused; watching != a.ui.watching[s.ID] {
 			a.ui.watching[s.ID], changed = watching, true // attention: you can see this one already
+			if watching {
+				a.ui.logFocus(s, w.AppID)
+			}
 		}
 		if ok {
 			if t := sessionTitle(w.Title); t != "" && t != s.Title {

@@ -155,6 +155,7 @@ func (a *app) housekeep(saveDue *bool) {
 	if !a.ui.mind.away {
 		a.ui.bond.present(a.ui.now())
 	}
+	a.ui.logCost()
 	a.ui.habits.save()
 	a.ui.bond.save()
 	if p := applyLook(a.ui.cfg, loadPalette()); p != a.ui.pal { // the wallpaper palette changed

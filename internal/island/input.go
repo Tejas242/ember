@@ -238,6 +238,7 @@ func (u *UI) press(k string, button int) {
 func (u *UI) flash(k string) { u.pressKey, u.pressAt = k, u.now() }
 
 func (u *UI) key(k string) {
+	u.logRowAction(k)
 	if u.onKey != nil {
 		u.onKey(k)
 	}
